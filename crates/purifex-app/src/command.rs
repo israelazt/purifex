@@ -3,12 +3,11 @@
 
 use std::time::Duration;
 
-use purifex_domain::ports::{Clock, PerformanceSampler, SessionFile, SystemInventory};
 use purifex_domain::report::Scope;
 
 use crate::outcome::Outcome;
-use crate::recorder::{Recorder, WatchOptions};
-use crate::scanner::Scanner;
+use crate::recorder::WatchOptions;
+use crate::services::Services;
 
 /// What the command line asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,51 +88,31 @@ impl Command {
         matches!(self, Self::Scan { json: true, .. })
     }
 
-    /// Runs it against the system's ports and returns what it produced as
-    /// data. `progress` receives the lines that are worth showing while a long
+    /// Runs it against the services and returns what it produced as data.
+    /// `progress` receives the lines that are worth showing while a long
     /// command works.
-    pub fn execute<I, C, S, C2, F>(
+    pub fn execute(
         self,
-        scanner: &Scanner<I, C>,
-        recorder: &mut Recorder<S, C2, F>,
+        services: &mut dyn Services,
         progress: &mut dyn FnMut(&str),
-    ) -> Result<Outcome, String>
-    where
-        I: SystemInventory,
-        C: Clock,
-        S: PerformanceSampler,
-        C2: Clock,
-        F: SessionFile,
-    {
+    ) -> Result<Outcome, String> {
         match self {
             Self::Help => Ok(Outcome::Help),
-            Self::Scan { scope, .. } => scanner
+            Self::Scan { scope, .. } => services
                 .scan(scope)
                 .map(Outcome::Report)
                 .map_err(|e| format!("No se pudo analizar: {e}")),
-            Self::Watch(options) => recorder
-                .run(options, "lol", progress)
+            Self::Watch(options) => services
+                .record(options, progress)
                 .map(Outcome::Recording)
                 .map_err(|e| format!("No se pudo grabar: {e}")),
         }
     }
 
     /// Like [`Command::execute`], rendered for the console.
-    pub fn run<I, C, S, C2, F>(
-        self,
-        scanner: &Scanner<I, C>,
-        recorder: &mut Recorder<S, C2, F>,
-        progress: &mut dyn FnMut(&str),
-    ) -> Output
-    where
-        I: SystemInventory,
-        C: Clock,
-        S: PerformanceSampler,
-        C2: Clock,
-        F: SessionFile,
-    {
+    pub fn run(self, services: &mut dyn Services, progress: &mut dyn FnMut(&str)) -> Output {
         let json = self.wants_json();
-        match self.execute(scanner, recorder, progress) {
+        match self.execute(services, progress) {
             Ok(outcome) => Output {
                 text: outcome.render(json),
                 ok: true,
@@ -146,13 +125,21 @@ impl Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recorder::Recorder;
+    use crate::scanner::Scanner;
+    use crate::services::App;
     use crate::testing::{FakeClock, FakeFile, FakeInventory, FakeSampler};
 
-    fn recorder() -> Recorder<FakeSampler, FakeClock, FakeFile> {
-        Recorder::new(
-            FakeSampler::new(0, 3, true),
-            FakeClock::ticking(0),
-            FakeFile::default(),
+    fn app(
+        inventory: FakeInventory,
+    ) -> App<FakeInventory, FakeClock, FakeSampler, FakeClock, FakeFile> {
+        App::new(
+            Scanner::new(inventory, FakeClock::ticking(1)),
+            Recorder::new(
+                FakeSampler::new(0, 3, true),
+                FakeClock::ticking(0),
+                FakeFile::default(),
+            ),
         )
     }
 
@@ -216,10 +203,10 @@ mod tests {
 
     #[test]
     fn watch_reports_the_summary_and_where_the_data_is() {
-        let scanner = Scanner::new(FakeInventory::with(vec![]), FakeClock::ticking(1));
+        let mut app = app(FakeInventory::with(vec![]));
         let out = Command::parse(&["watch"])
             .unwrap()
-            .run(&scanner, &mut recorder(), &mut |_| {});
+            .run(&mut app, &mut |_| {});
         assert!(out.ok);
         assert!(
             out.text.contains("fake/lol.csv") && out.text.contains("Sesión de 3 s"),
@@ -230,24 +217,24 @@ mod tests {
 
     #[test]
     fn a_failure_is_reported_and_not_ok() {
-        let scanner = Scanner::new(FakeInventory::failing("denied"), FakeClock::ticking(1));
+        let mut app = app(FakeInventory::failing("denied"));
         let out = Command::Scan {
             json: false,
             scope: Scope::All,
         }
-        .run(&scanner, &mut recorder(), &mut |_| {});
+        .run(&mut app, &mut |_| {});
         assert!(!out.ok);
         assert!(out.text.contains("denied"));
     }
 
     #[test]
     fn json_output_parses() {
-        let scanner = Scanner::new(FakeInventory::with(vec![]), FakeClock::ticking(1));
+        let mut app = app(FakeInventory::with(vec![]));
         let out = Command::Scan {
             json: true,
             scope: Scope::All,
         }
-        .run(&scanner, &mut recorder(), &mut |_| {});
+        .run(&mut app, &mut |_| {});
         assert!(out.ok);
         let value: serde_json::Value = serde_json::from_str(&out.text).unwrap();
         assert_eq!(value["summary"]["scanned"], 0);

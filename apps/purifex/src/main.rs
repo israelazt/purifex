@@ -11,7 +11,7 @@ fn say(line: &str) {
 
 #[cfg(windows)]
 fn main() {
-    use purifex_app::{Command, Recorder, Scanner};
+    use purifex_app::{App, Command, Recorder, Scanner};
     use purifex_platform::{
         install_stderr_log, LocalSessionFile, SetupApiInventory, SystemClock, WindowsSampler,
     };
@@ -28,8 +28,9 @@ fn main() {
     let scanner = Scanner::new(SetupApiInventory, SystemClock::new());
     // The game's program, as it appears in the process list.
     let sampler = WindowsSampler::new(&["League of Legends.exe"]);
-    let mut recorder = Recorder::new(sampler, SystemClock::new(), LocalSessionFile::default());
-    let output = command.run(&scanner, &mut recorder, &mut |line| {
+    let recorder = Recorder::new(sampler, SystemClock::new(), LocalSessionFile::default());
+    let mut app = App::new(scanner, recorder);
+    let output = command.run(&mut app, &mut |line| {
         say(line);
     });
     say(&output.text);

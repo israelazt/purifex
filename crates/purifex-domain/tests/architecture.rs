@@ -64,7 +64,10 @@ fn each_crate_depends_only_on_what_the_layers_allow() {
     // domain <- platform, app <- the binary.
     let allowed: [(&str, &[&str]); 5] = [
         ("purifex-domain", &["serde", "serde_json"]),
-        ("purifex-platform", &["purifex-domain", "windows"]),
+        (
+            "purifex-platform",
+            &["purifex-domain", "windows", "windows-numerics"],
+        ),
         ("purifex-app", &["purifex-domain", "serde_json"]),
         // The page: files included in the program, no dependencies at all.
         ("purifex-ui", &[]),

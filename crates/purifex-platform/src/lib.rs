@@ -10,6 +10,8 @@ pub mod nt_layout;
 #[cfg(windows)]
 mod clock;
 #[cfg(windows)]
+mod gfx;
+#[cfg(windows)]
 mod inventory;
 #[cfg(windows)]
 mod log_console;
@@ -19,9 +21,13 @@ mod sampler;
 mod session_archive;
 #[cfg(windows)]
 mod session_file;
+#[cfg(windows)]
+mod window;
 
 #[cfg(windows)]
 pub use clock::SystemClock;
+#[cfg(windows)]
+pub use gfx::{render_png, Renderer, TextEngine};
 #[cfg(windows)]
 pub use inventory::SetupApiInventory;
 #[cfg(windows)]
@@ -32,3 +38,5 @@ pub use sampler::WindowsSampler;
 pub use session_archive::LocalSessionArchive;
 #[cfg(windows)]
 pub use session_file::LocalSessionFile;
+#[cfg(windows)]
+pub use window::run as run_window;

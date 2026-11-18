@@ -1,0 +1,10 @@
+[package]
+name = "purifex-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# The look of Purifex: the page (HTML, CSS, JavaScript and the Lucide icons) that
+# the program serves to its own window. No Rust dependencies: the files are
+# included in the program. What the page shows is decided in the domain.
+[dependencies]

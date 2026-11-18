@@ -4,6 +4,9 @@
 
 /// Writes a line to the standard output. A closed pipe (`| head`) is not an error.
 #[cfg(windows)]
+mod shell;
+
+#[cfg(windows)]
 fn say(line: &str) {
     use std::io::Write;
     let _ = writeln!(std::io::stdout(), "{line}");
@@ -32,6 +35,13 @@ fn main() {
     let recorder = Recorder::new(sampler, SystemClock::new(), LocalSessionFile::default());
     let archive = Archive::new(LocalSessionArchive::new());
     let mut app = App::new(scanner, recorder, archive);
+    if let Command::Ui { open } = command {
+        if let Err(error) = shell::serve(&mut app, open, &mut say) {
+            purifex_domain::log_error!("{error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let output = command.run(&mut app, &mut |line| {
         say(line);
     });

@@ -21,4 +21,4 @@ pub use outcome::Outcome;
 pub use recorder::{Recorder, WatchOptions};
 pub use scanner::Scanner;
 pub use services::{App, Services};
-pub use web::{Asset, Gateway};
+pub use web::{should_stop, Asset, Gateway};

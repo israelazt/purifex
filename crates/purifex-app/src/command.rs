@@ -13,10 +13,22 @@ use crate::services::Services;
 /// What the command line asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    Scan { json: bool, scope: Scope },
+    Scan {
+        json: bool,
+        scope: Scope,
+    },
     Watch(WatchOptions),
-    Sessions { json: bool },
-    Analyze { id: Option<String>, json: bool },
+    Sessions {
+        json: bool,
+    },
+    Analyze {
+        id: Option<String>,
+        json: bool,
+    },
+    /// Open the window. The program serves it; this order only asks for it.
+    Ui {
+        open: bool,
+    },
     Help,
 }
 
@@ -36,6 +48,7 @@ Uso:
   purifex sessions [--json]       Lista las grabaciones, la más nueva primero
   purifex analyze [NOMBRE] [--json]
                                   Analiza una grabación (por defecto, la última)
+  purifex ui [--no-open]          Abre la interfaz en una ventana
   purifex help                    Esta ayuda
 
 Opciones de scan:
@@ -57,6 +70,7 @@ impl Command {
             Some("watch") => return Self::parse_watch(args),
             Some("sessions") => return Self::parse_sessions(args),
             Some("analyze") => return Self::parse_analyze(args),
+            Some("ui") => return Self::parse_ui(args),
             Some(other) => return Err(format!("orden desconocida: {other}")),
         }
         let (mut json, mut scope) = (false, Scope::Hardware);
@@ -79,6 +93,17 @@ impl Command {
             }
         }
         Ok(Self::Sessions { json })
+    }
+
+    fn parse_ui<'a>(args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
+        let mut open = true;
+        for arg in args {
+            match arg {
+                "--no-open" => open = false,
+                other => return Err(format!("opción desconocida: {other}")),
+            }
+        }
+        Ok(Self::Ui { open })
     }
 
     fn parse_analyze<'a>(args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
@@ -148,6 +173,7 @@ impl Command {
                 .record(options, progress)
                 .map(Outcome::Recording)
                 .map_err(|e| format!("No se pudo grabar: {e}")),
+            Self::Ui { .. } => Err("la interfaz la abre el programa, no un servicio".into()),
             Self::Analyze { id, .. } => services
                 .analyze(id.as_deref())
                 .map(|a| Outcome::Analysis(Box::new(a)))
@@ -382,5 +408,15 @@ mod tests {
         }
         .run(&mut app, &mut |_| {});
         assert!(!missing.ok && missing.text.contains("no existe"));
+    }
+
+    #[test]
+    fn ui_opens_the_window_unless_told_not_to() {
+        assert_eq!(Command::parse(&["ui"]).unwrap(), Command::Ui { open: true });
+        assert_eq!(
+            Command::parse(&["ui", "--no-open"]).unwrap(),
+            Command::Ui { open: false }
+        );
+        assert!(Command::parse(&["ui", "--port"]).is_err());
     }
 }

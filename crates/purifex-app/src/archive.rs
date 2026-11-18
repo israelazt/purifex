@@ -62,14 +62,15 @@ impl<A: SessionArchive> Archive<A> {
         Analysis::of(&id, self.read(&id)?)
     }
 
-    /// The newest recording that can be analyzed (a broken one is skipped, so it
-    /// does not hide the one before it).
+    /// The newest recording that is a game (see `Analysis::is_game`). A broken
+    /// one, or a short test, is skipped so it does not hide the one before it.
     pub fn latest(&self) -> Option<Analysis> {
         let mut infos = self.archive.list().ok()?;
         sort_newest_first(&mut infos);
         infos
             .into_iter()
-            .find_map(|info| self.analyze(Some(&info.id)).ok())
+            .filter_map(|info| self.analyze(Some(&info.id)).ok())
+            .find(Analysis::is_game)
     }
 
     /// One recording, read back.
@@ -83,6 +84,10 @@ mod tests {
     use super::*;
     use crate::testing::FakeArchive;
 
+    const GAME: &str = "t_s,cpu_total,cpu_max_core,game_cpu,game_mb
+1.0,1.0,1.0,5.0,900
+300.0,1.0,1.0,5.0,900
+";
     const SHORT: &str = "t_s,cpu_total,cpu_max_core\n1.0,10.0,20.0\n2.0,11.0,21.0\n";
     const WITH_HEADER: &str = "# purifex-session v1 game=\"League of Legends.exe\" cores=12 started=2026-11-18\nt_s,cpu_total,cpu_max_core\n1.0,1.0,1.0\n61.0,1.0,1.0\n";
 
@@ -135,13 +140,16 @@ mod tests {
     }
 
     #[test]
-    fn the_latest_skips_a_broken_recording() {
+    fn the_latest_skips_a_broken_recording_and_a_short_test() {
         let archive = Archive::new(FakeArchive::with(&[
-            ("lol-20261118-145915", WITH_HEADER),
+            ("lol-20261118-145915", GAME),
             ("lol-20261118-165329", "roto"),
+            ("lol-20261118-170557", SHORT),
         ]));
         assert_eq!(archive.latest().unwrap().id, "lol-20261118-145915");
         assert!(Archive::new(FakeArchive::default()).latest().is_none());
+        let only_tests = Archive::new(FakeArchive::with(&[("lol-20261118-170557", SHORT)]));
+        assert!(only_tests.latest().is_none(), "a test is not a game");
     }
 
     #[test]

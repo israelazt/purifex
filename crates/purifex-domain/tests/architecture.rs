@@ -62,18 +62,25 @@ fn dependencies_of(krate: &str) -> Vec<String> {
 fn each_crate_depends_only_on_what_the_layers_allow() {
     // crate -> every dependency it may have. Dependencies go only downward:
     // domain <- platform, app <- the binary.
-    let allowed: [(&str, &[&str]); 4] = [
+    let allowed: [(&str, &[&str]); 5] = [
         ("purifex-domain", &["serde", "serde_json"]),
         ("purifex-platform", &["purifex-domain", "windows"]),
         ("purifex-app", &["purifex-domain", "serde_json"]),
+        // The page: files included in the program, no dependencies at all.
+        ("purifex-ui", &[]),
         (
             "purifex",
-            &["purifex-domain", "purifex-platform", "purifex-app"],
+            &[
+                "purifex-domain",
+                "purifex-platform",
+                "purifex-app",
+                "purifex-ui",
+            ],
         ),
     ];
     for (krate, may) in allowed {
         assert!(
-            !dependencies_of(krate).is_empty(),
+            may.is_empty() || !dependencies_of(krate).is_empty(),
             "no dependencies read for {krate}: the parser is broken"
         );
         for dep in dependencies_of(krate) {

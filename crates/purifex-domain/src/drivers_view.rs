@@ -19,6 +19,9 @@ pub struct DriverRow {
     pub instance_id: String,
     /// How many identical devices the row stands for.
     pub count: usize,
+    /// Whether the system says anything about a driver for it. Many peripherals
+    /// (a Bluetooth mouse) have none to report: that is not the same as a good one.
+    pub has_driver: bool,
     pub provider: Option<String>,
     pub version: Option<DriverVersion>,
     pub date: Option<Date>,
@@ -89,6 +92,7 @@ fn row_of(entry: &Entry, count: usize) -> DriverRow {
         category: category_of(&entry.device.class),
         instance_id: entry.device.instance_id.clone(),
         count,
+        has_driver: driver.is_some(),
         provider: driver.and_then(|d| d.provider.clone()),
         version: driver.and_then(|d| d.version),
         date: driver.and_then(|d| d.date),
@@ -170,6 +174,16 @@ mod tests {
         ]);
         assert_eq!(v.attention, 1, "a disabled device is not a fault");
         assert_eq!(v.rows[0].name, "Dongle");
+    }
+
+    #[test]
+    fn a_device_with_nothing_said_about_its_driver_is_told_apart_from_one_that_has_it() {
+        let mut bare = device(r"BTHENUM\A", "Bluetooth", "Ratón", None);
+        bare.driver = None;
+        let v = view(vec![bare, device(r"PCI\B", "Display", "GPU", None)]);
+        let has = |name: &str| v.rows.iter().find(|r| r.name == name).unwrap().has_driver;
+        assert!(has("GPU"));
+        assert!(!has("Ratón"));
     }
 
     #[test]

@@ -10,3 +10,4 @@ license.workspace = true
 purifex-domain = { path = "../../crates/purifex-domain" }
 purifex-platform = { path = "../../crates/purifex-platform" }
 purifex-app = { path = "../../crates/purifex-app" }
+purifex-ui = { path = "../../crates/purifex-ui" }

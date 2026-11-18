@@ -30,6 +30,7 @@ dependencies = [
  "purifex-app",
  "purifex-domain",
  "purifex-platform",
+ "purifex-ui",
 ]
 
 [[package]]
@@ -55,6 +56,10 @@ dependencies = [
  "purifex-domain",
  "windows",
 ]
+
+[[package]]
+name = "purifex-ui"
+version = "0.1.0"
 
 [[package]]
 name = "quote"

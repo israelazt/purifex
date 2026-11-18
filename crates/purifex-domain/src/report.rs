@@ -93,17 +93,14 @@ impl ScanReport {
                 entries.push(entry);
             }
         }
-        entries.sort_by(|a, b| {
+        entries.sort_by_key(|e| {
             (
-                needs_attention(a.health),
-                a.device.class.to_lowercase(),
-                a.device.name.to_lowercase(),
+                needs_attention(e.health),
+                // Devices the system gives no class to go last, not first.
+                e.device.class.is_empty(),
+                e.device.class.to_lowercase(),
+                e.device.name.to_lowercase(),
             )
-                .cmp(&(
-                    needs_attention(b.health),
-                    b.device.class.to_lowercase(),
-                    b.device.name.to_lowercase(),
-                ))
         });
         summary.shown = entries.len();
         Self {
@@ -176,6 +173,25 @@ mod tests {
         );
         let all = ScanReport::build(devices, Scope::All, today(), 3);
         assert_eq!(all.summary.shown, 2);
+    }
+
+    #[test]
+    fn devices_without_a_class_go_after_the_ones_that_have_one() {
+        let report = ScanReport::build(
+            vec![
+                device(r"BTHENUM\A", "", "Mouse", None),
+                device(r"PCI\B", "Display", "GPU", None),
+            ],
+            Scope::Hardware,
+            today(),
+            1,
+        );
+        let names: Vec<_> = report
+            .devices
+            .iter()
+            .map(|e| e.device.name.as_str())
+            .collect();
+        assert_eq!(names, ["GPU", "Mouse"]);
     }
 
     #[test]

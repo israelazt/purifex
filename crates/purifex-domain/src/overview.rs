@@ -153,7 +153,7 @@ fn limiter_of(session: Option<&SessionKpi>) -> Limiter {
     match session {
         None => Limiter {
             title: "Sin datos de partida".into(),
-            detail: "Graba una partida con `purifex watch` para saber qué la limita.".into(),
+            detail: "Graba una partida de al menos 2 minutos con `purifex watch` para saber qué la limita.".into(),
         },
         Some(s) => match s.findings.first() {
             Some(finding) => Limiter {
@@ -195,7 +195,10 @@ fn console_of(
         ),
     ];
     match session {
-        None => lines.push(line("PARTIDA", "Todavía no hay grabaciones.".into())),
+        None => lines.push(line(
+            "PARTIDA",
+            "Todavía no hay una partida grabada (al menos 2 minutos, con el juego abierto).".into(),
+        )),
         Some(s) => {
             lines.push(line(
                 "PARTIDA",

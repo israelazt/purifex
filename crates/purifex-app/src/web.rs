@@ -7,6 +7,8 @@
 //! This is the whole logic of the server; the program only moves bytes between a
 //! socket and [`Gateway::handle`].
 
+use std::time::Duration;
+
 use purifex_domain::session_id::is_valid_id;
 
 use crate::http::{Request, Response};
@@ -17,6 +19,22 @@ macro_rules! to_json {
     ($value:expr) => {
         serde_json::to_string(&$value).map_err(|e| e.to_string())
     };
+}
+
+/// How long the program waits for the page to open before it gives up.
+pub const OPEN_GRACE: Duration = Duration::from_secs(30);
+/// How long without a sign of life from the page (it was closed) before the
+/// program stops. Nothing stays running once the window is gone.
+pub const SILENCE_LIMIT: Duration = Duration::from_secs(15);
+
+/// Whether the program should stop serving. `since_start` is the time since it
+/// began; `since_alive` the time since the page last answered authorized (`None`
+/// if it never did).
+pub fn should_stop(since_start: Duration, since_alive: Option<Duration>) -> bool {
+    match since_alive {
+        None => since_start >= OPEN_GRACE,
+        Some(silence) => silence >= SILENCE_LIMIT,
+    }
 }
 
 /// A file of the page, from whoever holds the assets.
@@ -267,6 +285,21 @@ mod tests {
     #[test]
     fn an_unknown_api_path_is_not_found() {
         assert_eq!(get("/api/borrar", Some("secreto"), HOST).status, 404);
+    }
+
+    #[test]
+    fn it_waits_for_the_page_to_open_and_stops_when_it_goes_quiet() {
+        let secs = Duration::from_secs;
+        assert!(!should_stop(secs(5), None), "the page is still opening");
+        assert!(should_stop(secs(30), None), "nobody came");
+        assert!(
+            !should_stop(secs(600), Some(secs(3))),
+            "the page keeps answering"
+        );
+        assert!(
+            should_stop(secs(600), Some(secs(15))),
+            "the window was closed"
+        );
     }
 
     #[test]

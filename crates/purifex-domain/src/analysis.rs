@@ -6,9 +6,13 @@ use std::fmt::Write;
 use serde::Serialize;
 
 use crate::diagnosis::{diagnose, Finding};
-use crate::session::{summarize, SessionSummary};
+use crate::session::{summarize, SessionSummary, Stat};
 use crate::session_csv::ParsedSession;
 use crate::session_header::SessionHeader;
+
+/// A recording shorter than this is a test, not a game: its figures say nothing
+/// about how a match goes.
+pub const MIN_GAME_SECONDS: u64 = 120;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Analysis {
@@ -25,13 +29,24 @@ impl Analysis {
         if session.samples.is_empty() {
             return Err(format!("la grabación «{id}» no tiene muestras"));
         }
-        let summary = summarize(&session.samples);
+        let mut summary = summarize(&session.samples);
+        // The first recordings (no header line) took the clock speed from a source
+        // that always answered the base clock: that reading says nothing.
+        if session.header.is_none() {
+            summary.cpu_clock_pct = Stat::default();
+        }
         Ok(Self {
             id: id.to_string(),
             header: session.header,
             findings: diagnose(&summary),
             summary,
         })
+    }
+
+    /// Whether it is a match worth reporting on: long enough, and with the game
+    /// running (a recording made with `--now` and no game says nothing of one).
+    pub fn is_game(&self) -> bool {
+        self.summary.seconds >= MIN_GAME_SECONDS && self.summary.game_cpu.max > 0.0
     }
 
     pub fn to_text(&self) -> String {
@@ -75,6 +90,39 @@ t_s,cpu_total,cpu_max_core,groups\n\
             .findings
             .iter()
             .any(|f| f.title.contains("cliente de League")));
+    }
+
+    #[test]
+    fn only_a_long_recording_with_the_game_running_is_a_game() {
+        let long_with_game = "t_s,cpu_total,cpu_max_core,game_cpu,game_mb
+1.0,1.0,1.0,5.0,900
+200.0,1.0,1.0,5.0,900
+";
+        assert!(Analysis::of("a", parse(long_with_game).unwrap())
+            .unwrap()
+            .is_game());
+        let short = "t_s,cpu_total,cpu_max_core,game_cpu,game_mb
+1.0,1.0,1.0,5.0,900
+2.0,1.0,1.0,5.0,900
+";
+        assert!(!Analysis::of("a", parse(short).unwrap()).unwrap().is_game());
+        let no_game = "t_s,cpu_total,cpu_max_core
+1.0,1.0,1.0
+500.0,1.0,1.0
+";
+        assert!(!Analysis::of("a", parse(no_game).unwrap())
+            .unwrap()
+            .is_game());
+    }
+
+    #[test]
+    fn the_clock_of_a_recording_without_header_is_not_trusted() {
+        let old = "t_s,cpu_total,cpu_max_core,cpu_mhz,cpu_max_mhz\n1.0,1.0,1.0,3801,3801\n";
+        let analysis = Analysis::of("old", parse(old).unwrap()).unwrap();
+        assert_eq!(analysis.summary.cpu_clock_pct, Stat::default());
+        let new = format!("# purifex-session v1 game=\"a.exe\" cores=4 started=2026-11-18\n{old}");
+        let analysis = Analysis::of("new", parse(&new).unwrap()).unwrap();
+        assert_eq!(analysis.summary.cpu_clock_pct.avg, 100.0);
     }
 
     #[test]

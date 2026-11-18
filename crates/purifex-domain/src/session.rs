@@ -157,7 +157,9 @@ pub fn summarize(samples: &[Sample]) -> SessionSummary {
                             .iter()
                             .filter(|l| l.group == group)
                             .map(|l| l.cpu)
-                            .sum()
+                            // `+ 0.0`: the sum of nothing is -0.0, which would print as "-0.0".
+                            .sum::<f32>()
+                            + 0.0
                     })
                     .collect(),
             ),
@@ -286,6 +288,20 @@ mod tests {
         assert_eq!(groups[0].group, Group::LeagueClient);
         assert_eq!(groups[0].cpu.avg, 7.0);
         assert_eq!(groups[0].cpu.max, 16.0);
+    }
+
+    #[test]
+    fn a_family_that_was_absent_some_seconds_never_shows_a_negative_zero() {
+        use crate::sample::GroupLoad;
+        // 40 seconds, the family in only the first: its p95 falls in an absent second.
+        let mut samples: Vec<Sample> = (1..=40).map(|i| at(i * 1000, 10.0)).collect();
+        samples[0].groups = vec![GroupLoad {
+            group: Group::RiotClient,
+            cpu: 7.0,
+        }];
+        let groups = summarize(&samples).groups;
+        assert!(groups[0].cpu.p95.is_sign_positive() && groups[0].cpu.avg.is_sign_positive());
+        assert_eq!(format!("{:.1}", groups[0].cpu.p95), "0.0");
     }
 
     #[test]

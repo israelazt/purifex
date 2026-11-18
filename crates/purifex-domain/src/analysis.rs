@@ -14,6 +14,16 @@ use crate::session_header::SessionHeader;
 /// about how a match goes.
 pub const MIN_GAME_SECONDS: u64 = 120;
 
+/// A line of the table of measures: average, 95th percentile and maximum.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StatRow {
+    pub label: String,
+    pub stat: Stat,
+    pub unit: &'static str,
+    /// Decimals to show (0 or 1).
+    pub decimals: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Analysis {
     pub id: String,
@@ -47,6 +57,47 @@ impl Analysis {
     /// running (a recording made with `--now` and no game says nothing of one).
     pub fn is_game(&self) -> bool {
         self.summary.seconds >= MIN_GAME_SECONDS && self.summary.game_cpu.max > 0.0
+    }
+
+    /// The table of measures of the recording, in the order it is read: the
+    /// processor, the game, the families of programs, the graphics card. A
+    /// measure that does not apply (no game, no card, a clock that was not read)
+    /// is not in it.
+    pub fn stat_rows(&self) -> Vec<StatRow> {
+        let s = &self.summary;
+        let row = |label: &str, stat: Stat, unit: &'static str, decimals: usize| StatRow {
+            label: label.to_string(),
+            stat,
+            unit,
+            decimals,
+        };
+        let mut rows = vec![
+            row("CPU total", s.cpu_total, "%", 1),
+            row("Núcleo más cargado", s.cpu_max_core, "%", 1),
+            row("Interrupciones / DPC", s.dpc_interrupt, "%", 1),
+        ];
+        if s.cpu_clock_pct.avg > 0.0 {
+            rows.push(row("Frecuencia (de la base)", s.cpu_clock_pct, "%", 0));
+        }
+        rows.push(row("RAM en uso", s.ram_used, "%", 0));
+        if s.game_cpu.max > 0.0 {
+            rows.push(row("El juego · CPU", s.game_cpu, "%", 1));
+            rows.push(row("El juego · memoria", s.game_memory_mb, "MB", 0));
+        }
+        for group in &s.groups {
+            rows.push(row(
+                &format!("{} · CPU", group.group.label()),
+                group.cpu,
+                "%",
+                1,
+            ));
+        }
+        if let Some(gpu) = &s.gpu {
+            rows.push(row("GPU · uso", gpu.util, "%", 0));
+            rows.push(row("GPU · temperatura", gpu.temp_c, "°C", 0));
+            rows.push(row("GPU · consumo", gpu.power_w, "W", 1));
+        }
+        rows
     }
 
     pub fn to_text(&self) -> String {
@@ -123,6 +174,51 @@ t_s,cpu_total,cpu_max_core,groups\n\
         let new = format!("# purifex-session v1 game=\"a.exe\" cores=4 started=2026-11-18\n{old}");
         let analysis = Analysis::of("new", parse(&new).unwrap()).unwrap();
         assert_eq!(analysis.summary.cpu_clock_pct.avg, 100.0);
+    }
+
+    #[test]
+    fn the_table_of_measures_only_has_the_rows_that_apply() {
+        let bare = "t_s,cpu_total,cpu_max_core
+1.0,1.0,1.0
+2.0,1.0,1.0
+";
+        let rows = Analysis::of("a", parse(bare).unwrap()).unwrap().stat_rows();
+        let labels: Vec<&str> = rows.iter().map(|r| r.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            [
+                "CPU total",
+                "Núcleo más cargado",
+                "Interrupciones / DPC",
+                "RAM en uso"
+            ],
+            "no game, no card, no clock, no families"
+        );
+        let full = "# purifex-session v1 game=\"a.exe\" cores=4 started=2026-11-18
+t_s,cpu_total,cpu_max_core,cpu_mhz,cpu_max_mhz,game_cpu,game_mb,gpu_util,gpu_temp_c,gpu_power_w,groups
+1.0,1.0,1.0,4000,3800,5.0,900,30,45,30.0,league_client=15.0
+2.0,1.0,1.0,4000,3800,5.0,900,30,45,30.0,league_client=15.0
+";
+        let rows = Analysis::of("a", parse(full).unwrap()).unwrap().stat_rows();
+        let labels: Vec<&str> = rows.iter().map(|r| r.label.as_str()).collect();
+        for expected in [
+            "Frecuencia (de la base)",
+            "El juego · CPU",
+            "El juego · memoria",
+            "Cliente de League · CPU",
+            "GPU · uso",
+            "GPU · temperatura",
+            "GPU · consumo",
+        ] {
+            assert!(labels.contains(&expected), "{expected}: {labels:?}");
+        }
+        assert_eq!(
+            rows.iter()
+                .find(|r| r.label == "El juego · memoria")
+                .unwrap()
+                .unit,
+            "MB"
+        );
     }
 
     #[test]

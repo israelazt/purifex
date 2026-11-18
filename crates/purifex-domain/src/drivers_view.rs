@@ -31,7 +31,33 @@ pub struct DriverRow {
     pub health: Health,
 }
 
+/// How a row is doing, in the words the table uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowState {
+    /// A driver of its maker, working.
+    Healthy,
+    /// The driver Windows ships, working.
+    Windows,
+    /// The system says nothing about a driver for it (many peripherals): that is
+    /// not the same as a good one.
+    NoDriverData,
+    Disabled,
+    MissingDriver,
+    Fault(u32),
+}
+
 impl DriverRow {
+    pub fn state(&self) -> RowState {
+        match self.health {
+            Health::MissingDriver => RowState::MissingDriver,
+            Health::Fault { code } => RowState::Fault(code),
+            Health::Disabled => RowState::Disabled,
+            Health::Working if !self.has_driver => RowState::NoDriverData,
+            Health::Working if self.inbox => RowState::Windows,
+            Health::Working => RowState::Healthy,
+        }
+    }
+
     /// No driver, or a fault: what the user should look at first.
     pub fn needs_attention(&self) -> bool {
         matches!(self.health, Health::MissingDriver | Health::Fault { .. })
@@ -206,6 +232,29 @@ mod tests {
         let has = |name: &str| v.rows.iter().find(|r| r.name == name).unwrap().has_driver;
         assert!(has("GPU"));
         assert!(!has("Ratón"));
+    }
+
+    #[test]
+    fn each_row_has_a_state_in_the_words_of_the_table() {
+        let mut bare = device(r"BTHENUM\A", "Bluetooth", "Ratón", None);
+        bare.driver = None;
+        let mut vendor = device(r"PCI\B", "Display", "GPU", None);
+        vendor.driver.as_mut().unwrap().provider = Some("NVIDIA".into());
+        let v = view(vec![
+            bare,
+            vendor,
+            device(r"USB\C", "Net", "Windows", None),
+            device(r"USB\D", "Net", "Roto", Some(28)),
+            device(r"USB\E", "Net", "Fallo", Some(43)),
+            device(r"USB\F", "Net", "Apagado", Some(22)),
+        ]);
+        let state = |name: &str| v.rows.iter().find(|r| r.name == name).unwrap().state();
+        assert_eq!(state("Ratón"), RowState::NoDriverData);
+        assert_eq!(state("GPU"), RowState::Healthy);
+        assert_eq!(state("Windows"), RowState::Windows);
+        assert_eq!(state("Roto"), RowState::MissingDriver);
+        assert_eq!(state("Fallo"), RowState::Fault(43));
+        assert_eq!(state("Apagado"), RowState::Disabled);
     }
 
     #[test]

@@ -91,6 +91,7 @@ impl Ui {
         }
         self.query = model.query.clone();
         let mut c = Canvas::new(text, self.mouse);
+        c.search_focus = self.search_focus;
         let main = Rect::new(
             SIDEBAR_W,
             TOPBAR_H,

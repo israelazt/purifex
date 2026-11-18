@@ -24,6 +24,8 @@ pub struct Canvas<'a> {
     mouse: Option<(f32, f32)>,
     clips: Vec<Rect>,
     search_box: Option<Rect>,
+    /// The search box has the keyboard (the page draws it lit, with its caret).
+    pub search_focus: bool,
 }
 
 impl<'a> Canvas<'a> {
@@ -35,6 +37,7 @@ impl<'a> Canvas<'a> {
             mouse,
             clips: Vec::new(),
             search_box: None,
+            search_focus: false,
         }
     }
 

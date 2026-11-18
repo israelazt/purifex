@@ -130,7 +130,9 @@ impl PerformanceSampler for FakeSampler {
 #[derive(Default)]
 pub struct FakeFile {
     pub lines: RefCell<Vec<String>>,
+    pub summary: RefCell<Option<String>>,
     pub fail_appends: bool,
+    pub fail_summary: bool,
 }
 
 impl SessionFile for FakeFile {
@@ -143,6 +145,14 @@ impl SessionFile for FakeFile {
             return Err("disk full".into());
         }
         self.lines.borrow_mut().push(line.to_string());
+        Ok(())
+    }
+
+    fn write_summary(&mut self, json: &str) -> Result<(), String> {
+        if self.fail_summary {
+            return Err("read-only disk".into());
+        }
+        *self.summary.borrow_mut() = Some(json.to_string());
         Ok(())
     }
 }

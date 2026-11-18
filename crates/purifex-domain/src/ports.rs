@@ -49,4 +49,6 @@ pub trait SessionFile {
     /// Creates the file for a new recording and returns where it is.
     fn create(&mut self, name: &str) -> Result<String, String>;
     fn append(&mut self, line: &str) -> Result<(), String>;
+    /// Writes the summary of the recording next to its file (`<name>.summary.json`).
+    fn write_summary(&mut self, json: &str) -> Result<(), String>;
 }

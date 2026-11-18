@@ -128,8 +128,14 @@ impl<S: PerformanceSampler, C: Clock, F: SessionFile> Recorder<S, C, F> {
         if samples.is_empty() {
             return Err("no se tomó ninguna muestra".into());
         }
+        let summary = summarize(&samples);
+        // The summary beside the data saves recalculating it; losing it is not fatal.
+        let json = serde_json::to_string_pretty(&summary).unwrap_or_default();
+        if let Err(error) = self.file.write_summary(&json) {
+            log_warn!("could not write the summary: {error}");
+        }
         Ok(Recording {
-            summary: summarize(&samples),
+            summary,
             file: path,
         })
     }
@@ -174,6 +180,29 @@ mod tests {
         assert_eq!(lines[1], CSV_HEADER);
         assert_eq!(lines.len(), 2 + 5);
         assert_eq!(done.file, "fake/lol.csv");
+    }
+
+    #[test]
+    fn the_summary_is_written_beside_the_data_and_matches_what_is_returned() {
+        let mut r = recorder(FakeSampler::new(0, 3, true));
+        let done = r.run(WatchOptions::default(), "x", &mut |_| {}).unwrap();
+        let written = r
+            .file
+            .summary
+            .borrow()
+            .clone()
+            .expect("a summary was written");
+        let value: serde_json::Value = serde_json::from_str(&written).unwrap();
+        assert_eq!(value["samples"], done.summary.samples);
+        assert_eq!(value["seconds"], done.summary.seconds);
+    }
+
+    #[test]
+    fn a_summary_that_cannot_be_written_does_not_lose_the_recording() {
+        let mut r = recorder(FakeSampler::new(0, 3, true));
+        r.file.fail_summary = true;
+        let done = r.run(WatchOptions::default(), "x", &mut |_| {}).unwrap();
+        assert_eq!(done.summary.samples, 3);
     }
 
     #[test]

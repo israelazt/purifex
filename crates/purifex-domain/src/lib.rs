@@ -7,8 +7,11 @@
 pub mod analysis;
 pub mod date;
 pub mod device;
+pub mod device_category;
 pub mod diagnosis;
+pub mod drivers_view;
 pub mod log;
+pub mod overview;
 pub mod ports;
 pub mod process_group;
 pub mod report;

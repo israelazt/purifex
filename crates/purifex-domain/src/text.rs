@@ -50,7 +50,7 @@ fn same_line(a: &Entry, b: &Entry) -> bool {
 /// The entries with the identical ones joined (eight "USB input device" are one
 /// line, "×8"), in the order of the first of each. The report itself keeps them
 /// all: the JSON lists every device.
-fn grouped(entries: &[Entry]) -> Vec<(&Entry, usize)> {
+pub(crate) fn grouped(entries: &[Entry]) -> Vec<(&Entry, usize)> {
     let mut lines: Vec<(&Entry, usize)> = Vec::new();
     for entry in entries {
         match lines.iter_mut().find(|(first, _)| same_line(first, entry)) {

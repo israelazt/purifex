@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod archive;
 pub mod command;
 pub mod outcome;
 pub mod recorder;
@@ -12,6 +13,7 @@ pub mod services;
 #[cfg(test)]
 mod testing;
 
+pub use archive::Archive;
 pub use command::{Command, Output};
 pub use outcome::Outcome;
 pub use recorder::{Recorder, WatchOptions};

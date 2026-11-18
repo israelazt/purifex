@@ -5,7 +5,10 @@ use std::time::Duration;
 
 use purifex_domain::date::Date;
 use purifex_domain::device::Device;
-use purifex_domain::ports::{Clock, PerformanceSampler, SamplerInfo, SessionFile, SystemInventory};
+use purifex_domain::ports::{
+    Clock, PerformanceSampler, SamplerInfo, SessionArchive, SessionFile, SessionInfo,
+    SystemInventory,
+};
 use purifex_domain::sample::{GameLoad, Sample};
 
 pub struct FakeInventory(Result<Vec<Device>, String>);
@@ -154,5 +157,50 @@ impl SessionFile for FakeFile {
         }
         *self.summary.borrow_mut() = Some(json.to_string());
         Ok(())
+    }
+}
+
+/// An archive of recordings held in memory: `(id, csv)`.
+#[derive(Default)]
+pub struct FakeArchive {
+    pub sessions: Vec<(String, String)>,
+    /// Make listing fail with this reason.
+    pub fails: Option<String>,
+}
+
+impl FakeArchive {
+    pub fn with(sessions: &[(&str, &str)]) -> Self {
+        Self {
+            sessions: sessions
+                .iter()
+                .map(|(i, c)| (i.to_string(), c.to_string()))
+                .collect(),
+            fails: None,
+        }
+    }
+}
+
+impl SessionArchive for FakeArchive {
+    fn list(&self) -> Result<Vec<SessionInfo>, String> {
+        if let Some(reason) = &self.fails {
+            return Err(reason.clone());
+        }
+        Ok(self
+            .sessions
+            .iter()
+            .map(|(id, csv)| SessionInfo {
+                id: id.clone(),
+                bytes: csv.len() as u64,
+                has_summary: false,
+            })
+            .collect())
+    }
+
+    fn read_csv(&self, id: &str) -> Result<String, String> {
+        self.sessions
+            .iter()
+            .find(|(i, _)| i == id)
+            .map(|(_, csv)| csv.clone())
+            .ok_or_else(|| format!("no existe la grabación «{id}»"))
     }
 }

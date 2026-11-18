@@ -2,9 +2,13 @@
 //! server) ask for things through it, without knowing which ports are behind.
 //! [`App`] is the real implementation, built from the services of this crate.
 
-use purifex_domain::ports::{Clock, PerformanceSampler, SessionFile, SystemInventory};
+use purifex_domain::ports::{
+    Clock, PerformanceSampler, SessionArchive, SessionFile, SystemInventory,
+};
 use purifex_domain::report::{ScanReport, Scope};
+use purifex_domain::session_list::SessionRow;
 
+use crate::archive::Archive;
 use crate::recorder::{Recorder, Recording, WatchOptions};
 use crate::scanner::Scanner;
 
@@ -18,27 +22,35 @@ pub trait Services {
         options: WatchOptions,
         progress: &mut dyn FnMut(&str),
     ) -> Result<Recording, String>;
+    /// The recordings made so far, the newest first.
+    fn sessions(&self) -> Result<Vec<SessionRow>, String>;
 }
 
 /// The services of the application over real (or fake) ports.
-pub struct App<I, C, S, C2, F> {
+pub struct App<I, C, S, C2, F, A> {
     scanner: Scanner<I, C>,
     recorder: Recorder<S, C2, F>,
+    archive: Archive<A>,
 }
 
-impl<I, C, S, C2, F> App<I, C, S, C2, F> {
-    pub fn new(scanner: Scanner<I, C>, recorder: Recorder<S, C2, F>) -> Self {
-        Self { scanner, recorder }
+impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
+    pub fn new(scanner: Scanner<I, C>, recorder: Recorder<S, C2, F>, archive: Archive<A>) -> Self {
+        Self {
+            scanner,
+            recorder,
+            archive,
+        }
     }
 }
 
-impl<I, C, S, C2, F> Services for App<I, C, S, C2, F>
+impl<I, C, S, C2, F, A> Services for App<I, C, S, C2, F, A>
 where
     I: SystemInventory,
     C: Clock,
     S: PerformanceSampler,
     C2: Clock,
     F: SessionFile,
+    A: SessionArchive,
 {
     fn scan(&self, scope: Scope) -> Result<ScanReport, String> {
         self.scanner.scan(scope)
@@ -50,5 +62,9 @@ where
         progress: &mut dyn FnMut(&str),
     ) -> Result<Recording, String> {
         self.recorder.run(options, "lol", progress)
+    }
+
+    fn sessions(&self) -> Result<Vec<SessionRow>, String> {
+        self.archive.rows()
     }
 }

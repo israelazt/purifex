@@ -16,5 +16,6 @@ pub mod session;
 pub mod session_csv;
 pub mod session_header;
 pub mod session_id;
+pub mod session_list;
 pub mod text;
 pub mod version;

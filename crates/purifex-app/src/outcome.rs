@@ -2,6 +2,7 @@
 //! server (the MCP one) can use the data itself.
 
 use purifex_domain::report::ScanReport;
+use purifex_domain::session_list::{rows_to_text, SessionRow};
 
 use crate::command::HELP;
 use crate::recorder::Recording;
@@ -10,6 +11,7 @@ use crate::recorder::Recording;
 pub enum Outcome {
     Report(ScanReport),
     Recording(Recording),
+    Sessions(Vec<SessionRow>),
     Help,
 }
 
@@ -22,6 +24,7 @@ impl Outcome {
                 done.summary.to_text(),
                 done.file
             ),
+            Self::Sessions(rows) => rows_to_text(rows),
             Self::Help => HELP.to_string(),
         }
     }
@@ -33,6 +36,7 @@ impl Outcome {
                 "file": done.file,
                 "summary": done.summary,
             }),
+            Self::Sessions(rows) => serde_json::json!({ "sessions": rows }),
             Self::Help => serde_json::json!({ "help": HELP }),
         };
         serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".into())

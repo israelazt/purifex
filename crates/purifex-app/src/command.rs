@@ -14,6 +14,7 @@ use crate::services::Services;
 pub enum Command {
     Scan { json: bool, scope: Scope },
     Watch(WatchOptions),
+    Sessions { json: bool },
     Help,
 }
 
@@ -30,6 +31,7 @@ Uso:
   purifex scan [--json] [--all]   Lista los dispositivos y sus drivers
   purifex watch [--now] [--seconds N]
                                   Graba el rendimiento mientras juegas a LoL
+  purifex sessions [--json]       Lista las grabaciones, la más nueva primero
   purifex help                    Esta ayuda
 
 Opciones de scan:
@@ -49,6 +51,7 @@ impl Command {
             None | Some("scan") => {}
             Some("help" | "--help" | "-h") => return Ok(Self::Help),
             Some("watch") => return Self::parse_watch(args),
+            Some("sessions") => return Self::parse_sessions(args),
             Some(other) => return Err(format!("orden desconocida: {other}")),
         }
         let (mut json, mut scope) = (false, Scope::Hardware);
@@ -60,6 +63,17 @@ impl Command {
             }
         }
         Ok(Self::Scan { json, scope })
+    }
+
+    fn parse_sessions<'a>(args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
+        let mut json = false;
+        for arg in args {
+            match arg {
+                "--json" => json = true,
+                other => return Err(format!("opción desconocida: {other}")),
+            }
+        }
+        Ok(Self::Sessions { json })
     }
 
     fn parse_watch<'a>(mut args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
@@ -85,7 +99,10 @@ impl Command {
 
     /// Whether the output is asked in JSON.
     pub fn wants_json(&self) -> bool {
-        matches!(self, Self::Scan { json: true, .. })
+        matches!(
+            self,
+            Self::Scan { json: true, .. } | Self::Sessions { json: true }
+        )
     }
 
     /// Runs it against the services and returns what it produced as data.
@@ -106,6 +123,10 @@ impl Command {
                 .record(options, progress)
                 .map(Outcome::Recording)
                 .map_err(|e| format!("No se pudo grabar: {e}")),
+            Self::Sessions { .. } => services
+                .sessions()
+                .map(Outcome::Sessions)
+                .map_err(|e| format!("No se pudieron leer las grabaciones: {e}")),
         }
     }
 
@@ -125,14 +146,19 @@ impl Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::archive::Archive;
     use crate::recorder::Recorder;
     use crate::scanner::Scanner;
     use crate::services::App;
-    use crate::testing::{FakeClock, FakeFile, FakeInventory, FakeSampler};
+    use crate::testing::{FakeArchive, FakeClock, FakeFile, FakeInventory, FakeSampler};
 
-    fn app(
-        inventory: FakeInventory,
-    ) -> App<FakeInventory, FakeClock, FakeSampler, FakeClock, FakeFile> {
+    type TestApp = App<FakeInventory, FakeClock, FakeSampler, FakeClock, FakeFile, FakeArchive>;
+
+    fn app(inventory: FakeInventory) -> TestApp {
+        app_with(inventory, FakeArchive::default())
+    }
+
+    fn app_with(inventory: FakeInventory, archive: FakeArchive) -> TestApp {
         App::new(
             Scanner::new(inventory, FakeClock::ticking(1)),
             Recorder::new(
@@ -140,6 +166,7 @@ mod tests {
                 FakeClock::ticking(0),
                 FakeFile::default(),
             ),
+            Archive::new(archive),
         )
     }
 
@@ -238,5 +265,36 @@ mod tests {
         assert!(out.ok);
         let value: serde_json::Value = serde_json::from_str(&out.text).unwrap();
         assert_eq!(value["summary"]["scanned"], 0);
+    }
+
+    #[test]
+    fn sessions_takes_json_and_nothing_else() {
+        assert_eq!(
+            Command::parse(&["sessions"]).unwrap(),
+            Command::Sessions { json: false }
+        );
+        assert_eq!(
+            Command::parse(&["sessions", "--json"]).unwrap(),
+            Command::Sessions { json: true }
+        );
+        assert!(Command::parse(&["sessions", "--all"]).is_err());
+    }
+
+    #[test]
+    fn sessions_lists_the_recordings() {
+        let csv = "t_s,cpu_total,cpu_max_core\n1.0,1.0,1.0\n";
+        let mut app = app_with(
+            FakeInventory::with(vec![]),
+            FakeArchive::with(&[("lol-20261118-165329", csv)]),
+        );
+        let out = Command::Sessions { json: false }.run(&mut app, &mut |_| {});
+        assert!(
+            out.ok && out.text.contains("lol-20261118-165329"),
+            "{}",
+            out.text
+        );
+        let json = Command::Sessions { json: true }.run(&mut app, &mut |_| {});
+        let value: serde_json::Value = serde_json::from_str(&json.text).unwrap();
+        assert_eq!(value["sessions"][0]["id"], "lol-20261118-165329");
     }
 }

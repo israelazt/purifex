@@ -26,3 +26,4 @@ pub mod session_list;
 pub mod text;
 pub mod ui_event;
 pub mod version;
+pub mod view;

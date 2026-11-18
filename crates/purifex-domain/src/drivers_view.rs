@@ -31,6 +31,28 @@ pub struct DriverRow {
     pub health: Health,
 }
 
+impl DriverRow {
+    /// No driver, or a fault: what the user should look at first.
+    pub fn needs_attention(&self) -> bool {
+        matches!(self.health, Health::MissingDriver | Health::Fault { .. })
+    }
+
+    /// Whether the search (already lowercase) is in the name, the id, the
+    /// provider, the class or the version.
+    pub fn matches(&self, query: &str) -> bool {
+        let version = self.version.map(|v| v.to_string()).unwrap_or_default();
+        [
+            self.name.as_str(),
+            &self.instance_id,
+            self.provider.as_deref().unwrap_or(""),
+            &self.class,
+            &version,
+        ]
+        .iter()
+        .any(|field| field.to_lowercase().contains(query))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CategoryCount {
     pub category: Category,
@@ -75,7 +97,7 @@ impl DriversView {
             total: rows.iter().map(|r| r.count).sum(),
             attention: rows
                 .iter()
-                .filter(|r| matches!(r.health, Health::MissingDriver | Health::Fault { .. }))
+                .filter(|r| r.needs_attention())
                 .map(|r| r.count)
                 .sum(),
             categories,

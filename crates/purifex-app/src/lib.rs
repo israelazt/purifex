@@ -6,6 +6,7 @@
 
 pub mod archive;
 pub mod command;
+pub mod core;
 pub mod http;
 pub mod outcome;
 pub mod recorder;
@@ -17,6 +18,7 @@ pub mod web;
 
 pub use archive::Archive;
 pub use command::{Command, Output};
+pub use core::Core;
 pub use outcome::Outcome;
 pub use recorder::{Recorder, WatchOptions};
 pub use scanner::Scanner;

@@ -13,6 +13,8 @@ medir (watch) → diagnosticar (diagnose) → proponer (fixes) → aplicar (fix 
 
 Y ofrecer lo mismo a un asistente de IA mediante un servidor **MCP de solo lectura**.
 
+> **Añadido 2026-11-18:** la interfaz nativa (`purifex ui`, ver `docs/DESIGN.md`) se hizo en esta fase por petición del autor, con el rendimiento como criterio. El Bloque 8 (MCP) y `compare` (2.5, 2.6) siguen pendientes.
+
 **Resultado visible al final de la fase:** el autor ejecuta `purifex diagnose`, acepta los arreglos propuestos, juega una partida y `purifex compare --last` le dice con números si mejoró. Si no mejoró, `purifex fix undo` lo deja todo como estaba.
 
 ## Decisiones tomadas (2026-11-18)

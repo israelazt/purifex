@@ -4,7 +4,6 @@
 //! to the system are only compiled on Windows.
 
 pub mod decode;
-pub mod entropy;
 pub mod nt_layout;
 
 #[cfg(windows)]

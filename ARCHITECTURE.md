@@ -7,9 +7,9 @@ Las convenciones completas de la familia (capas, estilo, tests, código de Windo
 | Crate | Es | Contiene | No puede |
 |---|---|---|---|
 | `purifex-domain` | El **qué** | Datos y reglas puras: `Device`, `DriverVersion`, `Date`, `ScanReport` (salud, edad, resumen), el texto del informe y los **puertos** (`SystemInventory`, `Clock`), el log | Windows, disco, red, hilos |
-| `purifex-platform` | El **cómo** en Windows | Adaptadores que implementan los puertos: inventario con SetupAPI/CfgMgr32, reloj, log a stderr. `decode` (bytes de Windows → datos) es código puro | Conocer la app |
+| `purifex-platform` | El **cómo** en Windows | Adaptadores que implementan los puertos: inventario con SetupAPI/CfgMgr32, reloj, log, muestreador, y la ventana Win32 con Direct2D/DirectWrite. `decode` y `nt_layout` (bytes de Windows → datos) son código puro | Conocer la app |
 | `purifex-app` | El **cuándo** | Servicios (`Scanner`) y qué hace cada orden de la línea de comandos (`Command`). Solo contra puertos; se prueba con dobles | Windows |
-| `purifex` (binario) | La **raíz de composición** | Crea los adaptadores, se los da a `app`, imprime la salida | Lógica |
+| `purifex` (binario) | La **raíz de composición** | Crea los adaptadores reales, se los da a `app`, imprime la salida; `shell/` conecta `Core`, `Ui` y la ventana | Lógica |
 
 ```
               purifex (binario)
@@ -35,7 +35,7 @@ Las flechas solo van hacia abajo. `app` y `platform` no se ven entre sí.
 - [x] Bloque 1: inventario con SetupAPI (`purifex scan [--json] [--all]`).
 - [x] Grabación de rendimiento (`purifex watch`): `PerformanceSampler` y `SessionFile` como puertos; `Recorder` espera a `League of Legends.exe`, graba un CSV por segundo y resume con pistas (`session`, `diagnosis`). Muestreo: tabla de procesos y tiempos por núcleo con `NtQuerySystemInformation`, GPU NVIDIA con NVML (cargado en caliente; temperatura y throttling cada 5 s porque esa llamada tarda ~20 ms). Coste medido: ~12 ms por muestra.
 - [x] Bloque 1 de la fase 1 (2026-11-18): frecuencia real del CPU con PDH (`% Processor Performance` sobre la base; en este PC ~4070 MHz con base 3801), familias de procesos (`process_group`: el cliente de League son tres procesos y se suma el total), cabecera versionada del CSV (`session_header`) y resumen guardado junto al CSV (`<nombre>.summary.json`).
-- [x] Interfaz (2026-11-18, `docs/DESIGN.md`): `purifex ui`. Lo que se muestra se decide en el dominio (`overview`, `drivers_view`, `device_category`, y la regla de qué es una partida: `Analysis::is_game`); `app::web` es la API local (token por ejecución, `Host`, solo lectura); `purifex-ui` son los archivos; el binario solo mueve bytes. Verificado en el PC con capturas de Edge.
+- [x] Interfaz nativa (2026-11-18, `docs/DESIGN.md`): `purifex ui` con Direct2D. Lo que se muestra se decide en el dominio (`overview`, `drivers_view`, `Analysis::stat_rows`, `Analysis::is_game`, `Model::visible_drivers`); `purifex-ui` solo dibuja y traduce entradas; `Core` aplica las acciones. Sustituye a una primera versión web (descartada por peso: 16 procesos, 936 MB). Medido: 1 proceso, 48 MB, 0 % de CPU en reposo.
 - [x] Bloque 2 (parcial): `sessions`, `analyze` y el lector de grabaciones (`session_csv`, también las antiguas). Falta `compare` (2.5 y 2.6).
 - [ ] Limitaciones conocidas: sin tiempos de fotograma (haría falta ETW/PresentMon); solo GPU NVIDIA.
 - [ ] Bloque 2 en adelante: ver el plan.

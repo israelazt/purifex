@@ -92,7 +92,7 @@ Necesario para el MCP: hoy `Command::run` devuelve texto.
 1. En `domain/report.rs`, agrupar entradas idénticas (mismo nombre, clase, versión y proveedor) en una con `count`. Test: 8 «Dispositivo de entrada USB» → 1 fila «×8».
 2. En `text.rs`, mostrar `×N` tras el nombre. El JSON conserva todas las entradas (`--json` no agrupa).
 
-**Hecho cuando:** la lista de texto del PC baja de ~146 filas a menos de 70.
+**Hecho cuando:** la lista de texto del PC baja de 146 filas a ~81 (medido 2026-11-18; lo que queda son dispositivos distintos, y agrupar más ocultaría versiones diferentes). El JSON sigue con todas.
 
 ---
 

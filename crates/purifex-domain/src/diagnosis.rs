@@ -4,6 +4,7 @@
 
 use std::fmt::Write;
 
+use crate::process_group::{group_of, Group};
 use crate::session::SessionSummary;
 
 /// Thresholds. Each one is a judgment call, so they live in one place.
@@ -23,6 +24,8 @@ mod limit {
     pub const RAM_P95: f32 = 90.0;
     /// A background process with this share of the CPU on average.
     pub const BACKGROUND: f32 = 3.0;
+    /// The League client, running beside the game, with this share of the CPU.
+    pub const LEAGUE_CLIENT: f32 = 5.0;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -103,10 +106,24 @@ pub fn diagnose(s: &SessionSummary) -> Vec<Finding> {
             ),
         ));
     }
+    let client = s.groups.iter().find(|g| g.group == Group::LeagueClient);
+    if let Some(client) = client.filter(|g| g.cpu.avg >= limit::LEAGUE_CLIENT) {
+        out.push(finding(
+            Severity::Warning,
+            "El cliente de League gasta CPU mientras juegas",
+            format!(
+                "el cliente usa de media un {:.1} % del CPU (p95 {:.1} %) y el juego un {:.1} %: cerrarlo durante la partida lo libera",
+                client.cpu.avg, client.cpu.p95, s.game_cpu.avg
+            ),
+        ));
+    }
     let busy: Vec<_> = s
         .background
         .iter()
-        .filter(|b| b.avg_cpu >= limit::BACKGROUND)
+        // The League client has its own lead above.
+        .filter(|b| {
+            b.avg_cpu >= limit::BACKGROUND && group_of(&b.name) != Some(Group::LeagueClient)
+        })
         .collect();
     if !busy.is_empty() {
         let list: Vec<String> = busy
@@ -146,6 +163,10 @@ impl SessionSummary {
             "  Segundos con un núcleo >= 95 %: {:.0} %",
             self.core_pinned_pct
         );
+        for g in &self.groups {
+            let name = format!("CPU {}", g.group.label());
+            line(&mut out, &name, &g.cpu, " %");
+        }
         line(&mut out, "Interrupciones/DPC", &self.dpc_interrupt, " %");
         line(
             &mut out,
@@ -285,6 +306,40 @@ mod tests {
             Severity::Info,
             "info goes last"
         );
+    }
+
+    #[test]
+    fn the_league_client_has_its_own_lead_and_is_not_repeated_as_background() {
+        use crate::session::{Background, GroupSummary};
+        let mut s = calm();
+        s.game_cpu = flat(13.5);
+        s.groups = vec![GroupSummary {
+            group: Group::LeagueClient,
+            cpu: flat(15.9),
+        }];
+        s.background = vec![
+            Background {
+                name: "LeagueClientUxRender.exe".into(),
+                avg_cpu: 8.3,
+            },
+            Background {
+                name: "msedge.exe".into(),
+                avg_cpu: 4.0,
+            },
+        ];
+        let found = diagnose(&s);
+        assert!(found[0].title.contains("cliente de League"));
+        assert!(found[0].evidence.contains("15.9") && found[0].evidence.contains("13.5"));
+        let background = found
+            .iter()
+            .find(|f| f.title.contains("segundo plano"))
+            .unwrap();
+        assert!(background.evidence.contains("msedge.exe"));
+        assert!(!background.evidence.contains("LeagueClient"));
+        assert!(s.to_text().contains("CPU Cliente de League"));
+        // A client that barely uses CPU is not a lead.
+        s.groups[0].cpu = flat(1.0);
+        assert!(!titles(&s).iter().any(|t| t.contains("cliente de League")));
     }
 
     #[test]

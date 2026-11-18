@@ -113,6 +113,7 @@ impl PerformanceSampler for FakeSampler {
                 memory_mb: 1500,
             }),
             gpu: None,
+            groups: vec![],
             top: vec![],
             cost_us: 400,
         })

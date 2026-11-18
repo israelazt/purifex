@@ -10,7 +10,8 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use purifex_domain::ports::PerformanceSampler;
-use purifex_domain::sample::{effective_mhz, GameLoad, ProcLoad, Sample};
+use purifex_domain::process_group::{group_of, Group};
+use purifex_domain::sample::{effective_mhz, GameLoad, GroupLoad, ProcLoad, Sample};
 use windows::Wdk::System::SystemInformation::{NtQuerySystemInformation, SYSTEM_INFORMATION_CLASS};
 use windows::Win32::System::Power::{
     CallNtPowerInformation, POWER_INFORMATION_LEVEL, PROCESSOR_POWER_INFORMATION,
@@ -201,6 +202,7 @@ impl PerformanceSampler for WindowsSampler {
 
         let mut game: Option<GameLoad> = None;
         let mut others: HashMap<&str, f32> = HashMap::new();
+        let mut families: HashMap<Group, f32> = HashMap::new();
         let mut ticks_now = HashMap::with_capacity(processes.len());
         for p in &processes {
             ticks_now.insert(p.pid, p.cpu_ticks);
@@ -217,6 +219,9 @@ impl PerformanceSampler for WindowsSampler {
                 g.memory_mb += (p.working_set / (1024 * 1024)) as u32;
             } else if p.pid != 0 && p.pid != self.own_pid {
                 *others.entry(p.name.as_str()).or_default() += cpu;
+                if let Some(group) = group_of(&p.name) {
+                    *families.entry(group).or_default() += cpu;
+                }
             }
         }
         // The game may have started between two samples: it is there, with no
@@ -237,6 +242,11 @@ impl PerformanceSampler for WindowsSampler {
             .collect();
         top.sort_by(|a, b| b.cpu.total_cmp(&a.cpu));
         top.truncate(TOP_PROCESSES);
+        let mut groups: Vec<GroupLoad> = families
+            .into_iter()
+            .map(|(group, cpu)| GroupLoad { group, cpu })
+            .collect();
+        groups.sort_by(|a, b| b.cpu.total_cmp(&a.cpu));
         self.last_processes = ticks_now;
 
         let (reported_mhz, cpu_max_mhz) = clock_speeds(core_count);
@@ -256,6 +266,7 @@ impl PerformanceSampler for WindowsSampler {
             ram_used: memory_used_percent(),
             game,
             gpu: self.nvml.as_mut().and_then(Nvml::read),
+            groups,
             top,
             cost_us: started.elapsed().as_micros().min(u128::from(u32::MAX)) as u32,
         })

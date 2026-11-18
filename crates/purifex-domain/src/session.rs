@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use crate::process_group::{Group, ALL_GROUPS};
 use crate::sample::{throttle, Sample};
 
 /// Average, 95th percentile and maximum of a measure.
@@ -45,6 +46,14 @@ pub struct GpuSummary {
     pub power_capped_pct: f32,
 }
 
+/// What a family of programs used over the session, per second.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct GroupSummary {
+    pub group: Group,
+    /// Percent of the whole CPU; a second without the family counts as zero.
+    pub cpu: Stat,
+}
+
 /// A process that used CPU besides the game.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Background {
@@ -68,6 +77,8 @@ pub struct SessionSummary {
     pub game_cpu: Stat,
     pub game_memory_mb: Stat,
     pub gpu: Option<GpuSummary>,
+    /// The families of programs that used CPU, the busiest first.
+    pub groups: Vec<GroupSummary>,
     /// Busiest other processes, most first.
     pub background: Vec<Background>,
     /// What one sample cost, in microseconds.
@@ -129,6 +140,31 @@ pub fn summarize(samples: &[Sample]) -> SessionSummary {
     background.sort_by(|a, b| b.avg_cpu.total_cmp(&a.avg_cpu));
     background.truncate(BACKGROUND_KEPT);
 
+    let mut groups: Vec<GroupSummary> = ALL_GROUPS
+        .into_iter()
+        .filter(|g| {
+            samples
+                .iter()
+                .any(|s| s.groups.iter().any(|l| l.group == *g))
+        })
+        .map(|group| GroupSummary {
+            group,
+            cpu: Stat::of(
+                samples
+                    .iter()
+                    .map(|s| {
+                        s.groups
+                            .iter()
+                            .filter(|l| l.group == group)
+                            .map(|l| l.cpu)
+                            .sum()
+                    })
+                    .collect(),
+            ),
+        })
+        .collect();
+    groups.sort_by(|a, b| b.cpu.avg.total_cmp(&a.cpu.avg));
+
     SessionSummary {
         seconds: samples.last().map_or(0, |s| s.at_ms / 1000),
         samples: samples.len(),
@@ -146,6 +182,7 @@ pub fn summarize(samples: &[Sample]) -> SessionSummary {
         game_cpu: stat(&|s| s.game.map(|g| g.cpu)),
         game_memory_mb: stat(&|s| s.game.map(|g| g.memory_mb as f32)),
         gpu,
+        groups,
         background,
         sample_cost_us: stat(&|s| Some(s.cost_us as f32)),
     }
@@ -167,6 +204,7 @@ mod tests {
             ram_used: 60.0,
             game: None,
             gpu: None,
+            groups: vec![],
             top: vec![],
             cost_us: 500,
         }
@@ -224,6 +262,30 @@ mod tests {
         assert_eq!(g.heat_throttled_pct, 25.0);
         assert_eq!(g.power_capped_pct, 25.0);
         assert_eq!(g.clock_pct.avg, 75.0);
+    }
+
+    #[test]
+    fn a_family_is_summed_per_second_and_averaged_over_the_whole_session() {
+        use crate::sample::GroupLoad;
+        let with = |ms, cpu| {
+            let mut s = at(ms, 10.0);
+            s.groups = vec![GroupLoad {
+                group: Group::LeagueClient,
+                cpu,
+            }];
+            s
+        };
+        let samples = [
+            with(1000, 16.0),
+            with(2000, 12.0),
+            at(3000, 10.0),
+            at(4000, 10.0),
+        ];
+        let groups = summarize(&samples).groups;
+        assert_eq!(groups.len(), 1, "only the families that were seen");
+        assert_eq!(groups[0].group, Group::LeagueClient);
+        assert_eq!(groups[0].cpu.avg, 7.0);
+        assert_eq!(groups[0].cpu.max, 16.0);
     }
 
     #[test]

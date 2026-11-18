@@ -3,10 +3,19 @@
 
 use serde::Serialize;
 
+use crate::process_group::Group;
+
 /// What one process is using, as a share of the whole CPU.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ProcLoad {
     pub name: String,
+    pub cpu: f32,
+}
+
+/// What a whole family of programs is using, as a share of the whole CPU.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct GroupLoad {
+    pub group: Group,
     pub cpu: f32,
 }
 
@@ -58,6 +67,8 @@ pub struct Sample {
     pub ram_used: f32,
     pub game: Option<GameLoad>,
     pub gpu: Option<GpuSample>,
+    /// What each family of programs uses (see [`crate::process_group`]).
+    pub groups: Vec<GroupLoad>,
     /// The busiest processes besides the game, most first.
     pub top: Vec<ProcLoad>,
     /// What taking this sample cost, in microseconds.
@@ -74,7 +85,7 @@ pub fn effective_mhz(base_mhz: u32, performance_percent: f64) -> u32 {
 }
 
 pub const CSV_HEADER: &str = "t_s,cpu_total,cpu_max_core,dpc_interrupt,cpu_mhz,cpu_max_mhz,ram_used,\
-game_cpu,game_mb,gpu_util,gpu_mem_util,gpu_temp_c,gpu_clock_mhz,gpu_max_clock_mhz,gpu_power_w,gpu_throttle,top,cost_us";
+game_cpu,game_mb,gpu_util,gpu_mem_util,gpu_temp_c,gpu_clock_mhz,gpu_max_clock_mhz,gpu_power_w,gpu_throttle,groups,top,cost_us";
 
 impl Sample {
     /// The line of this sample in the CSV (no trailing newline).
@@ -94,13 +105,18 @@ impl Sample {
                 g.throttle
             )
         });
+        let groups: Vec<String> = self
+            .groups
+            .iter()
+            .map(|g| format!("{}={:.1}", g.group.key(), g.cpu))
+            .collect();
         let top: Vec<String> = self
             .top
             .iter()
             .map(|p| format!("{}={:.1}", p.name.replace([',', ';', '='], " "), p.cpu))
             .collect();
         format!(
-            "{:.1},{:.1},{:.1},{:.1},{},{},{:.1},{},{},{},{}",
+            "{:.1},{:.1},{:.1},{:.1},{},{},{:.1},{},{},{},{},{}",
             self.at_ms as f64 / 1000.0,
             self.cpu_total,
             self.cpu_max_core,
@@ -110,6 +126,7 @@ impl Sample {
             self.ram_used,
             game,
             gpu,
+            groups.join(";"),
             top.join(";"),
             self.cost_us
         )
@@ -142,6 +159,10 @@ mod tests {
                 power_w: 95.25,
                 throttle: throttle::POWER_CAP,
             }),
+            groups: vec![GroupLoad {
+                group: Group::Browser,
+                cpu: 3.5,
+            }],
             top: vec![ProcLoad {
                 name: "chrome.exe".into(),
                 cpu: 3.0,
@@ -155,7 +176,7 @@ mod tests {
         let header = CSV_HEADER.split(',').count();
         assert_eq!(sample().csv_row().split(',').count(), header);
         let mut bare = sample();
-        (bare.game, bare.gpu, bare.top) = (None, None, vec![]);
+        (bare.game, bare.gpu, bare.top, bare.groups) = (None, None, vec![], vec![]);
         assert_eq!(bare.csv_row().split(',').count(), header);
     }
 
@@ -165,7 +186,7 @@ mod tests {
         assert!(row.starts_with(
             "2.5,41.3,97.0,1.5,3600,4200,63.0,12.5,1800,88,40,71,1800,2100,95.2,0x4,"
         ));
-        assert!(row.ends_with("chrome.exe=3.0,900"));
+        assert!(row.ends_with("browser=3.5,chrome.exe=3.0,900"), "{row}");
     }
 
     #[test]

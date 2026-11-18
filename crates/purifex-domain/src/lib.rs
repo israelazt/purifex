@@ -9,6 +9,7 @@ pub mod device;
 pub mod diagnosis;
 pub mod log;
 pub mod ports;
+pub mod process_group;
 pub mod report;
 pub mod sample;
 pub mod session;

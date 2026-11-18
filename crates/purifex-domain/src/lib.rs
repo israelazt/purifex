@@ -13,6 +13,8 @@ pub mod process_group;
 pub mod report;
 pub mod sample;
 pub mod session;
+pub mod session_csv;
 pub mod session_header;
+pub mod session_id;
 pub mod text;
 pub mod version;

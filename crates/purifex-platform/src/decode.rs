@@ -1,11 +1,20 @@
 //! Reads the bytes Windows returns for a device property. Plain functions, no
 //! system calls.
 
+/// The UTF-16 units (little endian) in `bytes`; a last odd byte is dropped.
+pub fn utf16_units(bytes: &[u8]) -> Vec<u16> {
+    bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u16::from_le_bytes(*pair))
+        .collect()
+}
+
 /// A UTF-16 (little endian) string, up to the first NUL. `None` if empty.
 pub fn utf16_string(bytes: &[u8]) -> Option<String> {
-    let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+    let units: Vec<u16> = utf16_units(bytes)
+        .into_iter()
         .take_while(|&u| u != 0)
         .collect();
     let text = String::from_utf16_lossy(&units);
@@ -16,11 +25,7 @@ pub fn utf16_string(bytes: &[u8]) -> Option<String> {
 /// A list of UTF-16 strings, each ending in NUL and the list in an extra NUL
 /// (`REG_MULTI_SZ`).
 pub fn utf16_list(bytes: &[u8]) -> Vec<String> {
-    let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
-        .collect();
-    units
+    utf16_units(bytes)
         .split(|&u| u == 0)
         .take_while(|part| !part.is_empty())
         .map(String::from_utf16_lossy)

@@ -26,24 +26,31 @@ const TEMPERATURE_GPU: u32 = 0;
 /// the driver takes ~20 ms to answer the throttling one.
 const SLOW_EVERY: u32 = 5;
 
+type UtilizationFn = unsafe extern "C" fn(Device, *mut Utilization) -> i32;
+type ReadU32Fn = unsafe extern "C" fn(Device, *mut u32) -> i32;
+type ReadClockFn = unsafe extern "C" fn(Device, u32, *mut u32) -> i32;
+type ReadU64Fn = unsafe extern "C" fn(Device, *mut u64) -> i32;
+type InitFn = unsafe extern "C" fn() -> i32;
+type ByIndexFn = unsafe extern "C" fn(u32, *mut Device) -> i32;
+
 pub struct Nvml {
     device: Device,
     max_clock_mhz: u32,
     reads: u32,
     slow: (u32, u64),
-    utilization: unsafe extern "C" fn(Device, *mut Utilization) -> i32,
-    temperature: unsafe extern "C" fn(Device, u32, *mut u32) -> i32,
-    clock: unsafe extern "C" fn(Device, u32, *mut u32) -> i32,
-    power: unsafe extern "C" fn(Device, *mut u32) -> i32,
-    throttle: unsafe extern "C" fn(Device, *mut u64) -> i32,
+    utilization: UtilizationFn,
+    temperature: ReadClockFn,
+    clock: ReadClockFn,
+    power: ReadU32Fn,
+    throttle: ReadU64Fn,
 }
 
 macro_rules! symbol {
-    ($lib:expr, $name:expr) => {{
+    ($lib:expr, $name:expr, $ty:ty) => {{
         // SAFETY: the library is loaded; the type it is cast to is NVML's
         // documented signature for that name.
         let found = unsafe { GetProcAddress($lib, $name) }?;
-        unsafe { std::mem::transmute(found) }
+        unsafe { std::mem::transmute::<unsafe extern "system" fn() -> isize, $ty>(found) }
     }};
 }
 
@@ -61,16 +68,18 @@ impl Nvml {
     }
 
     fn bind(lib: HMODULE) -> Option<Self> {
-        let init: unsafe extern "C" fn() -> i32 = symbol!(lib, s!("nvmlInit_v2"));
-        let by_index: unsafe extern "C" fn(u32, *mut Device) -> i32 =
-            symbol!(lib, s!("nvmlDeviceGetHandleByIndex_v2"));
-        let utilization = symbol!(lib, s!("nvmlDeviceGetUtilizationRates"));
-        let temperature = symbol!(lib, s!("nvmlDeviceGetTemperature"));
-        let clock = symbol!(lib, s!("nvmlDeviceGetClockInfo"));
-        let max_clock: unsafe extern "C" fn(Device, u32, *mut u32) -> i32 =
-            symbol!(lib, s!("nvmlDeviceGetMaxClockInfo"));
-        let power = symbol!(lib, s!("nvmlDeviceGetPowerUsage"));
-        let throttle = symbol!(lib, s!("nvmlDeviceGetCurrentClocksThrottleReasons"));
+        let init = symbol!(lib, s!("nvmlInit_v2"), InitFn);
+        let by_index = symbol!(lib, s!("nvmlDeviceGetHandleByIndex_v2"), ByIndexFn);
+        let utilization = symbol!(lib, s!("nvmlDeviceGetUtilizationRates"), UtilizationFn);
+        let temperature = symbol!(lib, s!("nvmlDeviceGetTemperature"), ReadClockFn);
+        let clock = symbol!(lib, s!("nvmlDeviceGetClockInfo"), ReadClockFn);
+        let max_clock = symbol!(lib, s!("nvmlDeviceGetMaxClockInfo"), ReadClockFn);
+        let power = symbol!(lib, s!("nvmlDeviceGetPowerUsage"), ReadU32Fn);
+        let throttle = symbol!(
+            lib,
+            s!("nvmlDeviceGetCurrentClocksThrottleReasons"),
+            ReadU64Fn
+        );
         let mut device: Device = std::ptr::null_mut();
         // SAFETY: documented calls, with a live output.
         let opened = unsafe { init() == 0 && by_index(0, &mut device) == 0 };
@@ -106,7 +115,7 @@ impl Nvml {
             }
             (self.clock)(self.device, CLOCK_GRAPHICS, &mut clock);
             (self.power)(self.device, &mut power);
-            if self.reads % SLOW_EVERY == 0 {
+            if self.reads.is_multiple_of(SLOW_EVERY) {
                 let (mut temp, mut throttle) = (0u32, 0u64);
                 (self.temperature)(self.device, TEMPERATURE_GPU, &mut temp);
                 (self.throttle)(self.device, &mut throttle);

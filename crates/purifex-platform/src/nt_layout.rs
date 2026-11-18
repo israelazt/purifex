@@ -4,6 +4,8 @@
 //! returns all the processes, protected ones (anti-cheats) included, which
 //! opening each process one by one could not do.
 
+use crate::decode::utf16_units;
+
 /// A process, as the system's table lists it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawProcess {
@@ -40,10 +42,7 @@ fn u64_at(bytes: &[u8], at: usize) -> Option<u64> {
 pub fn parse_processes(buffer: &[u8]) -> Vec<RawProcess> {
     let mut out = Vec::with_capacity(256);
     let mut at = 0usize;
-    loop {
-        let Some(entry) = buffer.get(at..).filter(|e| e.len() >= PROCESS_FIXED) else {
-            break;
-        };
+    while let Some(entry) = buffer.get(at..).filter(|e| e.len() >= PROCESS_FIXED) {
         let next = u32_at(entry, 0).unwrap_or(0) as usize;
         let user = u64_at(entry, 40).unwrap_or(0);
         let kernel = u64_at(entry, 48).unwrap_or(0);
@@ -70,20 +69,16 @@ fn name_from(buffer: &[u8], pointer: usize, length: usize) -> String {
     pointer
         .checked_sub(base)
         .and_then(|from| buffer.get(from..from.checked_add(length)?))
-        .map(|bytes| {
-            let units: Vec<u16> = bytes
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                .collect();
-            String::from_utf16_lossy(&units)
-        })
+        .map(|bytes| String::from_utf16_lossy(&utf16_units(bytes)))
         .unwrap_or_default()
 }
 
 /// `SystemProcessorPerformanceInformation`: one 48-byte entry per core.
 pub fn parse_cores(buffer: &[u8]) -> Vec<CoreTimes> {
     buffer
-        .chunks_exact(CORE_ENTRY)
+        .as_chunks::<CORE_ENTRY>()
+        .0
+        .iter()
         .map(|e| {
             let (idle, kernel, user) = (
                 u64_at(e, 0).unwrap_or(0),

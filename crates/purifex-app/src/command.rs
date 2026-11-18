@@ -6,6 +6,7 @@ use std::time::Duration;
 use purifex_domain::ports::{Clock, PerformanceSampler, SessionFile, SystemInventory};
 use purifex_domain::report::Scope;
 
+use crate::outcome::Outcome;
 use crate::recorder::{Recorder, WatchOptions};
 use crate::scanner::Scanner;
 
@@ -83,8 +84,41 @@ impl Command {
         Ok(Self::Watch(options))
     }
 
-    /// Runs it against the system's ports. `progress` receives the lines that
-    /// are worth showing while a long command works.
+    /// Whether the output is asked in JSON.
+    pub fn wants_json(&self) -> bool {
+        matches!(self, Self::Scan { json: true, .. })
+    }
+
+    /// Runs it against the system's ports and returns what it produced as
+    /// data. `progress` receives the lines that are worth showing while a long
+    /// command works.
+    pub fn execute<I, C, S, C2, F>(
+        self,
+        scanner: &Scanner<I, C>,
+        recorder: &mut Recorder<S, C2, F>,
+        progress: &mut dyn FnMut(&str),
+    ) -> Result<Outcome, String>
+    where
+        I: SystemInventory,
+        C: Clock,
+        S: PerformanceSampler,
+        C2: Clock,
+        F: SessionFile,
+    {
+        match self {
+            Self::Help => Ok(Outcome::Help),
+            Self::Scan { scope, .. } => scanner
+                .scan(scope)
+                .map(Outcome::Report)
+                .map_err(|e| format!("No se pudo analizar: {e}")),
+            Self::Watch(options) => recorder
+                .run(options, "lol", progress)
+                .map(Outcome::Recording)
+                .map_err(|e| format!("No se pudo grabar: {e}")),
+        }
+    }
+
+    /// Like [`Command::execute`], rendered for the console.
     pub fn run<I, C, S, C2, F>(
         self,
         scanner: &Scanner<I, C>,
@@ -98,41 +132,13 @@ impl Command {
         C2: Clock,
         F: SessionFile,
     {
-        match self {
-            Self::Watch(options) => match recorder.run(options, "lol", progress) {
-                Ok(done) => Output {
-                    text: format!(
-                        "
-{}
-Datos segundo a segundo: {}",
-                        done.summary.to_text(),
-                        done.file
-                    ),
-                    ok: true,
-                },
-                Err(error) => Output {
-                    text: format!("No se pudo grabar: {error}"),
-                    ok: false,
-                },
-            },
-            Self::Help => Output {
-                text: HELP.to_string(),
+        let json = self.wants_json();
+        match self.execute(scanner, recorder, progress) {
+            Ok(outcome) => Output {
+                text: outcome.render(json),
                 ok: true,
             },
-            Self::Scan { json, scope } => match scanner.scan(scope) {
-                Ok(report) => Output {
-                    text: if json {
-                        report.to_json()
-                    } else {
-                        report.to_text()
-                    },
-                    ok: true,
-                },
-                Err(error) => Output {
-                    text: format!("No se pudo analizar: {error}"),
-                    ok: false,
-                },
-            },
+            Err(text) => Output { text, ok: false },
         }
     }
 }

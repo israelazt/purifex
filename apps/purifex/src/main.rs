@@ -2,6 +2,13 @@
 //! application and prints what it returns. The decisions are not here.
 //! See `ARCHITECTURE.md`.
 
+/// Writes a line to the standard output. A closed pipe (`| head`) is not an error.
+#[cfg(windows)]
+fn say(line: &str) {
+    use std::io::Write;
+    let _ = writeln!(std::io::stdout(), "{line}");
+}
+
 #[cfg(windows)]
 fn main() {
     use purifex_app::{Command, Recorder, Scanner};
@@ -23,9 +30,9 @@ fn main() {
     let sampler = WindowsSampler::new(&["League of Legends.exe"]);
     let mut recorder = Recorder::new(sampler, SystemClock::new(), LocalSessionFile::default());
     let output = command.run(&scanner, &mut recorder, &mut |line| {
-        println!("{line}");
+        say(line);
     });
-    println!("{}", output.text);
+    say(&output.text);
     std::process::exit(if output.ok { 0 } else { 1 });
 }
 

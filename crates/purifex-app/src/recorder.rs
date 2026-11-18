@@ -37,6 +37,7 @@ impl Default for WatchOptions {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct Recording {
     pub summary: SessionSummary,
     pub file: String,

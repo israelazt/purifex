@@ -5,11 +5,13 @@
 #![forbid(unsafe_code)]
 
 pub mod command;
+pub mod outcome;
 pub mod recorder;
 pub mod scanner;
 #[cfg(test)]
 mod testing;
 
 pub use command::{Command, Output};
+pub use outcome::Outcome;
 pub use recorder::{Recorder, WatchOptions};
 pub use scanner::Scanner;

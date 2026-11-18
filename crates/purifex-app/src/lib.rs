@@ -17,7 +17,7 @@ mod testing;
 pub mod web;
 
 pub use archive::Archive;
-pub use command::{Command, Output};
+pub use command::{Command, Output, Screenshot, UiOptions};
 pub use core::Core;
 pub use outcome::Outcome;
 pub use recorder::{Recorder, WatchOptions};

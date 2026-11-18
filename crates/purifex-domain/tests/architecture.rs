@@ -69,8 +69,8 @@ fn each_crate_depends_only_on_what_the_layers_allow() {
             &["purifex-domain", "windows", "windows-numerics"],
         ),
         ("purifex-app", &["purifex-domain", "serde_json"]),
-        // The page: files included in the program, no dependencies at all.
-        ("purifex-ui", &[]),
+        // The look: draws from the model through ports, knows no system.
+        ("purifex-ui", &["purifex-domain"]),
         (
             "purifex",
             &[

@@ -12,7 +12,9 @@ use windows::Win32::Graphics::Dwm::{
     DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR,
     DWMWA_USE_IMMERSIVE_DARK_MODE,
 };
-use windows::Win32::Graphics::Gdi::{BeginPaint, EndPaint, InvalidateRect, PAINTSTRUCT};
+use windows::Win32::Graphics::Gdi::{
+    BeginPaint, EndPaint, InvalidateRect, UpdateWindow, PAINTSTRUCT,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::{
     AdjustWindowRectExForDpi, GetDpiForSystem, GetDpiForWindow, SetProcessDpiAwarenessContext,
@@ -80,8 +82,11 @@ impl<H: UiHandler> State<H> {
             }
         }
         if reaction.tick {
-            // SAFETY: posts a message to a live window.
+            // SAFETY: paints at once what was invalidated (so the picture that says
+            // "reading" is on screen before the wait), then posts a message to a
+            // live window.
             unsafe {
+                let _ = UpdateWindow(hwnd);
                 let _ = PostMessageW(Some(hwnd), WM_APP, WPARAM(0), LPARAM(0));
             }
         }
@@ -393,6 +398,10 @@ pub fn run<H: UiHandler>(
         }
 
         let _ = ShowWindow(hwnd, SW_SHOW);
+        // The first picture goes before anything is read; then a tick, if the
+        // program has something to read.
+        let _ = UpdateWindow(hwnd);
+        let _ = PostMessageW(Some(hwnd), WM_APP, WPARAM(0), LPARAM(0));
         let mut message = MSG::default();
         while GetMessageW(&mut message, None, 0, 0).as_bool() {
             let _ = TranslateMessage(&message);

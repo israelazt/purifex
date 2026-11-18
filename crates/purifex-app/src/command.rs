@@ -5,13 +5,14 @@ use std::time::Duration;
 
 use purifex_domain::report::Scope;
 use purifex_domain::session_id::is_valid_id;
+use purifex_domain::view::Page;
 
 use crate::outcome::Outcome;
 use crate::recorder::WatchOptions;
 use crate::services::Services;
 
 /// What the command line asks for.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     Scan {
         json: bool,
@@ -25,11 +26,27 @@ pub enum Command {
         id: Option<String>,
         json: bool,
     },
-    /// Open the window. The program serves it; this order only asks for it.
-    Ui {
-        open: bool,
-    },
+    /// Open the window (or draw it to a file). The program does it; this order
+    /// only asks for it.
+    Ui(UiOptions),
     Help,
+}
+
+/// A picture of the interface saved to a file instead of opening the window: how
+/// the design is checked from a script.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Screenshot {
+    pub path: String,
+    pub page: Page,
+    /// In units (1/96 inch).
+    pub width: f32,
+    pub height: f32,
+    pub scale: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct UiOptions {
+    pub screenshot: Option<Screenshot>,
 }
 
 /// What the program should write, and whether it went well.
@@ -48,7 +65,8 @@ Uso:
   purifex sessions [--json]       Lista las grabaciones, la más nueva primero
   purifex analyze [NOMBRE] [--json]
                                   Analiza una grabación (por defecto, la última)
-  purifex ui [--no-open]          Abre la interfaz en una ventana
+  purifex ui [--screenshot ARCHIVO.png [--page NOMBRE] [--size ANCHOxALTO] [--scale N]]
+                                  Abre la interfaz (o la guarda como imagen)
   purifex help                    Esta ayuda
 
 Opciones de scan:
@@ -95,15 +113,61 @@ impl Command {
         Ok(Self::Sessions { json })
     }
 
-    fn parse_ui<'a>(args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
-        let mut open = true;
-        for arg in args {
+    fn parse_ui<'a>(mut args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
+        let (mut path, mut page, mut size, mut scale) =
+            (None, Page::Overview, (1440.0, 900.0), 1.0f32);
+        while let Some(arg) = args.next() {
+            let mut value = |name: &str| {
+                args.next()
+                    .ok_or_else(|| format!("{name} necesita un valor"))
+            };
             match arg {
-                "--no-open" => open = false,
+                "--screenshot" => path = Some(value("--screenshot")?.to_string()),
+                "--page" => {
+                    page = match value("--page")? {
+                        "overview" => Page::Overview,
+                        "drivers" => Page::Drivers,
+                        "sessions" => Page::Sessions,
+                        other => {
+                            return Err(format!(
+                                "página desconocida: {other} (overview, drivers, sessions)"
+                            ))
+                        }
+                    }
+                }
+                "--size" => {
+                    let text = value("--size")?;
+                    size = text
+                        .split_once('x')
+                        .and_then(|(w, h)| Some((w.parse::<f32>().ok()?, h.parse::<f32>().ok()?)))
+                        .filter(|(w, h)| {
+                            (400.0..=4000.0).contains(w) && (300.0..=4000.0).contains(h)
+                        })
+                        .ok_or_else(|| {
+                            format!("--size: «{text}» no es ANCHOxALTO (por ejemplo 1440x900)")
+                        })?;
+                }
+                "--scale" => {
+                    let text = value("--scale")?;
+                    scale = text
+                        .parse::<f32>()
+                        .ok()
+                        .filter(|s| (0.5..=4.0).contains(s))
+                        .ok_or_else(|| {
+                            format!("--scale: «{text}» no es un número entre 0,5 y 4")
+                        })?;
+                }
                 other => return Err(format!("opción desconocida: {other}")),
             }
         }
-        Ok(Self::Ui { open })
+        let screenshot = path.map(|path| Screenshot {
+            path,
+            page,
+            width: size.0,
+            height: size.1,
+            scale,
+        });
+        Ok(Self::Ui(UiOptions { screenshot }))
     }
 
     fn parse_analyze<'a>(args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
@@ -173,7 +237,7 @@ impl Command {
                 .record(options, progress)
                 .map(Outcome::Recording)
                 .map_err(|e| format!("No se pudo grabar: {e}")),
-            Self::Ui { .. } => Err("la interfaz la abre el programa, no un servicio".into()),
+            Self::Ui(_) => Err("la interfaz la abre el programa, no un servicio".into()),
             Self::Analyze { id, .. } => services
                 .analyze(id.as_deref())
                 .map(|a| Outcome::Analysis(Box::new(a)))
@@ -411,12 +475,48 @@ mod tests {
     }
 
     #[test]
-    fn ui_opens_the_window_unless_told_not_to() {
-        assert_eq!(Command::parse(&["ui"]).unwrap(), Command::Ui { open: true });
+    fn ui_opens_the_window_and_can_save_a_picture_instead() {
         assert_eq!(
-            Command::parse(&["ui", "--no-open"]).unwrap(),
-            Command::Ui { open: false }
+            Command::parse(&["ui"]).unwrap(),
+            Command::Ui(UiOptions::default())
         );
-        assert!(Command::parse(&["ui", "--port"]).is_err());
+        let Command::Ui(options) = Command::parse(&[
+            "ui",
+            "--screenshot",
+            "a.png",
+            "--page",
+            "drivers",
+            "--size",
+            "1000x700",
+            "--scale",
+            "2",
+        ])
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(
+            options.screenshot,
+            Some(Screenshot {
+                path: "a.png".into(),
+                page: Page::Drivers,
+                width: 1000.0,
+                height: 700.0,
+                scale: 2.0
+            })
+        );
+    }
+
+    #[test]
+    fn the_options_of_ui_are_checked() {
+        for bad in [
+            &["ui", "--screenshot"][..],
+            &["ui", "--page", "home"],
+            &["ui", "--size", "big"],
+            &["ui", "--size", "10x10"],
+            &["ui", "--scale", "9"],
+            &["ui", "--no-open"],
+        ] {
+            assert!(Command::parse(bad).is_err(), "{bad:?}");
+        }
     }
 }

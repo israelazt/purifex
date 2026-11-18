@@ -35,8 +35,8 @@ fn main() {
     let recorder = Recorder::new(sampler, SystemClock::new(), LocalSessionFile::default());
     let archive = Archive::new(LocalSessionArchive::new());
     let mut app = App::new(scanner, recorder, archive);
-    if let Command::Ui { open } = command {
-        if let Err(error) = shell::serve(&mut app, open, &mut say) {
+    if let Command::Ui(options) = command {
+        if let Err(error) = shell::run(Box::new(app), options) {
             purifex_domain::log_error!("{error}");
             std::process::exit(1);
         }

@@ -2,6 +2,7 @@
 //! server) ask for things through it, without knowing which ports are behind.
 //! [`App`] is the real implementation, built from the services of this crate.
 
+use purifex_domain::analysis::Analysis;
 use purifex_domain::ports::{
     Clock, PerformanceSampler, SessionArchive, SessionFile, SystemInventory,
 };
@@ -24,6 +25,8 @@ pub trait Services {
     ) -> Result<Recording, String>;
     /// The recordings made so far, the newest first.
     fn sessions(&self) -> Result<Vec<SessionRow>, String>;
+    /// The analysis of a recording; with no name, of the newest.
+    fn analyze(&self, id: Option<&str>) -> Result<Analysis, String>;
 }
 
 /// The services of the application over real (or fake) ports.
@@ -66,5 +69,9 @@ where
 
     fn sessions(&self) -> Result<Vec<SessionRow>, String> {
         self.archive.rows()
+    }
+
+    fn analyze(&self, id: Option<&str>) -> Result<Analysis, String> {
+        self.archive.analyze(id)
     }
 }

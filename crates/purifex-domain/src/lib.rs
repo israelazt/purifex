@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod analysis;
 pub mod date;
 pub mod device;
 pub mod diagnosis;

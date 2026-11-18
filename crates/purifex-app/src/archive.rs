@@ -1,5 +1,6 @@
 //! The recordings made so far: listing them and reading one back.
 
+use purifex_domain::analysis::Analysis;
 use purifex_domain::ports::SessionArchive;
 use purifex_domain::session_csv::{self, ParsedSession};
 use purifex_domain::session_id::{sort_newest_first, stamp_of};
@@ -45,6 +46,22 @@ impl<A: SessionArchive> Archive<A> {
             .collect())
     }
 
+    /// The analysis of a recording; with no name, of the newest one.
+    pub fn analyze(&self, id: Option<&str>) -> Result<Analysis, String> {
+        let id =
+            match id {
+                Some(id) => id.to_string(),
+                None => {
+                    let mut infos = self.archive.list()?;
+                    sort_newest_first(&mut infos);
+                    infos.into_iter().next().map(|info| info.id).ok_or(
+                        "todavía no hay grabaciones: graba una partida con `purifex watch`",
+                    )?
+                }
+            };
+        Analysis::of(&id, self.read(&id)?)
+    }
+
     /// One recording, read back.
     pub fn read(&self, id: &str) -> Result<ParsedSession, String> {
         session_csv::parse(&self.archive.read_csv(id)?)
@@ -88,6 +105,33 @@ mod tests {
             .unwrap()
             .problem
             .is_none());
+    }
+
+    #[test]
+    fn with_no_name_the_newest_recording_is_analyzed() {
+        let archive = Archive::new(FakeArchive::with(&[
+            ("lol-20261118-145915", SHORT),
+            ("lol-20261118-165329", WITH_HEADER),
+        ]));
+        assert_eq!(archive.analyze(None).unwrap().id, "lol-20261118-165329");
+        assert_eq!(
+            archive
+                .analyze(Some("lol-20261118-145915"))
+                .unwrap()
+                .summary
+                .samples,
+            2
+        );
+    }
+
+    #[test]
+    fn analyzing_says_why_it_cannot() {
+        let archive = Archive::new(FakeArchive::default());
+        assert!(archive.analyze(None).unwrap_err().contains("purifex watch"));
+        assert!(archive
+            .analyze(Some("nope"))
+            .unwrap_err()
+            .contains("no existe"));
     }
 
     #[test]

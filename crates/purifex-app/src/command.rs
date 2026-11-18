@@ -4,17 +4,19 @@
 use std::time::Duration;
 
 use purifex_domain::report::Scope;
+use purifex_domain::session_id::is_valid_id;
 
 use crate::outcome::Outcome;
 use crate::recorder::WatchOptions;
 use crate::services::Services;
 
 /// What the command line asks for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Scan { json: bool, scope: Scope },
     Watch(WatchOptions),
     Sessions { json: bool },
+    Analyze { id: Option<String>, json: bool },
     Help,
 }
 
@@ -32,6 +34,8 @@ Uso:
   purifex watch [--now] [--seconds N]
                                   Graba el rendimiento mientras juegas a LoL
   purifex sessions [--json]       Lista las grabaciones, la más nueva primero
+  purifex analyze [NOMBRE] [--json]
+                                  Analiza una grabación (por defecto, la última)
   purifex help                    Esta ayuda
 
 Opciones de scan:
@@ -52,6 +56,7 @@ impl Command {
             Some("help" | "--help" | "-h") => return Ok(Self::Help),
             Some("watch") => return Self::parse_watch(args),
             Some("sessions") => return Self::parse_sessions(args),
+            Some("analyze") => return Self::parse_analyze(args),
             Some(other) => return Err(format!("orden desconocida: {other}")),
         }
         let (mut json, mut scope) = (false, Scope::Hardware);
@@ -74,6 +79,24 @@ impl Command {
             }
         }
         Ok(Self::Sessions { json })
+    }
+
+    fn parse_analyze<'a>(args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
+        let (mut json, mut id) = (false, None);
+        for arg in args {
+            match arg {
+                "--json" => json = true,
+                "--last" => id = None,
+                name if !name.starts_with('-') && id.is_none() => {
+                    if !is_valid_id(name) {
+                        return Err(format!("«{name}» no es un nombre de grabación válido"));
+                    }
+                    id = Some(name.to_string());
+                }
+                other => return Err(format!("opción desconocida: {other}")),
+            }
+        }
+        Ok(Self::Analyze { id, json })
     }
 
     fn parse_watch<'a>(mut args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
@@ -101,7 +124,9 @@ impl Command {
     pub fn wants_json(&self) -> bool {
         matches!(
             self,
-            Self::Scan { json: true, .. } | Self::Sessions { json: true }
+            Self::Scan { json: true, .. }
+                | Self::Sessions { json: true }
+                | Self::Analyze { json: true, .. }
         )
     }
 
@@ -123,6 +148,10 @@ impl Command {
                 .record(options, progress)
                 .map(Outcome::Recording)
                 .map_err(|e| format!("No se pudo grabar: {e}")),
+            Self::Analyze { id, .. } => services
+                .analyze(id.as_deref())
+                .map(|a| Outcome::Analysis(Box::new(a)))
+                .map_err(|e| format!("No se pudo analizar la grabación: {e}")),
             Self::Sessions { .. } => services
                 .sessions()
                 .map(Outcome::Sessions)
@@ -296,5 +325,62 @@ mod tests {
         let json = Command::Sessions { json: true }.run(&mut app, &mut |_| {});
         let value: serde_json::Value = serde_json::from_str(&json.text).unwrap();
         assert_eq!(value["sessions"][0]["id"], "lol-20261118-165329");
+    }
+
+    #[test]
+    fn analyze_takes_a_name_or_the_last_one() {
+        assert_eq!(
+            Command::parse(&["analyze"]).unwrap(),
+            Command::Analyze {
+                id: None,
+                json: false
+            }
+        );
+        assert_eq!(
+            Command::parse(&["analyze", "lol-20261118-165329", "--json"]).unwrap(),
+            Command::Analyze {
+                id: Some("lol-20261118-165329".into()),
+                json: true
+            }
+        );
+        assert_eq!(
+            Command::parse(&["analyze", "--last"]).unwrap(),
+            Command::Analyze {
+                id: None,
+                json: false
+            }
+        );
+        for bad in [
+            &["analyze", "../x"][..],
+            &["analyze", "a", "b"],
+            &["analyze", "--x"],
+        ] {
+            assert!(Command::parse(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn analyze_prints_the_summary_of_the_recording() {
+        let csv = "t_s,cpu_total,cpu_max_core\n1.0,10.0,20.0\n2.0,11.0,21.0\n";
+        let mut app = app_with(
+            FakeInventory::with(vec![]),
+            FakeArchive::with(&[("lol-20261118-165329", csv)]),
+        );
+        let out = Command::Analyze {
+            id: None,
+            json: false,
+        }
+        .run(&mut app, &mut |_| {});
+        assert!(
+            out.ok && out.text.contains("Grabación lol-20261118-165329"),
+            "{}",
+            out.text
+        );
+        let missing = Command::Analyze {
+            id: Some("zzz".into()),
+            json: false,
+        }
+        .run(&mut app, &mut |_| {});
+        assert!(!missing.ok && missing.text.contains("no existe"));
     }
 }

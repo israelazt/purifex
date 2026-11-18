@@ -2,13 +2,15 @@
 //! the format, so a reader never has to guess (`# purifex-session v1 game="League
 //! of Legends.exe" cores=12 started=2026-11-18`).
 
+use serde::Serialize;
+
 use crate::date::Date;
 
 /// The version of the CSV format written today.
 pub const FORMAT_VERSION: u32 = 1;
 const PREFIX: &str = "# purifex-session v";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SessionHeader {
     pub version: u32,
     /// The program of the game that was recorded.

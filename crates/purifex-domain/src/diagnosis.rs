@@ -4,6 +4,8 @@
 
 use std::fmt::Write;
 
+use serde::Serialize;
+
 use crate::process_group::{group_of, Group};
 use crate::session::SessionSummary;
 
@@ -28,13 +30,14 @@ mod limit {
     pub const LEAGUE_CLIENT: f32 = 5.0;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Severity {
     Info,
     Warning,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Finding {
     pub severity: Severity,
     pub title: String,

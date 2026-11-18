@@ -1,6 +1,7 @@
 //! What an order produced, as data. The program renders it as text or JSON; a
 //! server (the MCP one) can use the data itself.
 
+use purifex_domain::analysis::Analysis;
 use purifex_domain::report::ScanReport;
 use purifex_domain::session_list::{rows_to_text, SessionRow};
 
@@ -12,6 +13,7 @@ pub enum Outcome {
     Report(ScanReport),
     Recording(Recording),
     Sessions(Vec<SessionRow>),
+    Analysis(Box<Analysis>),
     Help,
 }
 
@@ -25,6 +27,7 @@ impl Outcome {
                 done.file
             ),
             Self::Sessions(rows) => rows_to_text(rows),
+            Self::Analysis(analysis) => analysis.to_text(),
             Self::Help => HELP.to_string(),
         }
     }
@@ -37,6 +40,7 @@ impl Outcome {
                 "summary": done.summary,
             }),
             Self::Sessions(rows) => serde_json::json!({ "sessions": rows }),
+            Self::Analysis(analysis) => return analysis.to_json(),
             Self::Help => serde_json::json!({ "help": HELP }),
         };
         serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".into())

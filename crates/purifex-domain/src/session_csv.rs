@@ -5,7 +5,7 @@
 
 use std::str::FromStr;
 
-use crate::process_group::Group;
+use crate::process_group::{group_of, Group};
 use crate::sample::{GameLoad, GpuSample, GroupLoad, ProcLoad, Sample};
 use crate::session_header::SessionHeader;
 
@@ -128,6 +128,11 @@ impl Row<'_> {
             }),
             None => None,
         };
+        let top: Vec<ProcLoad> = self
+            .pairs("top")?
+            .into_iter()
+            .map(|(name, cpu)| ProcLoad { name, cpu })
+            .collect();
         Ok(Sample {
             at_ms: (seconds * 1000.0).round().max(0.0) as u64,
             cpu_total: self.need("cpu_total")?,
@@ -138,20 +143,39 @@ impl Row<'_> {
             ram_used: self.or_zero("ram_used")?,
             game,
             gpu,
-            groups: self
+            groups: self.groups(&top)?,
+            top,
+            cost_us: self.or_zero("cost_us")?,
+        })
+    }
+
+    /// The families of programs. A recording made before the `groups` column
+    /// existed has none, so they are rebuilt from the busiest processes it did
+    /// list (a lower bound: a process outside its top five is not there).
+    fn groups(&self, top: &[ProcLoad]) -> Result<Vec<GroupLoad>, String> {
+        if self.columns.contains(&"groups") {
+            return Ok(self
                 .pairs("groups")?
                 .into_iter()
                 .filter_map(|(key, cpu)| {
                     Group::from_key(&key).map(|group| GroupLoad { group, cpu })
                 })
-                .collect(),
-            top: self
-                .pairs("top")?
-                .into_iter()
-                .map(|(name, cpu)| ProcLoad { name, cpu })
-                .collect(),
-            cost_us: self.or_zero("cost_us")?,
-        })
+                .collect());
+        }
+        let mut sums: Vec<GroupLoad> = Vec::new();
+        for process in top {
+            let Some(group) = group_of(&process.name) else {
+                continue;
+            };
+            match sums.iter_mut().find(|g| g.group == group) {
+                Some(found) => found.cpu += process.cpu,
+                None => sums.push(GroupLoad {
+                    group,
+                    cpu: process.cpu,
+                }),
+            }
+        }
+        Ok(sums)
     }
 
     /// The throttling bits, written as `0x4` (or as a plain number).
@@ -283,7 +307,14 @@ mod tests {
         assert_eq!(first.at_ms, 1000);
         assert_eq!(first.gpu.unwrap().throttle, 1);
         assert_eq!(first.game.unwrap().memory_mb, 62);
-        assert!(first.groups.is_empty());
+        // Rebuilt from the processes it listed: the League client is two of them here.
+        let client = first
+            .groups
+            .iter()
+            .find(|g| g.group == Group::LeagueClient)
+            .unwrap();
+        assert!((client.cpu - 14.7).abs() < 0.01, "{}", client.cpu);
+        assert!(first.groups.iter().any(|g| g.group == Group::System));
         assert_eq!(
             first.top[1],
             ProcLoad {

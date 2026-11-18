@@ -15,6 +15,8 @@ mod log_console;
 #[cfg(windows)]
 mod sampler;
 #[cfg(windows)]
+mod session_archive;
+#[cfg(windows)]
 mod session_file;
 
 #[cfg(windows)]
@@ -25,5 +27,7 @@ pub use inventory::SetupApiInventory;
 pub use log_console::install_stderr_log;
 #[cfg(windows)]
 pub use sampler::WindowsSampler;
+#[cfg(windows)]
+pub use session_archive::LocalSessionArchive;
 #[cfg(windows)]
 pub use session_file::LocalSessionFile;

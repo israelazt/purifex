@@ -52,3 +52,21 @@ pub trait SessionFile {
     /// Writes the summary of the recording next to its file (`<name>.summary.json`).
     fn write_summary(&mut self, json: &str) -> Result<(), String>;
 }
+
+/// A recording kept on disk.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionInfo {
+    /// Its name, without extension (`lol-20261118-165329`).
+    pub id: String,
+    pub bytes: u64,
+    /// Whether its summary was saved beside it.
+    pub has_summary: bool,
+}
+
+/// The recordings made so far.
+pub trait SessionArchive {
+    /// Every recording, in any order (see `session_id::sort_newest_first`).
+    fn list(&self) -> Result<Vec<SessionInfo>, String>;
+    /// The text of a recording's CSV. `id` must be a name, never a path.
+    fn read_csv(&self, id: &str) -> Result<String, String>;
+}

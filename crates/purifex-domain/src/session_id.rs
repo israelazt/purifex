@@ -5,6 +5,7 @@
 use std::fmt;
 
 use crate::date::Date;
+use crate::ports::SessionInfo;
 
 /// The longest name accepted.
 const MAX_LEN: usize = 64;
@@ -62,6 +63,12 @@ pub fn stamp_of(id: &str) -> Option<SessionStamp> {
     (stamp.hour < 24 && stamp.minute < 60 && stamp.second < 60).then_some(stamp)
 }
 
+/// Puts the newest recording first. Names without a start sort after the ones
+/// with it, by name.
+pub fn sort_newest_first(sessions: &mut [SessionInfo]) {
+    sessions.sort_by(|a, b| (stamp_of(&b.id), &b.id).cmp(&(stamp_of(&a.id), &a.id)));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,6 +98,35 @@ mod tests {
         let stamp = stamp_of("lol-20261118-165329").unwrap();
         assert_eq!(stamp.to_string(), "2026-11-18 16:53:29");
         assert!(stamp_of("lol-20261118-165329") > stamp_of("lol-20261118-145915"));
+    }
+
+    fn info(id: &str) -> SessionInfo {
+        SessionInfo {
+            id: id.into(),
+            bytes: 1,
+            has_summary: false,
+        }
+    }
+
+    #[test]
+    fn the_newest_recording_goes_first() {
+        let mut list = vec![
+            info("lol-20261118-145915"),
+            info("lol-20261119-080000"),
+            info("odd-name"),
+            info("lol-20261118-165329"),
+        ];
+        sort_newest_first(&mut list);
+        let ids: Vec<&str> = list.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "lol-20261119-080000",
+                "lol-20261118-165329",
+                "lol-20261118-145915",
+                "odd-name"
+            ]
+        );
     }
 
     #[test]

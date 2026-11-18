@@ -26,7 +26,8 @@ impl LocalSessionFile {
     }
 }
 
-fn folder() -> Result<PathBuf, String> {
+/// Where the recordings are kept: `%LOCALAPPDATA%\\Purifex\\sessions`.
+pub(crate) fn sessions_folder() -> Result<PathBuf, String> {
     let base = std::env::var_os("LOCALAPPDATA")
         .ok_or("no se encuentra la carpeta de datos del usuario")?;
     Ok(PathBuf::from(base).join("Purifex").join("sessions"))
@@ -36,7 +37,7 @@ impl SessionFile for LocalSessionFile {
     fn create(&mut self, name: &str) -> Result<String, String> {
         let folder = match &self.folder {
             Some(folder) => folder.clone(),
-            None => folder()?,
+            None => sessions_folder()?,
         };
         fs::create_dir_all(&folder)
             .map_err(|e| format!("no se pudo crear {}: {e}", folder.display()))?;

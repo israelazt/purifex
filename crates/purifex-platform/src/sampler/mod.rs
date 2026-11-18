@@ -42,6 +42,9 @@ pub struct WindowsSampler {
     game_name: String,
     /// Logical cores, read once when the sampler is created.
     cores: u32,
+    /// The graphics card and the clock counter are opened on the first sample:
+    /// `scan` and the window never measure, and NVML alone takes ~35 MB.
+    sources_opened: bool,
     nvml: Option<Nvml>,
     clock: Option<CpuClock>,
     own_pid: u64,
@@ -61,8 +64,9 @@ impl WindowsSampler {
                 .unwrap_or_default()
                 .to_string(),
             cores: 1,
-            nvml: Nvml::open(),
-            clock: CpuClock::open(),
+            sources_opened: false,
+            nvml: None,
+            clock: None,
             own_pid: u64::from(std::process::id()),
             buffer: Vec::new(),
             last_at: None,
@@ -181,6 +185,11 @@ impl PerformanceSampler for WindowsSampler {
     }
 
     fn sample(&mut self) -> Result<Sample, String> {
+        if !self.sources_opened {
+            self.sources_opened = true;
+            self.nvml = Nvml::open();
+            self.clock = CpuClock::open();
+        }
         let started = Instant::now();
         let processes = self.processes()?;
         let used = self.query(SYSTEM_PROCESSOR_PERFORMANCE, CORE_ENTRY)?;

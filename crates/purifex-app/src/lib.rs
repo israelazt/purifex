@@ -2,6 +2,8 @@
 //! `purifex-domain`, so the whole of them is tested with fakes and without
 //! touching Windows. See `ARCHITECTURE.md`.
 
+#![forbid(unsafe_code)]
+
 pub mod command;
 pub mod recorder;
 pub mod scanner;

@@ -2,6 +2,8 @@
 //! network: the system is reached only through the traits in [`ports`].
 //! See `ARCHITECTURE.md`.
 
+#![forbid(unsafe_code)]
+
 pub mod date;
 pub mod device;
 pub mod diagnosis;

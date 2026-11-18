@@ -226,3 +226,43 @@ fn c() {}
     assert!(!production.contains("fn c()"));
     assert_eq!(before_the_tests_module("fn only() {}"), "fn only() {}");
 }
+
+#[test]
+fn unsafe_lives_only_in_platform() {
+    let mut files = Vec::new();
+    for root in source_roots() {
+        rust_files(&root, &mut files);
+    }
+    let mut offenders = Vec::new();
+    for path in files {
+        let relative = path.strip_prefix(workspace()).unwrap().to_path_buf();
+        let shown = relative.to_string_lossy().replace('\\', "/");
+        // Tests and examples are not product code (and this file names the keywords).
+        if shown.starts_with("crates/purifex-platform/")
+            || relative
+                .components()
+                .any(|c| c.as_os_str() == "tests" || c.as_os_str() == "examples")
+        {
+            continue;
+        }
+        let text = fs::read_to_string(&path).unwrap();
+        for (number, line) in text.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or("");
+            if ["unsafe {", "unsafe fn", "unsafe impl", "unsafe extern"]
+                .iter()
+                .any(|p| code.contains(p))
+            {
+                offenders.push(format!("{shown}:{}", number + 1));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "unsafe code belongs in purifex-platform, behind a port:
+{}",
+        offenders.join(
+            "
+"
+        )
+    );
+}

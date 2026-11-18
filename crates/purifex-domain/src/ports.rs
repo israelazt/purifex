@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use crate::date::Date;
 use crate::device::Device;
+use crate::draw::{Size, TextStyle};
 use crate::sample::Sample;
 
 /// The devices present in the computer, with the driver each one runs.
@@ -69,4 +70,11 @@ pub trait SessionArchive {
     fn list(&self) -> Result<Vec<SessionInfo>, String>;
     /// The text of a recording's CSV. `id` must be a name, never a path.
     fn read_csv(&self, id: &str) -> Result<String, String>;
+}
+
+/// How big a piece of text is when drawn: the interface needs it to lay out
+/// lines and wrap words, and only the graphics of the system know the fonts.
+pub trait TextMetrics {
+    /// The size of `text` in one line, in the units of the style.
+    fn measure(&self, text: &str, style: &TextStyle) -> Size;
 }

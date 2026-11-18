@@ -1,0 +1,48 @@
+name: Rust
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # A hosted runner has no special hardware: tests that need it skip on purpose.
+  PURIFEX_NO_HARDWARE: "1"
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --workspace
+
+  # The portable layers build and pass their tests on Linux; the program builds
+  # there and says it has no adapters yet.
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy (portable layers)
+        run: cargo clippy -p purifex-domain -p purifex-app -p purifex-platform --all-targets -- -D warnings
+      - name: Tests (portable layers)
+        run: cargo test -p purifex-domain -p purifex-app -p purifex-platform
+      - name: The program builds
+        run: cargo build -p purifex

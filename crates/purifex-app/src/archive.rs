@@ -62,6 +62,16 @@ impl<A: SessionArchive> Archive<A> {
         Analysis::of(&id, self.read(&id)?)
     }
 
+    /// The newest recording that can be analyzed (a broken one is skipped, so it
+    /// does not hide the one before it).
+    pub fn latest(&self) -> Option<Analysis> {
+        let mut infos = self.archive.list().ok()?;
+        sort_newest_first(&mut infos);
+        infos
+            .into_iter()
+            .find_map(|info| self.analyze(Some(&info.id)).ok())
+    }
+
     /// One recording, read back.
     pub fn read(&self, id: &str) -> Result<ParsedSession, String> {
         session_csv::parse(&self.archive.read_csv(id)?)
@@ -122,6 +132,16 @@ mod tests {
                 .samples,
             2
         );
+    }
+
+    #[test]
+    fn the_latest_skips_a_broken_recording() {
+        let archive = Archive::new(FakeArchive::with(&[
+            ("lol-20261118-145915", WITH_HEADER),
+            ("lol-20261118-165329", "roto"),
+        ]));
+        assert_eq!(archive.latest().unwrap().id, "lol-20261118-145915");
+        assert!(Archive::new(FakeArchive::default()).latest().is_none());
     }
 
     #[test]

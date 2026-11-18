@@ -6,12 +6,14 @@
 
 pub mod archive;
 pub mod command;
+pub mod http;
 pub mod outcome;
 pub mod recorder;
 pub mod scanner;
 pub mod services;
 #[cfg(test)]
 mod testing;
+pub mod web;
 
 pub use archive::Archive;
 pub use command::{Command, Output};
@@ -19,3 +21,4 @@ pub use outcome::Outcome;
 pub use recorder::{Recorder, WatchOptions};
 pub use scanner::Scanner;
 pub use services::{App, Services};
+pub use web::{Asset, Gateway};

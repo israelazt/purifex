@@ -3,6 +3,8 @@
 //! [`App`] is the real implementation, built from the services of this crate.
 
 use purifex_domain::analysis::Analysis;
+use purifex_domain::drivers_view::DriversView;
+use purifex_domain::overview::Overview;
 use purifex_domain::ports::{
     Clock, PerformanceSampler, SessionArchive, SessionFile, SystemInventory,
 };
@@ -27,6 +29,10 @@ pub trait Services {
     fn sessions(&self) -> Result<Vec<SessionRow>, String>;
     /// The analysis of a recording; with no name, of the newest.
     fn analyze(&self, id: Option<&str>) -> Result<Analysis, String>;
+    /// The devices and their drivers, as the table shows them.
+    fn drivers(&self) -> Result<DriversView, String>;
+    /// The general state: a fresh scan and the last recording.
+    fn overview(&self) -> Result<Overview, String>;
 }
 
 /// The services of the application over real (or fake) ports.
@@ -73,5 +79,16 @@ where
 
     fn analyze(&self, id: Option<&str>) -> Result<Analysis, String> {
         self.archive.analyze(id)
+    }
+
+    fn drivers(&self) -> Result<DriversView, String> {
+        self.scanner
+            .scan(Scope::Hardware)
+            .map(|report| DriversView::build(&report))
+    }
+
+    fn overview(&self) -> Result<Overview, String> {
+        let scan = self.scanner.scan(Scope::Hardware)?;
+        Ok(Overview::build(&scan, self.archive.latest().as_ref()))
     }
 }

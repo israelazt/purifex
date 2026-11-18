@@ -1,13 +1,17 @@
-//! Lucide icons as geometry: the SVG of each icon is read into moves, lines and
+//! Lucide icons as geometry (https://lucide.dev, ISC license, see
+//! `crates/purifex-ui/assets/LICENSE-lucide.txt`): the SVG of each icon is read into moves, lines and
 //! cubic curves (arcs and circles are converted), which any graphics library can
 //! stroke. Plain code, tested without a window.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-pub use crate::svg_path::{path, Seg};
+mod data;
+mod svg_path;
 
-use crate::icon_data::ICONS;
+pub use svg_path::{path, Seg};
+
+use data::ICONS;
 
 /// The outline of an icon by name, parsed once.
 pub fn icon(name: &str) -> Option<&'static [Seg]> {

@@ -5,10 +5,6 @@
 
 #![forbid(unsafe_code)]
 
-pub mod icon;
-mod icon_data;
-mod svg_path;
-
 /// A file of the page.
 #[derive(Debug, Clone, Copy)]
 pub struct Asset {

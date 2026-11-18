@@ -11,6 +11,7 @@ pub mod device_category;
 pub mod diagnosis;
 pub mod draw;
 pub mod drivers_view;
+pub mod icons;
 pub mod log;
 pub mod overview;
 pub mod ports;

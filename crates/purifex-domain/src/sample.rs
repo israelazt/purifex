@@ -64,6 +64,15 @@ pub struct Sample {
     pub cost_us: u32,
 }
 
+/// The clock the CPU really runs at, from its base clock and its performance
+/// counter (percent of the base: above 100 is turbo, below is power saving).
+pub fn effective_mhz(base_mhz: u32, performance_percent: f64) -> u32 {
+    if !performance_percent.is_finite() || performance_percent < 0.0 {
+        return base_mhz;
+    }
+    (f64::from(base_mhz) * performance_percent / 100.0).round() as u32
+}
+
 pub const CSV_HEADER: &str = "t_s,cpu_total,cpu_max_core,dpc_interrupt,cpu_mhz,cpu_max_mhz,ram_used,\
 game_cpu,game_mb,gpu_util,gpu_mem_util,gpu_temp_c,gpu_clock_mhz,gpu_max_clock_mhz,gpu_power_w,gpu_throttle,top,cost_us";
 
@@ -157,6 +166,19 @@ mod tests {
             "2.5,41.3,97.0,1.5,3600,4200,63.0,12.5,1800,88,40,71,1800,2100,95.2,0x4,"
         ));
         assert!(row.ends_with("chrome.exe=3.0,900"));
+    }
+
+    #[test]
+    fn the_real_clock_follows_the_performance_counter() {
+        assert_eq!(effective_mhz(3801, 100.0), 3801);
+        assert_eq!(effective_mhz(3801, 118.5), 4504, "turbo goes over the base");
+        assert_eq!(effective_mhz(3800, 50.0), 1900);
+        assert_eq!(
+            effective_mhz(3800, f64::NAN),
+            3800,
+            "no reading keeps the base"
+        );
+        assert_eq!(effective_mhz(3800, -1.0), 3800);
     }
 
     #[test]

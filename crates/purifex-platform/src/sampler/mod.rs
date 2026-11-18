@@ -3,13 +3,14 @@
 //! the memory and, for NVIDIA cards, NVML): about a millisecond, once a
 //! second, and no process stays resident.
 
+mod cpu_clock;
 mod nvml;
 
 use std::collections::HashMap;
 use std::time::Instant;
 
 use purifex_domain::ports::PerformanceSampler;
-use purifex_domain::sample::{GameLoad, ProcLoad, Sample};
+use purifex_domain::sample::{effective_mhz, GameLoad, ProcLoad, Sample};
 use windows::Wdk::System::SystemInformation::{NtQuerySystemInformation, SYSTEM_INFORMATION_CLASS};
 use windows::Win32::System::Power::{
     CallNtPowerInformation, POWER_INFORMATION_LEVEL, PROCESSOR_POWER_INFORMATION,
@@ -17,6 +18,7 @@ use windows::Win32::System::Power::{
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
 use crate::nt_layout::{parse_cores, parse_processes, CoreTimes, RawProcess};
+use cpu_clock::CpuClock;
 use nvml::Nvml;
 
 const SYSTEM_PROCESS_INFORMATION: SYSTEM_INFORMATION_CLASS = SYSTEM_INFORMATION_CLASS(5);
@@ -36,6 +38,7 @@ pub struct WindowsSampler {
     /// Names of the game's programs, lowercase.
     game: Vec<String>,
     nvml: Option<Nvml>,
+    clock: Option<CpuClock>,
     own_pid: u64,
     buffer: Vec<u8>,
     last_at: Option<Instant>,
@@ -48,6 +51,7 @@ impl WindowsSampler {
         Self {
             game: game_programs.iter().map(|g| g.to_lowercase()).collect(),
             nvml: Nvml::open(),
+            clock: CpuClock::open(),
             own_pid: u64::from(std::process::id()),
             buffer: Vec::new(),
             last_at: None,
@@ -235,7 +239,13 @@ impl PerformanceSampler for WindowsSampler {
         top.truncate(TOP_PROCESSES);
         self.last_processes = ticks_now;
 
-        let (cpu_mhz, cpu_max_mhz) = clock_speeds(core_count);
+        let (reported_mhz, cpu_max_mhz) = clock_speeds(core_count);
+        // The real clock, when the counter answers; if not, what Windows reports.
+        let cpu_mhz = self
+            .clock
+            .as_mut()
+            .and_then(CpuClock::read)
+            .map_or(reported_mhz, |percent| effective_mhz(cpu_max_mhz, percent));
         Ok(Sample {
             at_ms: 0,
             cpu_total,

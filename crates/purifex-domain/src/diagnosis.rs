@@ -149,7 +149,7 @@ impl SessionSummary {
         line(&mut out, "Interrupciones/DPC", &self.dpc_interrupt, " %");
         line(
             &mut out,
-            "Frecuencia (de la máx.)",
+            "Frecuencia (de la base)",
             &self.cpu_clock_pct,
             " %",
         );

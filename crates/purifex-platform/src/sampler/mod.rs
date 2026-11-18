@@ -9,7 +9,7 @@ mod nvml;
 use std::collections::HashMap;
 use std::time::Instant;
 
-use purifex_domain::ports::PerformanceSampler;
+use purifex_domain::ports::{PerformanceSampler, SamplerInfo};
 use purifex_domain::process_group::{group_of, Group};
 use purifex_domain::sample::{effective_mhz, GameLoad, GroupLoad, ProcLoad, Sample};
 use windows::Wdk::System::SystemInformation::{NtQuerySystemInformation, SYSTEM_INFORMATION_CLASS};
@@ -38,6 +38,10 @@ const MIN_LISTED: f32 = 0.2;
 pub struct WindowsSampler {
     /// Names of the game's programs, lowercase.
     game: Vec<String>,
+    /// The first program of the game as it was given (for the header of a recording).
+    game_name: String,
+    /// Logical cores, read once when the sampler is created.
+    cores: u32,
     nvml: Option<Nvml>,
     clock: Option<CpuClock>,
     own_pid: u64,
@@ -49,8 +53,14 @@ pub struct WindowsSampler {
 
 impl WindowsSampler {
     pub fn new(game_programs: &[&str]) -> Self {
-        Self {
+        let mut sampler = Self {
             game: game_programs.iter().map(|g| g.to_lowercase()).collect(),
+            game_name: game_programs
+                .first()
+                .copied()
+                .unwrap_or_default()
+                .to_string(),
+            cores: 1,
             nvml: Nvml::open(),
             clock: CpuClock::open(),
             own_pid: u64::from(std::process::id()),
@@ -58,7 +68,12 @@ impl WindowsSampler {
             last_at: None,
             last_processes: HashMap::new(),
             last_cores: Vec::new(),
-        }
+        };
+        sampler.cores = sampler
+            .query(SYSTEM_PROCESSOR_PERFORMANCE, CORE_ENTRY)
+            .map(|used| parse_cores(&sampler.buffer[..used.min(sampler.buffer.len())]).len())
+            .map_or(1, |n| n.max(1) as u32);
+        sampler
     }
 
     pub fn has_gpu_readings(&self) -> bool {
@@ -154,6 +169,13 @@ fn memory_used_percent() -> f32 {
 }
 
 impl PerformanceSampler for WindowsSampler {
+    fn describe(&self) -> SamplerInfo {
+        SamplerInfo {
+            game: self.game_name.clone(),
+            cores: self.cores,
+        }
+    }
+
     fn game_running(&mut self) -> Result<bool, String> {
         Ok(self.processes()?.iter().any(|p| self.is_game(&p.name)))
     }

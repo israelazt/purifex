@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use purifex_domain::date::Date;
 use purifex_domain::device::Device;
-use purifex_domain::ports::{Clock, PerformanceSampler, SessionFile, SystemInventory};
+use purifex_domain::ports::{Clock, PerformanceSampler, SamplerInfo, SessionFile, SystemInventory};
 use purifex_domain::sample::{GameLoad, Sample};
 
 pub struct FakeInventory(Result<Vec<Device>, String>);
@@ -88,6 +88,13 @@ impl FakeSampler {
 }
 
 impl PerformanceSampler for FakeSampler {
+    fn describe(&self) -> SamplerInfo {
+        SamplerInfo {
+            game: "League of Legends.exe".into(),
+            cores: 12,
+        }
+    }
+
     fn game_running(&mut self) -> Result<bool, String> {
         self.waits += 1;
         Ok(self.waits > self.absent_for)

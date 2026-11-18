@@ -24,10 +24,19 @@ pub trait Clock {
     fn sleep(&self, time: Duration);
 }
 
+/// What a sampler measures, for the header of a recording.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SamplerInfo {
+    pub game: String,
+    pub cores: u32,
+}
+
 /// Measures the computer's performance. It keeps what it needs from one
 /// sample to the next (usage is a difference between two readings), so the
 /// first sample after creating it has no usage figures worth trusting.
 pub trait PerformanceSampler {
+    /// What is being measured: the game's program and the logical cores.
+    fn describe(&self) -> SamplerInfo;
     /// Whether the game is running now (a cheap check, to wait for it).
     fn game_running(&mut self) -> Result<bool, String>;
     /// One measurement. `at_ms` is left at zero: the recorder sets it.

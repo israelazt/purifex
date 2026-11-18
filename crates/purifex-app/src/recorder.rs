@@ -7,6 +7,7 @@ use purifex_domain::log_warn;
 use purifex_domain::ports::{Clock, PerformanceSampler, SessionFile};
 use purifex_domain::sample::{Sample, CSV_HEADER};
 use purifex_domain::session::{summarize, SessionSummary};
+use purifex_domain::session_header::SessionHeader;
 
 /// How often the game is looked for while waiting for it.
 const WAIT_STEP: Duration = Duration::from_secs(2);
@@ -72,6 +73,9 @@ impl<S: PerformanceSampler, C: Clock, F: SessionFile> Recorder<S, C, F> {
             progress("Partida detectada: grabando una muestra por segundo.");
         }
         let path = self.file.create(file_name)?;
+        let info = self.sampler.describe();
+        let header = SessionHeader::new(&info.game, info.cores, self.clock.today());
+        self.file.append(&header.to_line())?;
         self.file.append(CSV_HEADER)?;
         // The first reading only sets the baseline for the differences.
         let _ = self.sampler.sample();
@@ -166,8 +170,9 @@ mod tests {
         assert!(said[1].contains("detectada"));
         assert_eq!(r.sampler.waits, 3, "asked until it appeared");
         let lines = r.file.lines.borrow();
-        assert_eq!(lines[0], CSV_HEADER);
-        assert_eq!(lines.len(), 1 + 5);
+        assert!(SessionHeader::parse(&lines[0]).is_some(), "{}", lines[0]);
+        assert_eq!(lines[1], CSV_HEADER);
+        assert_eq!(lines.len(), 2 + 5);
         assert_eq!(done.file, "fake/lol.csv");
     }
 
@@ -176,7 +181,7 @@ mod tests {
         let mut r = recorder(FakeSampler::new(0, 3, true));
         r.run(WatchOptions::default(), "x", &mut |_| {}).unwrap();
         let lines = r.file.lines.borrow();
-        let times: Vec<&str> = lines[1..]
+        let times: Vec<&str> = lines[2..]
             .iter()
             .map(|l| l.split(',').next().unwrap())
             .collect();

@@ -1,0 +1,10 @@
+[package]
+name = "purifex-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# The services of Purifex, working only against the domain's ports.
+[dependencies]
+purifex-domain = { path = "../purifex-domain" }
+serde_json.workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "purifex"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# The program: wires the real adapters into the application and prints what it
+# returns. No logic. See ARCHITECTURE.md.
+[dependencies]
+purifex-domain = { path = "../../crates/purifex-domain" }
+purifex-platform = { path = "../../crates/purifex-platform" }
+purifex-app = { path = "../../crates/purifex-app" }

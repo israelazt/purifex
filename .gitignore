@@ -1,0 +1,7 @@
+target/
+dist/
+.idea/
+.vscode/
+.vs/
+Thumbs.db
+.claude/settings.local.json

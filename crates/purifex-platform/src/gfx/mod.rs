@@ -258,6 +258,7 @@ impl Renderer {
     }
 
     /// Draws a whole picture.
+    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn draw(&mut self, list: &DrawList) -> Result<Drawn, String> {
         // SAFETY: every call is on the live target, brush and styles, with
         // arguments that are live locals; clips are pushed and popped in pairs.

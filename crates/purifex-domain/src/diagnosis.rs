@@ -53,6 +53,7 @@ fn finding(severity: Severity, title: &str, evidence: String) -> Finding {
 }
 
 /// The leads of a session, most serious first.
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn diagnose(s: &SessionSummary) -> Vec<Finding> {
     let mut out = Vec::new();
     let gpu_util = s.gpu.as_ref().map(|g| g.util);
@@ -145,6 +146,7 @@ pub fn diagnose(s: &SessionSummary) -> Vec<Finding> {
 
 impl SessionSummary {
     /// The summary and its leads, as text for a terminal.
+    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn to_text(&self) -> String {
         let mut out = String::new();
         let line = |out: &mut String, name: &str, s: &crate::session::Stat, unit: &str| {

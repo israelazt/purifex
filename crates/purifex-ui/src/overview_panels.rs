@@ -8,6 +8,7 @@ use crate::canvas::Canvas;
 use crate::theme::{self, Tone};
 use crate::widgets::{dot, panel};
 
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub(crate) fn leads(c: &mut Canvas, area: Rect, o: &Overview) -> f32 {
     let findings = o.session.as_ref().map(|s| s.findings.as_slice());
     let style_title = theme::sans(14.0, theme::TEXT).bold();

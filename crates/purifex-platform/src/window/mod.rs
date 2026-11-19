@@ -63,6 +63,7 @@ unsafe extern "system" fn procedure<H: UiHandler>(
 }
 
 /// Opens the window (`width` x `height` units) and runs until it is closed.
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn run<H: UiHandler>(
     title: &str,
     width: f32,

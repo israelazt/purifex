@@ -48,6 +48,7 @@ fn verdict(change: Change) -> (&'static str, Tone, &'static str) {
     }
 }
 
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn draw(c: &mut Canvas, report: &ComparisonReport, rect: Rect) {
     panel(c, rect);
     c.icon("history", rect.x + 18.0, rect.y + 20.0, 16.0, theme::TEXT);

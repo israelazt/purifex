@@ -34,6 +34,7 @@ pub fn names() -> impl Iterator<Item = &'static str> {
 
 /// Reads the shapes inside an `<svg>`: `path`, `rect`, `circle`, `line` and
 /// `polyline`, which are all the library uses.
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn shapes(svg_inner: &str) -> Result<Vec<Seg>, String> {
     let mut segs = Vec::new();
     for element in svg_inner.split('<').skip(1) {

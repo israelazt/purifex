@@ -113,6 +113,7 @@ impl Scanner<'_> {
 }
 
 /// Reads the `d` of a `<path>`.
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn path(d: &str) -> Result<Vec<Seg>, String> {
     let mut sc = Scanner {
         bytes: d.as_bytes(),
@@ -241,6 +242,7 @@ fn quad(x0: f32, y0: f32, qx: f32, qy: f32, x: f32, y: f32) -> Seg {
 
 /// An SVG elliptical arc as cubic curves, one per quarter turn at most
 /// (the conversion of the SVG specification, appendix F.6).
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 fn arc(
     out: &mut Vec<Seg>,
     from: (f32, f32),

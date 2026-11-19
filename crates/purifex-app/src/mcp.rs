@@ -174,6 +174,8 @@ mod tests {
         (app, store)
     }
 
+    // The tests hand it `json!` literals: taking them by value reads better.
+    #[expect(clippy::needless_pass_by_value)]
     fn ask(app: &mut dyn Services, request: Value) -> Value {
         let reply = handle(app, &request.to_string()).expect("an answer");
         serde_json::from_str(&reply).unwrap()

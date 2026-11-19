@@ -7,6 +7,14 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 
+# Lints every crate follows (each crate has `[lints] workspace = true`). A function over
+# 60 lines or too tangled is split, not silenced: see clippy.toml for the thresholds.
+[workspace.lints.clippy]
+too_many_lines = "warn"
+cognitive_complexity = "warn"
+redundant_clone = "warn"
+needless_pass_by_value = "warn"
+
 [workspace.dependencies]
 windows = "0.62"
 serde = { version = "1", features = ["derive"] }

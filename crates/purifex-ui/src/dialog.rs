@@ -238,6 +238,7 @@ fn height_of(c: &Canvas, v: &DialogView) -> f32 {
 }
 
 /// Draws the dialog at `t` (0 gone, 1 settled) over a window of `width` x `height`.
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn draw(c: &mut Canvas, v: &DialogView, t: f32, width: f32, height: f32) {
     // The page goes dim.
     c.rest();

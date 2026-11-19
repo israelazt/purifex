@@ -97,6 +97,7 @@ fn share(count: usize, of: usize) -> f32 {
     }
 }
 
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn summarize(samples: &[Sample]) -> SessionSummary {
     let stat =
         |f: &dyn Fn(&Sample) -> Option<f32>| Stat::of(samples.iter().filter_map(f).collect());

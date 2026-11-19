@@ -57,6 +57,7 @@ impl Core {
         self.pending
     }
 
+    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn apply(&mut self, action: Action) {
         match action {
             Action::Go(page) => {
@@ -220,6 +221,11 @@ impl Core {
 
     /// Reads what is missing. Each failure is shown, and the rest is still read.
     /// Returns whether the model changed (the window only redraws if it did).
+    #[expect(
+        clippy::cognitive_complexity,
+        clippy::too_many_lines,
+        reason = "legacy: split"
+    )]
     pub fn tick(&mut self) -> bool {
         if !self.pending {
             return false;
@@ -872,6 +878,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     fn the_apps_page_uninstalls_with_a_confirmation_then_finds_and_removes_the_traces() {
         use crate::testing::{CleanLog, FakeApps, FakeCleaning, FakeFinder};
         use crate::Cleaning;

@@ -177,6 +177,7 @@ impl<H: UiHandler> State<H> {
         }
     }
 
+    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub(super) fn message(
         &mut self,
         hwnd: HWND,

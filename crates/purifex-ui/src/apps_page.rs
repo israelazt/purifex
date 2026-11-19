@@ -98,6 +98,7 @@ fn cleanup_panel(c: &mut Canvas, m: &Model, name: &str, area: Rect, y: f32) -> f
     rect.h + 16.0
 }
 
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
     let hover = c.hover(bar);
     if hover > 0.01 {

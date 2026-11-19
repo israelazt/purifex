@@ -296,30 +296,16 @@ mod tests {
         }
     }
 
-    /// What the finder proposes in a scratch branch of HKCU, judged by the domain with the
-    /// scratch prefix swapped for the real one: so the layout of the fixed list and the
-    /// rules agree.
-    #[test]
-    fn what_the_finder_proposes_in_every_fixed_place_passes_the_rules_and_the_rest_does_not() {
-        let id = std::process::id();
-        let scratch = format!(r"Software\PurifexTest\h{id}");
-        let hives = Hives {
-            hkcu: scratch.clone(),
-            hklm: None,
-        };
-        let folder = std::env::temp_dir()
-            .join(format!("purifex-reg-{id}"))
-            .join("Fake App");
-        let folder = folder.to_string_lossy().into_owned();
-        let ext = format!(".pt{}", id % 100_000);
-        let progid = format!("PT.File{id}");
-        let hk = format!(r"HKCU\{scratch}");
+    /// Plants in a scratch branch what a registered app leaves: its extension and ProgId,
+    /// the Explorer lists, a notification key, `App Paths` and three values in `MuiCache`
+    /// (one of the app, one of `Fake App2`, one of Windows).
+    fn plant(hk: &str, folder: &str, ext: &str, progid: &str, id: u32) {
         let exe = format!(r"{folder}\bin\fake.exe");
         let cv = r"Microsoft\Windows\CurrentVersion";
         let set = |key: &str, name: &str, value: &str| {
             set_value_raw(&format!(r"{hk}\{key}"), name, &RawValue::sz(value)).unwrap();
         };
-        set(&format!(r"Classes\{ext}"), "", &progid);
+        set(&format!(r"Classes\{ext}"), "", progid);
         set(
             &format!(r"Classes\{progid}\shell\open\command"),
             "",
@@ -343,6 +329,46 @@ mod tests {
             "Fake2",
         );
         set(mui, r"C:\Windows\other.exe.FriendlyAppName", "Other");
+    }
+
+    /// Judges what the finder proposed (with the scratch prefix swapped for the real one)
+    /// and returns the last part of each location with its evidence. Panics if the rules
+    /// refuse any of it.
+    fn judged_ends(found: &[Candidate], seeds: &Seeds, scratch: &str) -> Vec<(String, Evidence)> {
+        let real = |c: &Candidate| Candidate {
+            location: c.location.replacen(scratch, "Software", 1),
+            ..c.clone()
+        };
+        let judged: Vec<(String, Evidence)> = found
+            .iter()
+            .map(|c| judge_with(&app(), &[], seeds, &real(c)).map(|t| (t.location, t.evidence)))
+            .collect::<Result<_, _>>()
+            .unwrap_or_else(|e| panic!("a proposal was refused ({e:?}): {found:#?}"));
+        judged
+            .iter()
+            .map(|(l, e)| (l.rsplit('\\').next().unwrap_or(l).to_string(), *e))
+            .collect()
+    }
+
+    /// What the finder proposes in a scratch branch of HKCU, judged by the domain with the
+    /// scratch prefix swapped for the real one: so the layout of the fixed list and the
+    /// rules agree.
+    #[test]
+    fn what_the_finder_proposes_in_every_fixed_place_passes_the_rules_and_the_rest_does_not() {
+        let id = std::process::id();
+        let scratch = format!(r"Software\PurifexTest\h{id}");
+        let hives = Hives {
+            hkcu: scratch.clone(),
+            hklm: None,
+        };
+        let folder = std::env::temp_dir()
+            .join(format!("purifex-reg-{id}"))
+            .join("Fake App");
+        let folder = folder.to_string_lossy().into_owned();
+        let ext = format!(".pt{}", id % 100_000);
+        let progid = format!("PT.File{id}");
+        let hk = format!(r"HKCU\{scratch}");
+        plant(&hk, &folder, &ext, &progid, id);
 
         let seeds = Seeds::new(Some(&folder), &["fake.exe".into()], &[]);
         let discovered = discover_extensions(&hives, &seeds);
@@ -358,23 +384,11 @@ mod tests {
             vec![ext.clone()],
             "the extension was not given but is found"
         );
-        let real = |c: &Candidate| Candidate {
-            location: c.location.replacen(&scratch, "Software", 1),
-            ..c.clone()
-        };
-        let judged: Vec<(String, Evidence)> = found
-            .iter()
-            .map(|c| judge_with(&app(), &[], &seeds, &real(c)).map(|t| (t.location, t.evidence)))
-            .collect::<Result<_, _>>()
-            .unwrap_or_else(|e| panic!("a proposal was refused ({e:?}): {found:#?}"));
-        let ends: Vec<(String, Evidence)> = judged
-            .iter()
-            .map(|(l, e)| (l.rsplit('\\').next().unwrap().to_string(), *e))
-            .collect();
+        let ends = judged_ends(&found, &seeds, &scratch);
         assert_eq!(found.len(), 8, "{found:#?}");
         for want in [
-            (ext.clone(), Evidence::AssociatedExtension),
-            (progid.clone(), Evidence::Association),
+            (ext, Evidence::AssociatedExtension),
+            (progid, Evidence::Association),
             ("fake".to_string(), Evidence::NameMatch),
             ("fake.exe".to_string(), Evidence::NameMatch),
             ("MuiCache".to_string(), Evidence::PathReference),

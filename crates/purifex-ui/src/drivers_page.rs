@@ -147,6 +147,7 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     height
 }
 
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 fn draw_row(
     c: &mut Canvas,
     row: &DriverRow,

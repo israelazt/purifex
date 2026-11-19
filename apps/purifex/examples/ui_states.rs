@@ -65,6 +65,7 @@ mod states {
         }
     }
 
+    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn main() {
         let args: Vec<String> = std::env::args().skip(1).collect();
         let (state, out) = (

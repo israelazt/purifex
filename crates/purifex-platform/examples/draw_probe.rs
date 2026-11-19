@@ -12,6 +12,7 @@ mod probe {
     struct Probe;
 
     impl UiHandler for Probe {
+        #[expect(clippy::too_many_lines, reason = "legacy: split")]
         fn frame(&mut self, _w: f32, _h: f32, text: &dyn TextMetrics, _now: Duration) -> DrawList {
             let mut list = DrawList::new(Color::rgb(7, 8, 11));
             let mint = Color::rgb(0, 242, 170);

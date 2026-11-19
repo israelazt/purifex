@@ -152,6 +152,7 @@ impl Fixer {
     }
 
     /// Undoes the change `seq`: puts the value back as it was.
+    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn undo(&mut self, seq: u64, confirmed: bool) -> Result<FixReport, String> {
         let entries = self.history.entries()?;
         let entry = entries

@@ -59,6 +59,7 @@ impl<S: PerformanceSampler, C: Clock, F: SessionFile> Recorder<S, C, F> {
         }
     }
 
+    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn run(
         &mut self,
         options: WatchOptions,

@@ -133,6 +133,7 @@ impl Ui {
     }
 
     /// The picture of the window at `width` x `height` units.
+    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn frame(
         &mut self,
         model: &Model,
@@ -258,6 +259,7 @@ impl Ui {
         self.mouse.and_then(|(x, y)| self.hit_at(x, y))
     }
 
+    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn event(&mut self, event: UiEvent) -> UiOutput {
         let mut out = UiOutput::default();
         match event {

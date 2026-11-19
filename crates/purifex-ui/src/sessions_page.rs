@@ -122,6 +122,7 @@ fn number(row: &StatRow, value: f32) -> String {
 }
 
 /// The detail of the chosen recording; returns its height.
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 fn detail(c: &mut Canvas, a: &Analysis, comparison: Option<&ComparisonReport>, rect: Rect) -> f32 {
     // The leads, measured first so the panel is as tall as what it holds.
     let title_style = theme::sans(14.0, theme::TEXT).bold();

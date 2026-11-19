@@ -142,6 +142,7 @@ impl PerformanceSampler for WindowsSampler {
         Ok(self.processes()?.iter().any(|p| self.is_game(&p.name)))
     }
 
+    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     fn sample(&mut self) -> Result<Sample, String> {
         if !self.sources_opened {
             self.sources_opened = true;

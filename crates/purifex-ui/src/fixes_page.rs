@@ -65,6 +65,7 @@ pub(crate) fn confirm_height(c: &Canvas, question: &str, width: f32) -> f32 {
 const APPLY_QUESTION: &str = "Se va a cambiar este ajuste. Antes se guarda una copia del archivo y todo queda anotado en el historial, donde puedes deshacerlo. ¿Aplicar?";
 const UNDO_QUESTION: &str = "El ajuste volverá al valor que tenía antes de este cambio. ¿Deshacer?";
 
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 fn proposal_card(c: &mut Canvas, m: &Model, p: &Proposal, area: Rect, y: f32) -> f32 {
     let asked = m.confirm == Some(Confirm::Apply(p.id.clone()));
     let text_w = area.w - 2.0 * PAD;
@@ -223,6 +224,7 @@ fn history_height(c: &Canvas, m: &Model, rows: usize, width: f32) -> f32 {
         + 8.0
 }
 
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 fn history_panel(c: &mut Canvas, m: &Model, entries: &[HistoryEntry], area: Rect, y: f32) -> f32 {
     let height = history_height(c, m, entries.len(), area.w);
     let rect = Rect::new(area.x, y, area.w, height);

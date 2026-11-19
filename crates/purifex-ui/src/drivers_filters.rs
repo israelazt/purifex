@@ -20,6 +20,7 @@ struct Chip<'a> {
     action: Action,
 }
 
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 fn chip(c: &mut Canvas, x: f32, y: f32, chip: &Chip) -> f32 {
     let Chip {
         label,

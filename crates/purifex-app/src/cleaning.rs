@@ -246,7 +246,7 @@ impl Cleaning {
             seq: next_seq(&log),
             app: entry.app.clone(),
             trace: entry.trace.clone(),
-            kept: entry.kept.clone(),
+            kept: entry.kept,
             state: CleanupState::Restored,
             restores: Some(seq),
         };
@@ -465,7 +465,7 @@ mod tests {
         let mut with = Cleaning::new(
             Box::new(SeedingFinder(vec![key.clone()], seeds)),
             Box::new(FakeCleaning(log.clone())),
-            Box::new(FakeCleaning(log.clone())),
+            Box::new(FakeCleaning(log)),
         );
         let report = with.clean(&[], &[], "Discord", false, None).unwrap();
         assert_eq!(report.proposed.len(), 1, "{:?}", report.proposed);

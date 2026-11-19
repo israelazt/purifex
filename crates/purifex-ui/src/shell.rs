@@ -169,6 +169,7 @@ fn nav_item(c: &mut Canvas, rect: Rect, item: &NavItem, active: bool) {
     }
 }
 
+#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn sidebar(c: &mut Canvas, m: &Model, height: f32) {
     let area = Rect::new(0.0, TOPBAR_H, SIDEBAR_W, height - TOPBAR_H);
     c.fill(area, 0.0, theme::BG_SIDE);

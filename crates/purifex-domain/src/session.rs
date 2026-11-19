@@ -97,77 +97,10 @@ fn share(count: usize, of: usize) -> f32 {
     }
 }
 
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
+/// The summary of a whole recording.
 pub fn summarize(samples: &[Sample]) -> SessionSummary {
     let stat =
         |f: &dyn Fn(&Sample) -> Option<f32>| Stat::of(samples.iter().filter_map(f).collect());
-    let gpus: Vec<_> = samples.iter().filter_map(|s| s.gpu).collect();
-    let gpu = (!gpus.is_empty()).then(|| GpuSummary {
-        util: Stat::of(gpus.iter().map(|g| g.util).collect()),
-        temp_c: Stat::of(gpus.iter().map(|g| g.temp_c as f32).collect()),
-        power_w: Stat::of(gpus.iter().map(|g| g.power_w).collect()),
-        clock_pct: Stat::of(
-            gpus.iter()
-                .filter(|g| g.max_clock_mhz > 0)
-                .map(|g| g.clock_mhz as f32 * 100.0 / g.max_clock_mhz as f32)
-                .collect(),
-        ),
-        heat_throttled_pct: share(
-            gpus.iter()
-                .filter(|g| g.throttle & throttle::HEAT != 0)
-                .count(),
-            gpus.len(),
-        ),
-        power_capped_pct: share(
-            gpus.iter()
-                .filter(|g| g.throttle & throttle::POWER_CAP != 0)
-                .count(),
-            gpus.len(),
-        ),
-    });
-
-    // A process missing from a second's list counts as zero in that second.
-    let mut load: BTreeMap<&str, f32> = BTreeMap::new();
-    for process in samples.iter().flat_map(|s| &s.top) {
-        *load.entry(process.name.as_str()).or_default() += process.cpu;
-    }
-    let mut background: Vec<Background> = load
-        .into_iter()
-        .map(|(name, sum)| Background {
-            name: name.to_string(),
-            avg_cpu: sum / samples.len().max(1) as f32,
-        })
-        .collect();
-    background.sort_by(|a, b| b.avg_cpu.total_cmp(&a.avg_cpu));
-    background.truncate(BACKGROUND_KEPT);
-
-    let mut groups: Vec<GroupSummary> = ALL_GROUPS
-        .into_iter()
-        .filter(|g| {
-            samples
-                .iter()
-                .any(|s| s.groups.iter().any(|l| l.group == *g))
-        })
-        .map(|group| GroupSummary {
-            group,
-            cpu: Stat::of(
-                samples
-                    .iter()
-                    .map(|s| {
-                        s.groups
-                            .iter()
-                            .filter(|l| l.group == group)
-                            .map(|l| l.cpu)
-                            // `+ 0.0`: the sum of nothing is -0.0, which would print as "-0.0".
-                            .sum::<f32>()
-                            + 0.0
-                    })
-                    .collect(),
-            ),
-        })
-        .collect();
-    groups.sort_by(|a, b| b.cpu.avg.total_cmp(&a.cpu.avg));
-
     SessionSummary {
         seconds: samples.last().map_or(0, |s| s.at_ms / 1000),
         samples: samples.len(),
@@ -184,11 +117,87 @@ pub fn summarize(samples: &[Sample]) -> SessionSummary {
         ram_used: stat(&|s| Some(s.ram_used)),
         game_cpu: stat(&|s| s.game.map(|g| g.cpu)),
         game_memory_mb: stat(&|s| s.game.map(|g| g.memory_mb as f32)),
-        gpu,
-        groups,
-        background,
+        gpu: gpu_summary(samples),
+        groups: group_summaries(samples),
+        background: background_load(samples),
         sample_cost_us: stat(&|s| Some(s.cost_us as f32)),
     }
+}
+
+/// What the graphics card did; `None` when no sample has a reading of it.
+fn gpu_summary(samples: &[Sample]) -> Option<GpuSummary> {
+    let gpus: Vec<_> = samples.iter().filter_map(|s| s.gpu).collect();
+    if gpus.is_empty() {
+        return None;
+    }
+    let throttled_share = |reason: u64| {
+        share(
+            gpus.iter().filter(|g| g.throttle & reason != 0).count(),
+            gpus.len(),
+        )
+    };
+    Some(GpuSummary {
+        util: Stat::of(gpus.iter().map(|g| g.util).collect()),
+        temp_c: Stat::of(gpus.iter().map(|g| g.temp_c as f32).collect()),
+        power_w: Stat::of(gpus.iter().map(|g| g.power_w).collect()),
+        clock_pct: Stat::of(
+            gpus.iter()
+                .filter(|g| g.max_clock_mhz > 0)
+                .map(|g| g.clock_mhz as f32 * 100.0 / g.max_clock_mhz as f32)
+                .collect(),
+        ),
+        heat_throttled_pct: throttled_share(throttle::HEAT),
+        power_capped_pct: throttled_share(throttle::POWER_CAP),
+    })
+}
+
+/// The busiest other processes. A process missing from a second's list counts as zero
+/// in that second.
+fn background_load(samples: &[Sample]) -> Vec<Background> {
+    let mut load: BTreeMap<&str, f32> = BTreeMap::new();
+    for process in samples.iter().flat_map(|s| &s.top) {
+        *load.entry(process.name.as_str()).or_default() += process.cpu;
+    }
+    let mut background: Vec<Background> = load
+        .into_iter()
+        .map(|(name, sum)| Background {
+            name: name.to_string(),
+            avg_cpu: sum / samples.len().max(1) as f32,
+        })
+        .collect();
+    background.sort_by(|a, b| b.avg_cpu.total_cmp(&a.avg_cpu));
+    background.truncate(BACKGROUND_KEPT);
+    background
+}
+
+/// The families of programs that were seen, the busiest first.
+fn group_summaries(samples: &[Sample]) -> Vec<GroupSummary> {
+    let mut groups: Vec<GroupSummary> = ALL_GROUPS
+        .into_iter()
+        .filter(|g| {
+            samples
+                .iter()
+                .any(|s| s.groups.iter().any(|l| l.group == *g))
+        })
+        .map(|group| GroupSummary {
+            group,
+            cpu: Stat::of(samples.iter().map(|s| group_cpu(s, group)).collect()),
+        })
+        .collect();
+    groups.sort_by(|a, b| b.cpu.avg.total_cmp(&a.cpu.avg));
+    groups
+}
+
+/// What a family used in one sample (zero when it was not there).
+fn group_cpu(sample: &Sample, group: Group) -> f32 {
+    sample
+        .groups
+        .iter()
+        .filter(|l| l.group == group)
+        .map(|l| l.cpu)
+        // `+ 0.0`: the sum of nothing is -0.0, which would print as "-0.0".
+        .sum::<f32>()
+        + 0.0
 }
 
 #[cfg(test)]

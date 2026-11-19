@@ -34,70 +34,105 @@ pub fn names() -> impl Iterator<Item = &'static str> {
 
 /// Reads the shapes inside an `<svg>`: `path`, `rect`, `circle`, `line` and
 /// `polyline`, which are all the library uses.
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn shapes(svg_inner: &str) -> Result<Vec<Seg>, String> {
     let mut segs = Vec::new();
-    for element in svg_inner.split('<').skip(1) {
-        let element = element.trim_end_matches(['>', '/', ' ']);
-        let (tag, attrs) = element.split_once(' ').unwrap_or((element, ""));
-        let attr = |name: &str| attribute(attrs, name);
-        let number = |name: &str| -> Result<f32, String> {
-            attr(name)
-                .ok_or_else(|| format!("<{tag}> sin «{name}»"))?
-                .trim()
-                .parse()
-                .map_err(|_| format!("<{tag}>: «{name}» no es un número"))
-        };
-        let or_zero = |name: &str| attr(name).and_then(|v| v.trim().parse::<f32>().ok());
-        let d = match tag {
-            "path" => attr("d").ok_or("<path> sin «d»")?.to_string(),
-            "circle" => {
-                let (cx, cy, r) = (number("cx")?, number("cy")?, number("r")?);
-                format!(
-                    "M{} {}A{r} {r} 0 1 1 {} {}A{r} {r} 0 1 1 {} {}Z",
-                    cx - r,
-                    cy,
-                    cx + r,
-                    cy,
-                    cx - r,
-                    cy
-                )
-            }
-            "line" => format!(
-                "M{} {}L{} {}",
-                number("x1")?,
-                number("y1")?,
-                number("x2")?,
-                number("y2")?
-            ),
-            "polyline" => {
-                let points = attr("points").ok_or("<polyline> sin «points»")?;
-                format!("M{points}")
-            }
-            "rect" => {
-                let (x, y) = (or_zero("x").unwrap_or(0.0), or_zero("y").unwrap_or(0.0));
-                let (w, h) = (number("width")?, number("height")?);
-                let rx = or_zero("rx").or(or_zero("ry")).unwrap_or(0.0).min(w / 2.0);
-                let ry = or_zero("ry").or(or_zero("rx")).unwrap_or(0.0).min(h / 2.0);
-                format!(
-                    "M{} {}H{}A{rx} {ry} 0 0 1 {} {}V{}A{rx} {ry} 0 0 1 {} {}H{}A{rx} {ry} 0 0 1 {} {}V{}A{rx} {ry} 0 0 1 {} {}Z",
-                    x + rx, y,
-                    x + w - rx,
-                    x + w, y + ry,
-                    y + h - ry,
-                    x + w - rx, y + h,
-                    x + rx,
-                    x, y + h - ry,
-                    y + ry,
-                    x + rx, y
-                )
-            }
-            "" | "svg" => continue,
-            other => return Err(format!("elemento no soportado: <{other}>")),
-        };
-        segs.extend(path(&d)?);
+    for raw in svg_inner.split('<').skip(1) {
+        if let Some(d) = Element::parse(raw).path_data()? {
+            segs.extend(path(&d)?);
+        }
     }
     Ok(segs)
+}
+
+/// One element of the SVG: its tag and its attributes, as text.
+struct Element<'a> {
+    tag: &'a str,
+    attrs: &'a str,
+}
+
+impl<'a> Element<'a> {
+    fn parse(raw: &'a str) -> Self {
+        let raw = raw.trim_end_matches(['>', '/', ' ']);
+        let (tag, attrs) = raw.split_once(' ').unwrap_or((raw, ""));
+        Element { tag, attrs }
+    }
+
+    fn attr(&self, name: &str) -> Option<&'a str> {
+        attribute(self.attrs, name)
+    }
+
+    /// A number that must be there.
+    fn number(&self, name: &str) -> Result<f32, String> {
+        self.attr(name)
+            .ok_or_else(|| format!("<{}> sin «{name}»", self.tag))?
+            .trim()
+            .parse()
+            .map_err(|_| format!("<{}>: «{name}» no es un número", self.tag))
+    }
+
+    /// A number that may be missing (or unreadable, which counts as missing).
+    fn optional_number(&self, name: &str) -> Option<f32> {
+        self.attr(name).and_then(|v| v.trim().parse().ok())
+    }
+
+    /// The element as the data of an SVG path; `None` for the ones that draw nothing.
+    fn path_data(&self) -> Result<Option<String>, String> {
+        let data = match self.tag {
+            "path" => self.attr("d").ok_or("<path> sin «d»")?.to_string(),
+            "circle" => self.circle()?,
+            "line" => self.line()?,
+            "polyline" => format!("M{}", self.attr("points").ok_or("<polyline> sin «points»")?),
+            "rect" => self.rect()?,
+            "" | "svg" => return Ok(None),
+            other => return Err(format!("elemento no soportado: <{other}>")),
+        };
+        Ok(Some(data))
+    }
+
+    fn circle(&self) -> Result<String, String> {
+        let (cx, cy, r) = (self.number("cx")?, self.number("cy")?, self.number("r")?);
+        Ok(format!(
+            "M{} {}A{r} {r} 0 1 1 {} {}A{r} {r} 0 1 1 {} {}Z",
+            cx - r,
+            cy,
+            cx + r,
+            cy,
+            cx - r,
+            cy
+        ))
+    }
+
+    fn line(&self) -> Result<String, String> {
+        Ok(format!(
+            "M{} {}L{} {}",
+            self.number("x1")?,
+            self.number("y1")?,
+            self.number("x2")?,
+            self.number("y2")?
+        ))
+    }
+
+    /// A rectangle with rounded corners (`rx`, `ry`, each at most half the side).
+    fn rect(&self) -> Result<String, String> {
+        let x = self.optional_number("x").unwrap_or(0.0);
+        let y = self.optional_number("y").unwrap_or(0.0);
+        let (w, h) = (self.number("width")?, self.number("height")?);
+        let (rx_attr, ry_attr) = (self.optional_number("rx"), self.optional_number("ry"));
+        let rx = rx_attr.or(ry_attr).unwrap_or(0.0).min(w / 2.0);
+        let ry = ry_attr.or(rx_attr).unwrap_or(0.0).min(h / 2.0);
+        Ok(format!(
+            "M{} {}H{}A{rx} {ry} 0 0 1 {} {}V{}A{rx} {ry} 0 0 1 {} {}H{}A{rx} {ry} 0 0 1 {} {}V{}A{rx} {ry} 0 0 1 {} {}Z",
+            x + rx, y,
+            x + w - rx,
+            x + w, y + ry,
+            y + h - ry,
+            x + w - rx, y + h,
+            x + rx,
+            x, y + h - ry,
+            y + ry,
+            x + rx, y
+        ))
+    }
 }
 
 /// The value of `name="..."` in the attributes of an element.

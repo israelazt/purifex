@@ -52,173 +52,218 @@ fn finding(severity: Severity, title: &str, evidence: String) -> Finding {
     }
 }
 
-/// The leads of a session, most serious first.
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
+/// The leads of a session, most serious first. Each lead is its own small function that
+/// answers `None` when the session does not show it; the order below is the order they
+/// are listed in among equally serious ones.
 pub fn diagnose(s: &SessionSummary) -> Vec<Finding> {
-    let mut out = Vec::new();
-    let gpu_util = s.gpu.as_ref().map(|g| g.util);
-
-    if let Some(g) = &s.gpu {
-        if g.util.p95 >= limit::GPU_BOUND {
-            out.push(finding(
-                Severity::Warning,
-                "La tarjeta gráfica va al límite",
-                format!("uso de GPU p95 {:.0} %, media {:.0} %: bajar la calidad gráfica o la resolución sube los FPS", g.util.p95, g.util.avg),
-            ));
-        }
-        if g.heat_throttled_pct >= limit::HEAT_SHARE || g.temp_c.max >= limit::HOT_GPU_C {
-            out.push(finding(
-                Severity::Warning,
-                "La GPU se frena por calor",
-                format!("frenada por temperatura el {:.0} % del tiempo, máx. {:.0} °C: revisar ventilación y polvo", g.heat_throttled_pct, g.temp_c.max),
-            ));
-        }
-    }
-
-    let gpu_has_room = gpu_util.is_none_or(|u| u.avg < limit::GPU_HAS_ROOM);
-    if s.core_pinned_pct >= limit::PINNED_SHARE && gpu_has_room {
-        out.push(finding(
-            Severity::Warning,
-            "Un núcleo del CPU está al tope (el juego espera al procesador)",
-            format!("algún núcleo al 95 % o más el {:.0} % del tiempo, núcleo más cargado p95 {:.0} %, y la GPU tiene margen", s.core_pinned_pct, s.cpu_max_core.p95),
-        ));
-    }
-    if s.cpu_clock_pct.avg > 0.0
-        && s.cpu_clock_pct.avg < limit::LOW_CLOCK
-        && s.cpu_max_core.p95 >= 80.0
-    {
-        out.push(finding(
-            Severity::Warning,
-            "El CPU no sube de frecuencia bajo carga",
-            format!("trabaja al {:.0} % de su frecuencia máxima de media: plan de energía, ahorro de batería o temperatura", s.cpu_clock_pct.avg),
-        ));
-    }
-    if s.dpc_interrupt.p95 >= limit::DPC_P95 {
-        out.push(finding(
-            Severity::Warning,
-            "Mucho tiempo en interrupciones/DPC (síntoma típico de un driver)",
-            format!("p95 {:.1} %, máx. {:.1} %: da tirones aunque los FPS medios sean buenos; candidatos: red, audio, GPU", s.dpc_interrupt.p95, s.dpc_interrupt.max),
-        ));
-    }
-    if s.ram_used.p95 >= limit::RAM_P95 {
-        out.push(finding(
-            Severity::Warning,
-            "Poca memoria libre",
-            format!(
-                "RAM en uso p95 {:.0} %: el sistema puede estar usando el disco como memoria",
-                s.ram_used.p95
-            ),
-        ));
-    }
-    let client = s.groups.iter().find(|g| g.group == Group::LeagueClient);
-    if let Some(client) = client.filter(|g| g.cpu.avg >= limit::LEAGUE_CLIENT) {
-        out.push(finding(
-            Severity::Warning,
-            "El cliente de League gasta CPU mientras juegas",
-            format!(
-                "el cliente usa de media un {:.1} % del CPU (p95 {:.1} %) y el juego un {:.1} %: cerrarlo durante la partida lo libera",
-                client.cpu.avg, client.cpu.p95, s.game_cpu.avg
-            ),
-        ));
-    }
-    let busy: Vec<_> = s
-        .background
-        .iter()
-        // The League client has its own lead above.
-        .filter(|b| {
-            b.avg_cpu >= limit::BACKGROUND && group_of(&b.name) != Some(Group::LeagueClient)
-        })
-        .collect();
-    if !busy.is_empty() {
-        let list: Vec<String> = busy
-            .iter()
-            .map(|b| format!("{} {:.1} %", b.name, b.avg_cpu))
-            .collect();
-        out.push(finding(
-            Severity::Info,
-            "Programas en segundo plano que consumen CPU",
-            format!("de media: {}", list.join(", ")),
-        ));
-    }
+    let mut out: Vec<Finding> = [
+        gpu_bound(s),
+        gpu_heat(s),
+        core_pinned(s),
+        low_clock(s),
+        dpc_time(s),
+        low_memory(s),
+        league_client(s),
+        background_load(s),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
     out.sort_by_key(|f| std::cmp::Reverse(f.severity));
     out
 }
 
+fn gpu_bound(s: &SessionSummary) -> Option<Finding> {
+    let g = s.gpu.as_ref().filter(|g| g.util.p95 >= limit::GPU_BOUND)?;
+    Some(finding(
+        Severity::Warning,
+        "La tarjeta gráfica va al límite",
+        format!("uso de GPU p95 {:.0} %, media {:.0} %: bajar la calidad gráfica o la resolución sube los FPS", g.util.p95, g.util.avg),
+    ))
+}
+
+fn gpu_heat(s: &SessionSummary) -> Option<Finding> {
+    let g = s.gpu.as_ref().filter(|g| {
+        g.heat_throttled_pct >= limit::HEAT_SHARE || g.temp_c.max >= limit::HOT_GPU_C
+    })?;
+    Some(finding(
+        Severity::Warning,
+        "La GPU se frena por calor",
+        format!("frenada por temperatura el {:.0} % del tiempo, máx. {:.0} °C: revisar ventilación y polvo", g.heat_throttled_pct, g.temp_c.max),
+    ))
+}
+
+/// A pinned core is the limit only when the graphics card still has room.
+fn core_pinned(s: &SessionSummary) -> Option<Finding> {
+    let gpu_has_room = s
+        .gpu
+        .as_ref()
+        .is_none_or(|g| g.util.avg < limit::GPU_HAS_ROOM);
+    if s.core_pinned_pct < limit::PINNED_SHARE || !gpu_has_room {
+        return None;
+    }
+    Some(finding(
+        Severity::Warning,
+        "Un núcleo del CPU está al tope (el juego espera al procesador)",
+        format!("algún núcleo al 95 % o más el {:.0} % del tiempo, núcleo más cargado p95 {:.0} %, y la GPU tiene margen", s.core_pinned_pct, s.cpu_max_core.p95),
+    ))
+}
+
+fn low_clock(s: &SessionSummary) -> Option<Finding> {
+    let clock = s.cpu_clock_pct.avg;
+    if clock <= 0.0 || clock >= limit::LOW_CLOCK || s.cpu_max_core.p95 < 80.0 {
+        return None;
+    }
+    Some(finding(
+        Severity::Warning,
+        "El CPU no sube de frecuencia bajo carga",
+        format!("trabaja al {clock:.0} % de su frecuencia máxima de media: plan de energía, ahorro de batería o temperatura"),
+    ))
+}
+
+fn dpc_time(s: &SessionSummary) -> Option<Finding> {
+    if s.dpc_interrupt.p95 < limit::DPC_P95 {
+        return None;
+    }
+    Some(finding(
+        Severity::Warning,
+        "Mucho tiempo en interrupciones/DPC (síntoma típico de un driver)",
+        format!("p95 {:.1} %, máx. {:.1} %: da tirones aunque los FPS medios sean buenos; candidatos: red, audio, GPU", s.dpc_interrupt.p95, s.dpc_interrupt.max),
+    ))
+}
+
+fn low_memory(s: &SessionSummary) -> Option<Finding> {
+    if s.ram_used.p95 < limit::RAM_P95 {
+        return None;
+    }
+    Some(finding(
+        Severity::Warning,
+        "Poca memoria libre",
+        format!(
+            "RAM en uso p95 {:.0} %: el sistema puede estar usando el disco como memoria",
+            s.ram_used.p95
+        ),
+    ))
+}
+
+fn league_client(s: &SessionSummary) -> Option<Finding> {
+    let client = s
+        .groups
+        .iter()
+        .find(|g| g.group == Group::LeagueClient && g.cpu.avg >= limit::LEAGUE_CLIENT)?;
+    Some(finding(
+        Severity::Warning,
+        "El cliente de League gasta CPU mientras juegas",
+        format!(
+            "el cliente usa de media un {:.1} % del CPU (p95 {:.1} %) y el juego un {:.1} %: cerrarlo durante la partida lo libera",
+            client.cpu.avg, client.cpu.p95, s.game_cpu.avg
+        ),
+    ))
+}
+
+/// Background programs that use CPU. The League client has its own lead above.
+fn background_load(s: &SessionSummary) -> Option<Finding> {
+    let busy: Vec<String> = s
+        .background
+        .iter()
+        .filter(|b| {
+            b.avg_cpu >= limit::BACKGROUND && group_of(&b.name) != Some(Group::LeagueClient)
+        })
+        .map(|b| format!("{} {:.1} %", b.name, b.avg_cpu))
+        .collect();
+    if busy.is_empty() {
+        return None;
+    }
+    Some(finding(
+        Severity::Info,
+        "Programas en segundo plano que consumen CPU",
+        format!("de media: {}", busy.join(", ")),
+    ))
+}
+
 impl SessionSummary {
     /// The summary and its leads, as text for a terminal.
-    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn to_text(&self) -> String {
-        let mut out = String::new();
-        let line = |out: &mut String, name: &str, s: &crate::session::Stat, unit: &str| {
-            let _ = writeln!(
-                out,
-                "  {name:<26} media {:>6.1}{unit}  p95 {:>6.1}{unit}  máx {:>6.1}{unit}",
-                s.avg, s.p95, s.max
-            );
-        };
-        let _ = writeln!(
-            out,
-            "Sesión de {} s ({} muestras)\n",
+        let mut out = format!(
+            "Sesión de {} s ({} muestras)\n\n",
             self.seconds, self.samples
         );
-        line(&mut out, "CPU total", &self.cpu_total, " %");
-        line(&mut out, "Núcleo más cargado", &self.cpu_max_core, " %");
+        self.write_cpu_and_memory(&mut out);
+        self.write_game(&mut out);
+        self.write_gpu(&mut out);
+        let _ = writeln!(
+            out,
+            "  Coste de medir: {:.0} µs por muestra (máx. {:.0})\n",
+            self.sample_cost_us.avg, self.sample_cost_us.max
+        );
+        write_findings(&mut out, &diagnose(self));
+        out.push_str("\nNota: sin los tiempos de fotograma no se sabe cuántos FPS se perdieron, solo qué limitaba al equipo.\n");
+        out
+    }
+
+    fn write_cpu_and_memory(&self, out: &mut String) {
+        stat_line(out, "CPU total", &self.cpu_total, " %");
+        stat_line(out, "Núcleo más cargado", &self.cpu_max_core, " %");
         let _ = writeln!(
             out,
             "  Segundos con un núcleo >= 95 %: {:.0} %",
             self.core_pinned_pct
         );
         for g in &self.groups {
-            let name = format!("CPU {}", g.group.label());
-            line(&mut out, &name, &g.cpu, " %");
+            stat_line(out, &format!("CPU {}", g.group.label()), &g.cpu, " %");
         }
-        line(&mut out, "Interrupciones/DPC", &self.dpc_interrupt, " %");
-        line(
-            &mut out,
-            "Frecuencia (de la base)",
-            &self.cpu_clock_pct,
-            " %",
-        );
-        line(&mut out, "RAM en uso", &self.ram_used, " %");
+        stat_line(out, "Interrupciones/DPC", &self.dpc_interrupt, " %");
+        stat_line(out, "Frecuencia (de la base)", &self.cpu_clock_pct, " %");
+        stat_line(out, "RAM en uso", &self.ram_used, " %");
+    }
+
+    fn write_game(&self, out: &mut String) {
         if self.game_cpu.max > 0.0 {
-            line(&mut out, "El juego: CPU", &self.game_cpu, " %");
-            line(&mut out, "El juego: memoria", &self.game_memory_mb, " MB");
+            stat_line(out, "El juego: CPU", &self.game_cpu, " %");
+            stat_line(out, "El juego: memoria", &self.game_memory_mb, " MB");
         }
-        match &self.gpu {
-            Some(g) => {
-                line(&mut out, "GPU: uso", &g.util, " %");
-                line(&mut out, "GPU: temperatura", &g.temp_c, " °C");
-                line(&mut out, "GPU: consumo", &g.power_w, " W");
-                line(&mut out, "GPU: reloj (de la máx.)", &g.clock_pct, " %");
-                let _ = writeln!(
-                    out,
-                    "  GPU frenada por calor {:.0} % · por límite de consumo {:.0} %",
-                    g.heat_throttled_pct, g.power_capped_pct
-                );
-            }
-            None => {
-                let _ = writeln!(
-                    out,
-                    "  GPU: sin datos (solo se leen tarjetas NVIDIA por ahora)"
-                );
-            }
-        }
+    }
+
+    fn write_gpu(&self, out: &mut String) {
+        let Some(g) = &self.gpu else {
+            let _ = writeln!(
+                out,
+                "  GPU: sin datos (solo se leen tarjetas NVIDIA por ahora)"
+            );
+            return;
+        };
+        stat_line(out, "GPU: uso", &g.util, " %");
+        stat_line(out, "GPU: temperatura", &g.temp_c, " °C");
+        stat_line(out, "GPU: consumo", &g.power_w, " W");
+        stat_line(out, "GPU: reloj (de la máx.)", &g.clock_pct, " %");
         let _ = writeln!(
             out,
-            "  Coste de medir: {:.0} µs por muestra (máx. {:.0})\n",
-            self.sample_cost_us.avg, self.sample_cost_us.max
+            "  GPU frenada por calor {:.0} % · por límite de consumo {:.0} %",
+            g.heat_throttled_pct, g.power_capped_pct
         );
-        let findings = diagnose(self);
-        if findings.is_empty() {
-            let _ = writeln!(out, "Nada destacable en esta sesión: ni CPU, ni GPU, ni drivers, ni calor la limitaron.");
-        } else {
-            let _ = writeln!(out, "Pistas:");
-            for f in findings {
-                let _ = writeln!(out, " - {}\n     {}", f.title, f.evidence);
-            }
-        }
-        out.push_str("\nNota: sin los tiempos de fotograma no se sabe cuántos FPS se perdieron, solo qué limitaba al equipo.\n");
-        out
+    }
+}
+
+/// One line of the summary: a name and the average, 95th percentile and maximum.
+fn stat_line(out: &mut String, name: &str, s: &crate::session::Stat, unit: &str) {
+    let _ = writeln!(
+        out,
+        "  {name:<26} media {:>6.1}{unit}  p95 {:>6.1}{unit}  máx {:>6.1}{unit}",
+        s.avg, s.p95, s.max
+    );
+}
+
+fn write_findings(out: &mut String, findings: &[Finding]) {
+    if findings.is_empty() {
+        let _ = writeln!(
+            out,
+            "Nada destacable en esta sesión: ni CPU, ni GPU, ni drivers, ni calor la limitaron."
+        );
+        return;
+    }
+    let _ = writeln!(out, "Pistas:");
+    for f in findings {
+        let _ = writeln!(out, " - {}\n     {}", f.title, f.evidence);
     }
 }
 

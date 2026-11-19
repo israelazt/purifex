@@ -19,7 +19,9 @@ use purifex_domain::view::{Action, Confirm, Model, Page};
 
 use crate::services::Services;
 
+mod actions;
 mod apps;
+mod reading;
 
 pub struct Core {
     services: Box<dyn Services>,
@@ -57,96 +59,28 @@ impl Core {
         self.pending
     }
 
-    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn apply(&mut self, action: Action) {
         match action {
-            Action::Go(page) => {
-                if page != self.model.page {
-                    // The search belongs to the page it was typed in.
-                    self.model.query.clear();
-                }
-                self.model.page = page;
-                self.model.error = None;
-                // What was waiting for a confirmation, or told of a change, stays on its page.
-                (self.model.confirm, self.model.notice) = (None, None);
-                self.expect_reading();
-            }
-            Action::Rescan => {
-                let m = &mut self.model;
-                (m.overview, m.drivers, m.sessions, m.analysis, m.comparison) =
-                    (None, None, None, None, None);
-                (m.candidates, m.apps, m.traces) = (None, None, None);
-                (m.fixes, m.history, m.confirm, m.notice) = (None, None, None, None);
-                m.error = None;
-                self.expect_reading();
-            }
-            Action::SearchUpdates => match self.services.start_offers() {
-                Ok(()) => {
-                    self.model.offers = Offers::Searching;
-                    self.pending = true;
-                }
-                Err(error) => self.model.offers = Offers::Failed(error),
-            },
-            Action::OpenPage(url) => {
-                self.model.error = self.services.open_page(&url).err();
-            }
-            Action::AskUninstall(id) => self.model.confirm = Some(Confirm::Uninstall(id)),
-            Action::AskClean(name) => self.model.confirm = Some(Confirm::Clean(name)),
-            Action::AskCleanAll(name) => self.model.confirm = Some(Confirm::CleanAll(name)),
-            Action::ToggleTrace(location) => {
-                let unchecked = &mut self.model.unchecked;
-                match unchecked.iter().position(|l| *l == location) {
-                    Some(at) => {
-                        unchecked.remove(at);
-                    }
-                    None => unchecked.push(location),
-                }
-            }
-            Action::SelectTraces(all) => {
-                self.model.unchecked = match (&self.model.traces, all) {
-                    (Some(report), false) => {
-                        report.proposed.iter().map(|t| t.location.clone()).collect()
-                    }
-                    _ => Vec::new(),
-                };
-            }
-            Action::OpenTraces => {
-                self.model.traces_open = self
-                    .model
-                    .traces
-                    .as_ref()
-                    .is_some_and(|r| !r.proposed.is_empty());
-            }
-            Action::CloseTraces => {
-                self.model.traces_open = false;
-                self.model.confirm = None;
-            }
-            Action::FindTraces(name) => {
-                (self.model.traces, self.model.message) = (None, None);
-                (self.model.uninstalled, self.model.finding) = (Some(name.clone()), Some(name));
-                self.expect_reading();
-            }
-            Action::RefreshApps => {
-                if self.model.page == Page::Apps && self.model.finding.is_none() {
-                    if let Some(old) = self.model.apps.take() {
-                        self.previous_apps = Some(old);
-                        self.expect_reading();
-                    }
-                }
-            }
-            Action::SetFilter(filter) => self.model.filter = filter,
-            Action::SetQuery(query) => self.model.query = query,
-            Action::AskFix(id) => self.model.confirm = Some(Confirm::Apply(id)),
-            Action::AskUndo(seq) => self.model.confirm = Some(Confirm::Undo(seq)),
+            Action::Go(page) => self.go(page),
+            Action::Rescan => self.rescan(),
+            Action::SearchUpdates => self.search_updates(),
+            Action::OpenPage(url) => self.open_page(&url),
+            Action::AskUninstall(id) => self.ask(Confirm::Uninstall(id)),
+            Action::AskClean(name) => self.ask(Confirm::Clean(name)),
+            Action::AskCleanAll(name) => self.ask(Confirm::CleanAll(name)),
+            Action::AskFix(id) => self.ask(Confirm::Apply(id)),
+            Action::AskUndo(seq) => self.ask(Confirm::Undo(seq)),
             Action::CancelConfirm => self.model.confirm = None,
             Action::Confirm => self.confirmed(),
-            Action::SelectSession(id) => {
-                self.model.selected = Some(id);
-                self.model.analysis = None;
-                self.model.comparison = None;
-                self.model.error = None;
-                self.expect_reading();
-            }
+            Action::ToggleTrace(location) => self.toggle_trace(location),
+            Action::SelectTraces(all) => self.select_traces(all),
+            Action::OpenTraces => self.open_traces(),
+            Action::CloseTraces => self.close_traces(),
+            Action::FindTraces(name) => self.find_traces(name),
+            Action::RefreshApps => self.refresh_apps(),
+            Action::SetFilter(filter) => self.model.filter = filter,
+            Action::SetQuery(query) => self.model.query = query,
+            Action::SelectSession(id) => self.select_session(id),
         }
     }
 
@@ -221,11 +155,6 @@ impl Core {
 
     /// Reads what is missing. Each failure is shown, and the rest is still read.
     /// Returns whether the model changed (the window only redraws if it did).
-    #[expect(
-        clippy::cognitive_complexity,
-        clippy::too_many_lines,
-        reason = "legacy: split"
-    )]
     pub fn tick(&mut self) -> bool {
         if !self.pending {
             return false;
@@ -233,106 +162,15 @@ impl Core {
         let arrived = self.poll_offers() | self.check_watch();
         if !self.missing() {
             // Only the search of offers is going: nothing to read, nothing blocks.
-            self.pending = self.model.offers == Offers::Searching || self.watching.is_some();
+            self.pending = self.still_polling();
             self.model.busy = false;
             return arrived;
         }
-        let mut errors = Vec::new();
-        let mut note = |what: &str, error: String| errors.push(format!("{what}: {error}"));
-        if self.model.overview.is_none() {
-            match self.services.overview() {
-                Ok(overview) => self.model.overview = Some(overview),
-                Err(error) => note("estado general", error),
-            }
-        }
-        if self.model.sessions.is_none() {
-            match self.services.sessions() {
-                Ok(rows) => self.model.sessions = Some(rows),
-                Err(error) => note("grabaciones", error),
-            }
-        }
-        if self.model.page == Page::Drivers && self.model.drivers.is_none() {
-            match self.services.drivers() {
-                Ok(view) => self.model.drivers = Some(view),
-                Err(error) => note("drivers", error),
-            }
-        }
-        if self.model.page == Page::Apps {
-            if self.model.apps.is_none() {
-                match self.services.apps() {
-                    Ok(apps) => {
-                        let old = self.previous_apps.take();
-                        self.model.apps = Some(apps);
-                        if let Some(gone) = old.as_deref().and_then(|o| self.vanished(o)) {
-                            self.model.finding = Some(gone);
-                        }
-                    }
-                    Err(error) => note("apps", error),
-                }
-            }
-            if let Some(name) = self.model.finding.take() {
-                match self.services.clean_app(&name, false, None) {
-                    Ok(report) => {
-                        // Found: the window with the list opens by itself, everything checked.
-                        self.model.traces_open = !report.proposed.is_empty();
-                        self.model.unchecked = Vec::new();
-                        if report.proposed.is_empty() {
-                            self.model.message = Some(format!("{name}: no se encontraron restos."));
-                        }
-                        self.model.traces = Some(report);
-                    }
-                    Err(error) => note("restos", error),
-                }
-            }
-        }
-        if self.model.page == Page::Drivers && self.model.candidates.is_none() {
-            match self.services.candidates() {
-                Ok(list) => self.model.candidates = Some(list),
-                Err(error) => {
-                    // Shown once; not asked again on every visit.
-                    self.model.candidates = Some(Vec::new());
-                    note("propuestas", error);
-                }
-            }
-        }
-        if self.model.page == Page::Fixes {
-            if self.model.fixes.is_none() {
-                match self.services.fixes() {
-                    Ok(fixes) => self.model.fixes = Some(fixes),
-                    Err(error) => note("arreglos", error),
-                }
-            }
-            if self.model.history.is_none() {
-                match self.services.history() {
-                    Ok(history) => self.model.history = Some(history),
-                    Err(error) => note("historial", error),
-                }
-            }
-        }
-        if self.model.page == Page::Sessions && self.model.analysis.is_none() {
-            // With nothing chosen, the newest recording that can be read.
-            let chosen = self.model.selected.clone().or_else(|| {
-                self.model
-                    .sessions
-                    .as_ref()
-                    .and_then(|rows| rows.iter().find(|r| r.problem.is_none()))
-                    .map(|r| r.id.clone())
-            });
-            if let Some(id) = chosen {
-                match self.services.analyze(Some(&id)) {
-                    Ok(analysis) => {
-                        self.model.selected = Some(id.clone());
-                        self.model.analysis = Some(analysis);
-                        self.model.comparison = self.compare_with_previous(&id);
-                    }
-                    Err(error) => note("partida", error),
-                }
-            }
-        }
+        let errors = self.read_missing();
         if !errors.is_empty() {
             self.model.error = Some(errors.join(" · "));
         }
-        self.pending = self.model.offers == Offers::Searching || self.watching.is_some();
+        self.pending = self.still_polling();
         self.model.busy = false;
         true
     }

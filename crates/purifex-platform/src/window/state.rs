@@ -177,7 +177,8 @@ impl<H: UiHandler> State<H> {
         }
     }
 
-    #[expect(clippy::too_many_lines, reason = "legacy: split")]
+    /// Answers a message of the system. `None`: not handled here, the system does its
+    /// default. Each message has its own small method below.
     pub(super) fn message(
         &mut self,
         hwnd: HWND,
@@ -187,208 +188,272 @@ impl<H: UiHandler> State<H> {
     ) -> Option<LRESULT> {
         match msg {
             WM_ERASEBKGND => Some(LRESULT(1)),
-            WM_PAINT => {
-                let mut ps = PAINTSTRUCT::default();
-                // SAFETY: paired Begin/EndPaint on a live window.
-                unsafe {
-                    BeginPaint(hwnd, &mut ps);
-                    self.paint(hwnd);
-                    let _ = EndPaint(hwnd, &ps);
-                }
-                Some(LRESULT(0))
-            }
-            WM_SIZE => {
-                let (w, h) = self.client(hwnd);
-                if let Some(renderer) = &self.renderer {
-                    renderer.resize(w, h);
-                }
-                self.react(
-                    hwnd,
-                    Reaction {
-                        redraw: true,
-                        tick: false,
-                    },
-                );
-                Some(LRESULT(0))
-            }
-            WM_DPICHANGED => {
-                self.dpi = (wp.0 & 0xffff) as u32;
-                if let Some(renderer) = &self.renderer {
-                    renderer.set_dpi(self.dpi as f32);
-                }
-                // SAFETY: the system passes the suggested rectangle in `lp`.
-                unsafe {
-                    let suggested = &*(lp.0 as *const RECT);
-                    let _ = SetWindowPos(
-                        hwnd,
-                        None,
-                        suggested.left,
-                        suggested.top,
-                        suggested.right - suggested.left,
-                        suggested.bottom - suggested.top,
-                        SWP_NOZORDER | SWP_NOACTIVATE,
-                    );
-                }
-                Some(LRESULT(0))
-            }
-            WM_GETMINMAXINFO => {
-                // SAFETY: the system passes a `MINMAXINFO` in `lp`.
-                unsafe {
-                    let info = &mut *(lp.0 as *mut MINMAXINFO);
-                    let mut rect = RECT {
-                        left: 0,
-                        top: 0,
-                        right: (MIN_SIZE.0 * self.scale()) as i32,
-                        bottom: (MIN_SIZE.1 * self.scale()) as i32,
-                    };
-                    let _ = AdjustWindowRectExForDpi(
-                        &mut rect,
-                        WS_OVERLAPPEDWINDOW,
-                        false,
-                        Default::default(),
-                        self.dpi,
-                    );
-                    info.ptMinTrackSize.x = rect.right - rect.left;
-                    info.ptMinTrackSize.y = rect.bottom - rect.top;
-                }
-                Some(LRESULT(0))
-            }
-            WM_MOUSEMOVE => {
-                if !self.tracking_leave {
-                    let mut track = TRACKMOUSEEVENT {
-                        cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
-                        dwFlags: TME_LEAVE,
-                        hwndTrack: hwnd,
-                        dwHoverTime: 0,
-                    };
-                    // SAFETY: the structure is a live local with its size set.
-                    self.tracking_leave = unsafe { TrackMouseEvent(&mut track) }.is_ok();
-                }
-                let event = UiEvent::Move {
-                    x: self.units(low_word(lp.0)),
-                    y: self.units(high_word(lp.0)),
-                };
-                let reaction = self.handler().event(event);
-                self.react(hwnd, reaction);
-                Some(LRESULT(0))
-            }
-            WM_MOUSELEAVE => {
-                self.tracking_leave = false;
-                let reaction = self.handler().event(UiEvent::Leave);
-                self.react(hwnd, reaction);
-                Some(LRESULT(0))
-            }
-            WM_LBUTTONDOWN => {
-                let event = UiEvent::Press {
-                    x: self.units(low_word(lp.0)),
-                    y: self.units(high_word(lp.0)),
-                };
-                // The window keeps the mouse while the button is down, so dragging the
-                // scroll bar goes on even when the pointer leaves the window.
-                // SAFETY: captures the mouse for a live window.
-                unsafe {
-                    SetCapture(hwnd);
-                }
-                let reaction = self.handler().event(event);
-                self.react(hwnd, reaction);
-                Some(LRESULT(0))
-            }
+            WM_PAINT => self.on_paint(hwnd),
+            WM_SIZE => self.on_size(hwnd),
+            WM_DPICHANGED => self.on_dpi_changed(hwnd, wp, lp),
+            WM_GETMINMAXINFO => self.on_min_size(lp),
+            WM_MOUSEMOVE => self.on_mouse_move(hwnd, lp),
+            WM_MOUSELEAVE => self.on_mouse_leave(hwnd),
+            WM_LBUTTONDOWN => self.on_button_down(hwnd, lp),
+            WM_LBUTTONUP => self.on_button_up(hwnd),
             WM_SETFOCUS => {
                 // The user came back to the window: the program may want to read again.
-                let reaction = self.handler().event(UiEvent::Focus);
-                self.react(hwnd, reaction);
+                self.send(hwnd, UiEvent::Focus);
                 None
             }
-            WM_LBUTTONUP => {
-                // SAFETY: gives the mouse back (it was captured on the press).
-                unsafe {
-                    let _ = ReleaseCapture();
-                }
-                let reaction = self.handler().event(UiEvent::Release);
-                self.react(hwnd, reaction);
-                Some(LRESULT(0))
-            }
-            WM_KEYDOWN => {
-                // The keys that scroll; the letters come as `WM_CHAR`.
-                let key = match wp.0 as u32 {
-                    0x26 => Some(Key::Up),
-                    0x28 => Some(Key::Down),
-                    0x21 => Some(Key::PageUp),
-                    0x22 => Some(Key::PageDown),
-                    0x24 => Some(Key::Home),
-                    0x23 => Some(Key::End),
-                    _ => None,
-                };
-                match key {
-                    Some(key) => {
-                        let reaction = self.handler().event(UiEvent::Key(key));
-                        self.react(hwnd, reaction);
-                        Some(LRESULT(0))
-                    }
-                    None => None,
-                }
-            }
-            WM_MOUSEWHEEL => {
-                let notches = high_word(wp.0 as isize) as f32 / 120.0;
-                let reaction = self.handler().event(UiEvent::Wheel {
-                    dy: -notches * WHEEL_NOTCH,
-                });
-                self.react(hwnd, reaction);
-                Some(LRESULT(0))
-            }
-            WM_CHAR => {
-                let event = match char::from_u32(wp.0 as u32) {
-                    Some('\u{8}') => Some(UiEvent::Key(Key::Backspace)),
-                    Some('\u{1b}') => Some(UiEvent::Key(Key::Escape)),
-                    Some('\r') => Some(UiEvent::Key(Key::Enter)),
-                    Some('\u{b}') => Some(UiEvent::Key(Key::CtrlK)),
-                    Some(c) if !c.is_control() => Some(UiEvent::Char(c)),
-                    _ => None,
-                };
-                if let Some(event) = event {
-                    let reaction = self.handler().event(event);
-                    self.react(hwnd, reaction);
-                }
-                Some(LRESULT(0))
-            }
-            WM_TIMER if wp.0 == FRAME_TIMER => {
-                self.react(
-                    hwnd,
-                    Reaction {
-                        redraw: true,
-                        tick: false,
-                    },
-                );
-                Some(LRESULT(0))
-            }
+            WM_KEYDOWN => self.on_key_down(hwnd, wp),
+            WM_CHAR => self.on_char(hwnd, wp),
+            WM_MOUSEWHEEL => self.on_wheel(hwnd, wp),
+            WM_TIMER if wp.0 == FRAME_TIMER => self.on_frame_timer(hwnd),
+            WM_TIMER if wp.0 == TICK_TIMER => self.on_tick_timer(hwnd),
             WM_APP => {
                 self.run_tick(hwnd);
-                Some(LRESULT(0))
+                HANDLED
             }
-            WM_TIMER if wp.0 == TICK_TIMER => {
-                // SAFETY: stops the timer of a live window; it is set again if needed.
-                unsafe {
-                    let _ = KillTimer(Some(hwnd), TICK_TIMER);
-                }
-                self.run_tick(hwnd);
-                Some(LRESULT(0))
-            }
-            WM_SETCURSOR if (lp.0 & 0xffff) as u32 == HTCLIENT => {
-                let cursor = if self.handler().hand_cursor() {
-                    IDC_HAND
-                } else {
-                    IDC_ARROW
-                };
-                // SAFETY: loads a stock cursor and sets it.
-                unsafe { SetCursor(LoadCursorW(None, cursor).ok()) };
-                Some(LRESULT(1))
-            }
+            WM_SETCURSOR if (lp.0 & 0xffff) as u32 == HTCLIENT => self.on_set_cursor(),
             WM_DESTROY => {
                 // SAFETY: ends the message loop of this thread.
                 unsafe { PostQuitMessage(0) };
-                Some(LRESULT(0))
+                HANDLED
             }
             _ => None,
         }
+    }
+
+    /// Hands an event to the program and does what it asks. The message is handled.
+    fn send(&mut self, hwnd: HWND, event: UiEvent) -> Option<LRESULT> {
+        let reaction = self.handler().event(event);
+        self.react(hwnd, reaction);
+        HANDLED
+    }
+
+    /// A new picture is wanted, nothing to read.
+    fn redraw(&mut self, hwnd: HWND) -> Option<LRESULT> {
+        self.react(
+            hwnd,
+            Reaction {
+                redraw: true,
+                tick: false,
+            },
+        );
+        HANDLED
+    }
+
+    fn on_paint(&mut self, hwnd: HWND) -> Option<LRESULT> {
+        let mut ps = PAINTSTRUCT::default();
+        // SAFETY: paired Begin/EndPaint on a live window.
+        unsafe {
+            BeginPaint(hwnd, &mut ps);
+            self.paint(hwnd);
+            let _ = EndPaint(hwnd, &ps);
+        }
+        HANDLED
+    }
+
+    fn on_size(&mut self, hwnd: HWND) -> Option<LRESULT> {
+        let (w, h) = self.client(hwnd);
+        if let Some(renderer) = &self.renderer {
+            renderer.resize(w, h);
+        }
+        self.redraw(hwnd)
+    }
+
+    /// The window moved to a screen with another density: draw at the new scale and take
+    /// the size and place the system suggests.
+    fn on_dpi_changed(&mut self, hwnd: HWND, wp: WPARAM, lp: LPARAM) -> Option<LRESULT> {
+        self.dpi = (wp.0 & 0xffff) as u32;
+        if let Some(renderer) = &self.renderer {
+            renderer.set_dpi(self.dpi as f32);
+        }
+        // SAFETY: the system passes the suggested rectangle in `lp`.
+        unsafe {
+            let suggested = &*(lp.0 as *const RECT);
+            let _ = SetWindowPos(
+                hwnd,
+                None,
+                suggested.left,
+                suggested.top,
+                suggested.right - suggested.left,
+                suggested.bottom - suggested.top,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+        }
+        HANDLED
+    }
+
+    /// Tells the system the smallest the window may be, borders and caption included.
+    fn on_min_size(&mut self, lp: LPARAM) -> Option<LRESULT> {
+        let mut rect = RECT {
+            left: 0,
+            top: 0,
+            right: (MIN_SIZE.0 * self.scale()) as i32,
+            bottom: (MIN_SIZE.1 * self.scale()) as i32,
+        };
+        // SAFETY: `rect` is a live local; the system passes a `MINMAXINFO` in `lp`.
+        unsafe {
+            let _ = AdjustWindowRectExForDpi(
+                &mut rect,
+                WS_OVERLAPPEDWINDOW,
+                false,
+                Default::default(),
+                self.dpi,
+            );
+            let info = &mut *(lp.0 as *mut MINMAXINFO);
+            info.ptMinTrackSize.x = rect.right - rect.left;
+            info.ptMinTrackSize.y = rect.bottom - rect.top;
+        }
+        HANDLED
+    }
+
+    fn on_mouse_move(&mut self, hwnd: HWND, lp: LPARAM) -> Option<LRESULT> {
+        if !self.tracking_leave {
+            let mut track = TRACKMOUSEEVENT {
+                cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                dwFlags: TME_LEAVE,
+                hwndTrack: hwnd,
+                dwHoverTime: 0,
+            };
+            // SAFETY: the structure is a live local with its size set.
+            self.tracking_leave = unsafe { TrackMouseEvent(&mut track) }.is_ok();
+        }
+        let (x, y) = self.point(lp);
+        self.send(hwnd, UiEvent::Move { x, y })
+    }
+
+    /// The pointer left the window; the next movement asks to be told again.
+    fn on_mouse_leave(&mut self, hwnd: HWND) -> Option<LRESULT> {
+        self.tracking_leave = false;
+        self.send(hwnd, UiEvent::Leave)
+    }
+
+    fn on_button_down(&mut self, hwnd: HWND, lp: LPARAM) -> Option<LRESULT> {
+        // The window keeps the mouse while the button is down, so dragging the
+        // scroll bar goes on even when the pointer leaves the window.
+        // SAFETY: captures the mouse for a live window.
+        unsafe {
+            SetCapture(hwnd);
+        }
+        let (x, y) = self.point(lp);
+        self.send(hwnd, UiEvent::Press { x, y })
+    }
+
+    fn on_button_up(&mut self, hwnd: HWND) -> Option<LRESULT> {
+        // SAFETY: gives the mouse back (it was captured on the press).
+        unsafe {
+            let _ = ReleaseCapture();
+        }
+        self.send(hwnd, UiEvent::Release)
+    }
+
+    /// The position of the pointer, in units, from the `lp` of a mouse message.
+    fn point(&self, lp: LPARAM) -> (f32, f32) {
+        (self.units(low_word(lp.0)), self.units(high_word(lp.0)))
+    }
+
+    /// The keys that scroll; the letters come as `WM_CHAR`.
+    fn on_key_down(&mut self, hwnd: HWND, wp: WPARAM) -> Option<LRESULT> {
+        let key = scrolling_key(wp.0 as u32)?;
+        self.send(hwnd, UiEvent::Key(key))
+    }
+
+    fn on_char(&mut self, hwnd: HWND, wp: WPARAM) -> Option<LRESULT> {
+        if let Some(event) = char_event(char::from_u32(wp.0 as u32)) {
+            self.send(hwnd, event);
+        }
+        HANDLED
+    }
+
+    fn on_wheel(&mut self, hwnd: HWND, wp: WPARAM) -> Option<LRESULT> {
+        let notches = high_word(wp.0 as isize) as f32 / 120.0;
+        self.send(
+            hwnd,
+            UiEvent::Wheel {
+                dy: -notches * WHEEL_NOTCH,
+            },
+        )
+    }
+
+    fn on_frame_timer(&mut self, hwnd: HWND) -> Option<LRESULT> {
+        self.redraw(hwnd)
+    }
+
+    fn on_tick_timer(&mut self, hwnd: HWND) -> Option<LRESULT> {
+        // SAFETY: stops the timer of a live window; it is set again if needed.
+        unsafe {
+            let _ = KillTimer(Some(hwnd), TICK_TIMER);
+        }
+        self.run_tick(hwnd);
+        HANDLED
+    }
+
+    fn on_set_cursor(&mut self) -> Option<LRESULT> {
+        let cursor = if self.handler().hand_cursor() {
+            IDC_HAND
+        } else {
+            IDC_ARROW
+        };
+        // SAFETY: loads a stock cursor and sets it.
+        unsafe { SetCursor(LoadCursorW(None, cursor).ok()) };
+        Some(LRESULT(1))
+    }
+}
+
+/// The message was handled and the system has nothing more to do.
+const HANDLED: Option<LRESULT> = Some(LRESULT(0));
+
+/// The keys that scroll the page, by virtual-key code.
+fn scrolling_key(virtual_key: u32) -> Option<Key> {
+    match virtual_key {
+        0x26 => Some(Key::Up),
+        0x28 => Some(Key::Down),
+        0x21 => Some(Key::PageUp),
+        0x22 => Some(Key::PageDown),
+        0x24 => Some(Key::Home),
+        0x23 => Some(Key::End),
+        _ => None,
+    }
+}
+
+/// What a typed character means: a special key (backspace, escape, enter, Ctrl+K), a
+/// character to type, or nothing (other control characters).
+fn char_event(c: Option<char>) -> Option<UiEvent> {
+    match c? {
+        '\u{8}' => Some(UiEvent::Key(Key::Backspace)),
+        '\u{1b}' => Some(UiEvent::Key(Key::Escape)),
+        '\r' => Some(UiEvent::Key(Key::Enter)),
+        '\u{b}' => Some(UiEvent::Key(Key::CtrlK)),
+        c if !c.is_control() => Some(UiEvent::Char(c)),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_scrolling_keys_are_known_and_the_rest_are_left_to_the_system() {
+        assert_eq!(scrolling_key(0x26), Some(Key::Up));
+        assert_eq!(scrolling_key(0x22), Some(Key::PageDown));
+        assert_eq!(scrolling_key(0x41), None, "letters come as characters");
+    }
+
+    #[test]
+    fn a_typed_character_is_a_key_a_letter_or_nothing() {
+        assert_eq!(
+            char_event(Some('\u{8}')),
+            Some(UiEvent::Key(Key::Backspace))
+        );
+        assert_eq!(char_event(Some('\r')), Some(UiEvent::Key(Key::Enter)));
+        assert_eq!(char_event(Some('\u{b}')), Some(UiEvent::Key(Key::CtrlK)));
+        assert_eq!(char_event(Some('ñ')), Some(UiEvent::Char('ñ')));
+        assert_eq!(char_event(Some('\u{7}')), None, "other control characters");
+        assert_eq!(char_event(None), None, "not a character at all");
+    }
+
+    #[test]
+    fn the_words_of_a_mouse_message_keep_their_sign() {
+        let lp = (((-5i16) as u16 as isize) << 16) | (300i16 as u16 as isize);
+        assert_eq!((low_word(lp), high_word(lp)), (300, -5));
     }
 }

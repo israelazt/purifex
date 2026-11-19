@@ -5,7 +5,7 @@
 //! orders the steps and refuses the ones that are not safe yet (cleaning an app
 //! that is still installed).
 
-use purifex_domain::app_traces::{names_of, propose, simple};
+use purifex_domain::app_traces::{names_of, propose_with, simple};
 use purifex_domain::apps::{AppKind, InstalledApp};
 use purifex_domain::cleanup_log::{is_restored, next_seq, CleanReport, CleanupEntry, CleanupState};
 use purifex_domain::ports::{CleanupStore, SeedProbe, TraceFinder, Uninstaller};
@@ -185,7 +185,8 @@ impl Cleaning {
             .as_ref()
             .ok_or("esta versión no sabe buscar restos")?;
         let others: Vec<InstalledApp> = all.iter().filter(|a| a.id != app.id).cloned().collect();
-        let proposed = propose(&app, &others, &finder.candidates(&app)?);
+        let found = finder.search(&app)?;
+        let proposed = propose_with(&app, &others, &found.seeds, &found.candidates);
         if !confirmed {
             return Ok(CleanReport {
                 app: app.name,
@@ -453,6 +454,51 @@ mod tests {
         let done = c.clean(&[], &[], "Discord", true, None).unwrap();
         assert_eq!(done.removed.len(), 1);
         assert_eq!(log.borrow().removed, [DATA]);
+    }
+
+    /// A finder that also says which seeds it used (extensions it found in the registry).
+    struct SeedingFinder(Vec<Candidate>, purifex_domain::seeds::Seeds);
+
+    impl TraceFinder for SeedingFinder {
+        fn candidates(&self, _: &InstalledApp) -> Result<Vec<Candidate>, String> {
+            Ok(self.0.clone())
+        }
+        fn search(&self, _: &InstalledApp) -> Result<purifex_domain::ports::Found, String> {
+            Ok(purifex_domain::ports::Found {
+                seeds: self.1.clone(),
+                candidates: self.0.clone(),
+            })
+        }
+    }
+
+    #[test]
+    fn the_rules_judge_with_the_seeds_the_finder_used_and_the_default_is_the_apps_own() {
+        let key = Candidate {
+            kind: TraceKind::RegistryKey,
+            location: r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.dsc"
+                .into(),
+            bytes: 0,
+            registered_install: false,
+            value: None,
+            text: None,
+        };
+        let seeds = purifex_domain::seeds::Seeds::new(None, &[], &[".dsc".into()]);
+        let log = Rc::new(RefCell::new(CleanLog::default()));
+        let mut with = Cleaning::new(
+            Box::new(SeedingFinder(vec![key.clone()], seeds)),
+            Box::new(FakeCleaning(log.clone())),
+            Box::new(FakeCleaning(log.clone())),
+        );
+        let report = with.clean(&[], &[], "Discord", false, None).unwrap();
+        assert_eq!(report.proposed.len(), 1, "{:?}", report.proposed);
+        assert_eq!(
+            report.proposed[0].evidence,
+            purifex_domain::app_traces::Evidence::AssociatedExtension
+        );
+        // A finder that does not say gets the app's own seeds: the same key is refused.
+        let (mut plain, _) = cleaning(vec![key]);
+        let report = plain.clean(&[], &[], "Discord", false, None).unwrap();
+        assert!(report.proposed.is_empty());
     }
 
     #[test]

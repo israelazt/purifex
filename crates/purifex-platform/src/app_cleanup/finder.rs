@@ -9,13 +9,13 @@ use std::path::{Path, PathBuf};
 
 use purifex_domain::app_traces::{names_of, simple, Candidate, TraceKind};
 use purifex_domain::apps::InstalledApp;
-use purifex_domain::ports::TraceFinder;
-use purifex_domain::seeds::seeds_of;
+use purifex_domain::ports::{Found, TraceFinder};
+use purifex_domain::seeds::{seeds_of, Seeds};
 use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
 use super::find_files::{find_files, UserPlaces};
 use super::find_registry::{
-    discover_extensions, find_associations, find_program_keys, find_values, Hives,
+    discover_extensions, exes_in_values, find_associations, find_program_keys, find_values, Hives,
 };
 use crate::registry::{Key, View};
 
@@ -115,6 +115,10 @@ fn registry_roots() -> [(&'static str, HKEY, &'static str); 3] {
 
 impl TraceFinder for WindowsTraceFinder {
     fn candidates(&self, app: &InstalledApp) -> Result<Vec<Candidate>, String> {
+        self.search(app).map(|f| f.candidates)
+    }
+
+    fn search(&self, app: &InstalledApp) -> Result<Found, String> {
         let names = names_of(app);
         let mut found = Vec::new();
         if let Some(location) = app
@@ -129,8 +133,12 @@ impl TraceFinder for WindowsTraceFinder {
         let hives = Hives::real();
         let mut seeds = seeds_of(app);
         seeds.extensions.extend(discover_extensions(&hives, &seeds));
-        seeds.extensions.sort();
-        seeds.extensions.dedup();
+        let values = find_values(&hives, &seeds);
+        // Programs seen in what points into the folder (`...in\kdenlive.exe`) are the
+        // programs whose crash dumps to look for, even for an app uninstalled elsewhere.
+        let mut exes = seeds.exes.clone();
+        exes.extend(exes_in_values(&values, seeds.folder.as_deref()));
+        let seeds = Seeds::new(seeds.folder.as_deref(), &exes, &seeds.extensions);
         let (files, complete) = find_files(&UserPlaces::real(), &names, &seeds, FILES_BUDGET);
         if !complete {
             purifex_domain::log_warn!(
@@ -139,11 +147,14 @@ impl TraceFinder for WindowsTraceFinder {
             );
         }
         found.extend(files);
-        found.extend(find_values(&hives, &seeds));
+        found.extend(values);
         found.extend(find_associations(&hives, &seeds));
         found.extend(find_program_keys(&hives, &names, &seeds));
         if names.is_empty() {
-            return Ok(found);
+            return Ok(Found {
+                seeds,
+                candidates: found,
+            });
         }
         for root in roots() {
             let Ok(read) = fs::read_dir(&root) else {
@@ -174,7 +185,10 @@ impl TraceFinder for WindowsTraceFinder {
                 }
             }
         }
-        Ok(found)
+        Ok(Found {
+            seeds,
+            candidates: found,
+        })
     }
 }
 

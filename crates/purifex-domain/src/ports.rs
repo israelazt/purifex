@@ -48,6 +48,23 @@ pub trait TraceFinder {
         &self,
         app: &crate::apps::InstalledApp,
     ) -> Result<Vec<crate::app_traces::Candidate>, String>;
+
+    /// The candidates and the seeds they were looked for with, which can be more than
+    /// the app's own (extensions found in the registry, programs seen in its traces):
+    /// the rules must judge with the same seeds. By default, the app's own.
+    fn search(&self, app: &crate::apps::InstalledApp) -> Result<Found, String> {
+        Ok(Found {
+            seeds: crate::seeds::seeds_of(app),
+            candidates: self.candidates(app)?,
+        })
+    }
+}
+
+/// What a search found, and the seeds it used.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Found {
+    pub seeds: crate::seeds::Seeds,
+    pub candidates: Vec<crate::app_traces::Candidate>,
 }
 
 /// Looks at an app that is still installed and says what its traces will be

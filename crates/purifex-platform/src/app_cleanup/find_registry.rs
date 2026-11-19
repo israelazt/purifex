@@ -124,6 +124,33 @@ pub fn find_values(hives: &Hives, seeds: &Seeds) -> Vec<Candidate> {
     found
 }
 
+/// The names of the programs (`kdenlive.exe`) that the found values point to inside the
+/// app's folder.
+pub fn exes_in_values(values: &[Candidate], folder: Option<&str>) -> Vec<String> {
+    let Some(folder) = folder else {
+        return Vec::new();
+    };
+    let mut exes = Vec::new();
+    for c in values {
+        for text in [c.value.as_deref(), c.text.as_deref()]
+            .into_iter()
+            .flatten()
+        {
+            if !path_refers_to(text, folder) {
+                continue;
+            }
+            let lower = text.to_lowercase();
+            for (at, _) in lower.match_indices(".exe") {
+                let start = lower[..at].rfind(['\\', '/']).map_or(0, |i| i + 1);
+                exes.push(lower[start..at + 4].to_string());
+            }
+        }
+    }
+    exes.sort();
+    exes.dedup();
+    exes
+}
+
 /// Every extension registered in `Classes`, with the ProgId it names (or itself when
 /// the extension carries its own commands).
 pub fn registered_extensions(hives: &Hives) -> Vec<(String, String)> {
@@ -385,6 +412,32 @@ mod tests {
             .as_deref()
             .unwrap()
             .ends_with("fake.exe.FriendlyAppName"));
+    }
+
+    #[test]
+    fn the_programs_seen_in_values_inside_the_folder_are_named() {
+        let value = |name: &str, text: Option<&str>| Candidate {
+            kind: TraceKind::RegistryValue,
+            location: r"HKCU\Software\X".into(),
+            bytes: 0,
+            registered_install: false,
+            value: Some(name.into()),
+            text: text.map(String::from),
+        };
+        let values = [
+            value(
+                r"C:\Program Files\Kdenlive\bin\Kdenlive.exe.FriendlyAppName",
+                None,
+            ),
+            value("x", Some(r#""C:\Program Files\Kdenlive\bin\melt.exe" -x"#)),
+            value(r"C:\Program Files\Kdenlive2\bin\other.exe", None),
+            value(r"C:\Windows\notepad.exe", None),
+        ];
+        assert_eq!(
+            exes_in_values(&values, Some(r"C:\Program Files\Kdenlive")),
+            ["kdenlive.exe", "melt.exe"]
+        );
+        assert!(exes_in_values(&values, None).is_empty());
     }
 
     #[test]

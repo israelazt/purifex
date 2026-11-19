@@ -5,11 +5,12 @@
 
 mod capture;
 mod images;
+mod ops;
 mod text;
 
 use std::collections::HashMap;
 
-use purifex_domain::draw::{Color, DrawList, Op, Rect};
+use purifex_domain::draw::{Color, DrawList, Rect};
 use purifex_domain::icons::{icon, Seg};
 use windows::core::Interface;
 use windows::Win32::Foundation::HWND;
@@ -19,15 +20,14 @@ use windows::Win32::Graphics::Direct2D::Common::{
 };
 use windows::Win32::Graphics::Direct2D::{
     D2D1CreateFactory, ID2D1Bitmap, ID2D1Factory, ID2D1HwndRenderTarget, ID2D1PathGeometry,
-    ID2D1RenderTarget, ID2D1SolidColorBrush, ID2D1StrokeStyle, D2D1_ANTIALIAS_MODE_ALIASED,
-    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, D2D1_CAP_STYLE_ROUND, D2D1_DASH_STYLE_SOLID,
-    D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_FACTORY_TYPE_SINGLE_THREADED, D2D1_FEATURE_LEVEL_DEFAULT,
+    ID2D1RenderTarget, ID2D1SolidColorBrush, ID2D1StrokeStyle, D2D1_CAP_STYLE_ROUND,
+    D2D1_DASH_STYLE_SOLID, D2D1_FACTORY_TYPE_SINGLE_THREADED, D2D1_FEATURE_LEVEL_DEFAULT,
     D2D1_HWND_RENDER_TARGET_PROPERTIES, D2D1_LINE_JOIN_ROUND, D2D1_PRESENT_OPTIONS_NONE,
     D2D1_RENDER_TARGET_PROPERTIES, D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1_RENDER_TARGET_USAGE_NONE,
     D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES,
 };
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
-use windows_numerics::{Matrix3x2, Vector2};
+use windows_numerics::Vector2;
 
 pub use capture::render_png;
 pub use text::TextEngine;
@@ -258,125 +258,18 @@ impl Renderer {
     }
 
     /// Draws a whole picture.
-    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn draw(&mut self, list: &DrawList) -> Result<Drawn, String> {
-        // SAFETY: every call is on the live target, brush and styles, with
-        // arguments that are live locals; clips are pushed and popped in pairs.
+        // SAFETY: BeginDraw and EndDraw pair on the live target.
         unsafe {
             self.target.BeginDraw();
             self.target.Clear(Some(&color_f(list.background)));
-            let mut clips = 0usize;
-            for op in &list.ops {
-                match op {
-                    Op::Fill {
-                        rect,
-                        radius,
-                        color,
-                    } => {
-                        self.paint(*color);
-                        self.target
-                            .FillRoundedRectangle(&rounded(*rect, *radius), &self.brush);
-                    }
-                    Op::Stroke {
-                        rect,
-                        radius,
-                        width,
-                        color,
-                    } => {
-                        self.paint(*color);
-                        let inner = rect.inset(width / 2.0);
-                        self.target.DrawRoundedRectangle(
-                            &rounded(inner, (radius - width / 2.0).max(0.0)),
-                            &self.brush,
-                            *width,
-                            None,
-                        );
-                    }
-                    Op::Line {
-                        x1,
-                        y1,
-                        x2,
-                        y2,
-                        width,
-                        color,
-                    } => {
-                        self.paint(*color);
-                        self.target.DrawLine(
-                            Vector2 { X: *x1, Y: *y1 },
-                            Vector2 { X: *x2, Y: *y2 },
-                            &self.brush,
-                            *width,
-                            None,
-                        );
-                    }
-                    Op::Text {
-                        x,
-                        y,
-                        text,
-                        style,
-                        max_width,
-                    } => {
-                        if let Ok(layout) = self.text.layout(text, style, *max_width) {
-                            self.paint(style.color);
-                            self.target.DrawTextLayout(
-                                Vector2 { X: *x, Y: *y },
-                                &layout,
-                                &self.brush,
-                                D2D1_DRAW_TEXT_OPTIONS_NONE,
-                            );
-                        }
-                    }
-                    Op::Icon {
-                        name,
-                        x,
-                        y,
-                        size,
-                        color,
-                    } => {
-                        if let Some(geometry) = self.geometry(name) {
-                            self.paint(*color);
-                            let scale = size / 24.0;
-                            self.target.SetTransform(&Matrix3x2 {
-                                M11: scale,
-                                M12: 0.0,
-                                M21: 0.0,
-                                M22: scale,
-                                M31: *x,
-                                M32: *y,
-                            });
-                            self.target
-                                .DrawGeometry(&geometry, &self.brush, 2.0, &self.stroke);
-                            self.target.SetTransform(&Matrix3x2::identity());
-                        }
-                    }
-                    Op::Image {
-                        name,
-                        rect,
-                        opacity,
-                    } => {
-                        if let Some(bitmap) = self.picture(name) {
-                            self.target.DrawBitmap(
-                                &bitmap,
-                                Some(&rect_f(*rect)),
-                                opacity.clamp(0.0, 1.0),
-                                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
-                                None,
-                            );
-                        }
-                    }
-                    Op::Clip { rect } => {
-                        self.target
-                            .PushAxisAlignedClip(&rect_f(*rect), D2D1_ANTIALIAS_MODE_ALIASED);
-                        clips += 1;
-                    }
-                    Op::Unclip => {
-                        if clips > 0 {
-                            self.target.PopAxisAlignedClip();
-                            clips -= 1;
-                        }
-                    }
-                }
-            }
+        }
+        let mut clips = 0usize;
+        for op in &list.ops {
+            self.draw_op(op, &mut clips);
+        }
+        // SAFETY: pops what was pushed and not popped by an `Unclip`; then ends the drawing.
+        unsafe {
             for _ in 0..clips {
                 self.target.PopAxisAlignedClip();
             }

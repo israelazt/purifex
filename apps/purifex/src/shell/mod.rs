@@ -49,9 +49,11 @@ impl UiHandler for Handler {
     }
 
     fn tick(&mut self) -> Reaction {
-        self.core.tick();
+        // Only draw again if something changed: while a search goes on in the
+        // background the page is still, and nothing is repainted for nothing.
+        let changed = self.core.tick();
         Reaction {
-            redraw: true,
+            redraw: changed,
             tick: self.core.needs_tick(),
         }
     }

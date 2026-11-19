@@ -10,9 +10,6 @@ use purifex_domain::view::{Action, Confirm, Model, Page};
 
 use crate::services::Services;
 
-/// How long a tick waits for the search of offers before giving the window back.
-const OFFERS_WAIT: Duration = Duration::from_millis(50);
-
 pub struct Core {
     services: Box<dyn Services>,
     model: Model,
@@ -152,11 +149,18 @@ impl Core {
     }
 
     /// Reads what is missing. Each failure is shown, and the rest is still read.
-    pub fn tick(&mut self) {
+    /// Returns whether the model changed (the window only redraws if it did).
+    pub fn tick(&mut self) -> bool {
         if !self.pending {
-            return;
+            return false;
         }
-        self.poll_offers();
+        let arrived = self.poll_offers();
+        if !self.missing() {
+            // Only the search of offers is going: nothing to read, nothing blocks.
+            self.pending = self.model.offers == Offers::Searching;
+            self.model.busy = false;
+            return arrived;
+        }
         let mut errors = Vec::new();
         let mut note = |what: &str, error: String| errors.push(format!("{what}: {error}"));
         if self.model.overview.is_none() {
@@ -226,25 +230,24 @@ impl Core {
         }
         self.pending = self.model.offers == Offers::Searching;
         self.model.busy = false;
+        true
     }
 
-    /// Picks up the search of offers if it has finished; if not, waits a moment
-    /// (the window answers its messages between ticks).
-    fn poll_offers(&mut self) {
+    /// Picks up the search of offers if it has finished. It never waits: the window
+    /// must keep answering the mouse, and asks again a moment later. Returns
+    /// whether the result arrived.
+    fn poll_offers(&mut self) -> bool {
         if self.model.offers != Offers::Searching {
-            return;
+            return false;
         }
-        let wait = if self.missing() {
-            Duration::ZERO
-        } else {
-            OFFERS_WAIT
+        let Some(found) = self.services.poll_offers(Duration::ZERO) else {
+            return false;
         };
-        if let Some(found) = self.services.poll_offers(wait) {
-            self.model.offers = match found {
-                Ok(offers) => Offers::Found(offers),
-                Err(error) => Offers::Failed(error),
-            };
-        }
+        self.model.offers = match found {
+            Ok(offers) => Offers::Found(offers),
+            Err(error) => Offers::Failed(error),
+        };
+        true
     }
 }
 
@@ -610,8 +613,10 @@ mod tests {
     }
 
     fn tick_until_done(c: &mut Core) {
-        for _ in 0..200 {
+        for _ in 0..400 {
             c.tick();
+            // The window asks again after a moment, not in a tight loop.
+            std::thread::sleep(Duration::from_millis(5));
             if !c.needs_tick() {
                 return;
             }
@@ -722,5 +727,37 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains("solo se abren"));
+    }
+
+    #[test]
+    fn while_the_search_goes_on_a_tick_never_waits_and_reports_no_change_until_it_ends() {
+        let mut c = core_with_offers(FakeOffers(300, Ok(vec![newer_offer()])));
+        c.tick();
+        c.apply(Action::SearchUpdates);
+        let started = std::time::Instant::now();
+        let mut changed = false;
+        for _ in 0..20 {
+            changed |= c.tick();
+        }
+        assert!(
+            started.elapsed() < Duration::from_millis(100),
+            "20 ticks took {:?}: the window would not answer the mouse",
+            started.elapsed()
+        );
+        assert!(!changed, "nothing to repaint while it searches");
+        assert!(c.needs_tick());
+        let mut arrived = false;
+        for _ in 0..400 {
+            arrived |= c.tick();
+            if !c.needs_tick() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            arrived,
+            "the tick that brings the result says the model changed"
+        );
+        assert!(matches!(c.model().offers, Offers::Found(_)));
     }
 }

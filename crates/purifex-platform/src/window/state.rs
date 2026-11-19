@@ -24,6 +24,10 @@ use crate::gfx::{Drawn, Renderer};
 const WM_MOUSELEAVE: u32 = 0x02A3;
 /// The id of the timer that paces the animations.
 const FRAME_TIMER: usize = 1;
+/// The id of the timer that asks for the next tick while a background job goes on.
+const TICK_TIMER: usize = 2;
+/// How long after a tick the next one is asked for, in ms.
+const TICK_EVERY: u32 = 50;
 /// The smallest the window may be, in units.
 const MIN_SIZE: (f32, f32) = (1000.0, 640.0);
 /// Units scrolled by one notch of the wheel.
@@ -130,6 +134,27 @@ impl<H: UiHandler> State<H> {
             Err(error) => {
                 purifex_domain::log_error!("{error}");
                 self.renderer = Some(renderer);
+            }
+        }
+    }
+
+    /// Runs one tick of the program. If it has more to do (a background job still
+    /// going), the next one is asked for with a timer and not by posting a message:
+    /// posted messages go before the mouse and the painting, so posting one after
+    /// another would leave the window unable to answer; a timer message goes after.
+    fn run_tick(&mut self, hwnd: HWND) {
+        let reaction = self.handler().tick();
+        self.react(
+            hwnd,
+            Reaction {
+                tick: false,
+                ..reaction
+            },
+        );
+        if reaction.tick {
+            // SAFETY: sets a timer on a live window.
+            unsafe {
+                SetTimer(Some(hwnd), TICK_TIMER, TICK_EVERY, None);
             }
         }
     }
@@ -292,8 +317,15 @@ impl<H: UiHandler> State<H> {
                 Some(LRESULT(0))
             }
             WM_APP => {
-                let reaction = self.handler().tick();
-                self.react(hwnd, reaction);
+                self.run_tick(hwnd);
+                Some(LRESULT(0))
+            }
+            WM_TIMER if wp.0 == TICK_TIMER => {
+                // SAFETY: stops the timer of a live window; it is set again if needed.
+                unsafe {
+                    let _ = KillTimer(Some(hwnd), TICK_TIMER);
+                }
+                self.run_tick(hwnd);
                 Some(LRESULT(0))
             }
             WM_SETCURSOR if (lp.0 & 0xffff) as u32 == HTCLIENT => {

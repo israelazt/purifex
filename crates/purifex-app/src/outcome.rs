@@ -3,6 +3,7 @@
 
 use purifex_domain::analysis::Analysis;
 use purifex_domain::compare::ComparisonReport;
+use purifex_domain::fix::{history_to_text, proposals_to_text, FixReport, HistoryEntry, Proposal};
 use purifex_domain::report::ScanReport;
 use purifex_domain::session_list::{rows_to_text, SessionRow};
 
@@ -16,6 +17,9 @@ pub enum Outcome {
     Sessions(Vec<SessionRow>),
     Analysis(Box<Analysis>),
     Comparison(Box<ComparisonReport>),
+    Fixes(Vec<Proposal>),
+    Fix(Box<FixReport>),
+    History(Vec<HistoryEntry>),
     Help,
 }
 
@@ -31,6 +35,9 @@ impl Outcome {
             Self::Sessions(rows) => rows_to_text(rows),
             Self::Analysis(analysis) => analysis.to_text(),
             Self::Comparison(report) => report.to_text(),
+            Self::Fixes(proposals) => proposals_to_text(proposals),
+            Self::Fix(report) => report.to_text(),
+            Self::History(entries) => history_to_text(entries),
             Self::Help => HELP.to_string(),
         }
     }
@@ -45,6 +52,9 @@ impl Outcome {
             Self::Sessions(rows) => serde_json::json!({ "sessions": rows }),
             Self::Analysis(analysis) => return analysis.to_json(),
             Self::Comparison(report) => return report.to_json(),
+            Self::Fixes(proposals) => serde_json::json!({ "fixes": proposals }),
+            Self::Fix(report) => return report.to_json(),
+            Self::History(entries) => serde_json::json!({ "history": entries }),
             Self::Help => serde_json::json!({ "help": HELP }),
         };
         serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".into())

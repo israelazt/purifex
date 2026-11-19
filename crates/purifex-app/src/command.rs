@@ -22,6 +22,23 @@ pub enum Command {
     Sessions {
         json: bool,
     },
+    Fixes {
+        json: bool,
+    },
+    FixApply {
+        id: String,
+        dry_run: bool,
+        yes: bool,
+        json: bool,
+    },
+    FixUndo {
+        seq: u64,
+        yes: bool,
+        json: bool,
+    },
+    History {
+        json: bool,
+    },
     Compare {
         before: Option<String>,
         after: Option<String>,
@@ -72,6 +89,11 @@ Uso:
                                   Analiza una grabación (por defecto, la última)
   purifex compare [ANTES DESPUÉS] [--json]
                                   Compara dos partidas (por defecto, las dos últimas)
+  purifex fixes [--json]          Arreglos que se proponen, con la medición que los justifica
+  purifex fix apply ID [--dry-run] [--yes]
+                                  Aplica un arreglo (sin --yes solo dice qué haría)
+  purifex fix undo N [--yes]      Deshace el cambio N del historial
+  purifex history [--json]        Lo que se ha cambiado
   purifex ui [--screenshot ARCHIVO.png [--page NOMBRE] [--size ANCHOxALTO] [--scale N]]
                                   Abre la interfaz (o la guarda como imagen)
   purifex help                    Esta ayuda
@@ -96,6 +118,9 @@ impl Command {
             Some("sessions") => return Self::parse_sessions(args),
             Some("analyze") => return Self::parse_analyze(args),
             Some("compare") => return Self::parse_compare(args),
+            Some("fixes") => return Self::parse_flags(args, |json| Self::Fixes { json }),
+            Some("history") => return Self::parse_flags(args, |json| Self::History { json }),
+            Some("fix") => return Self::parse_fix(args),
             Some("ui") => return Self::parse_ui(args),
             Some(other) => return Err(format!("orden desconocida: {other}")),
         }
@@ -178,6 +203,64 @@ impl Command {
         Ok(Self::Ui(UiOptions { screenshot }))
     }
 
+    /// An order whose only option is `--json`.
+    fn parse_flags<'a>(
+        args: impl Iterator<Item = &'a str>,
+        make: impl Fn(bool) -> Self,
+    ) -> Result<Self, String> {
+        let mut json = false;
+        for arg in args {
+            match arg {
+                "--json" => json = true,
+                other => return Err(format!("opción desconocida: {other}")),
+            }
+        }
+        Ok(make(json))
+    }
+
+    fn parse_fix<'a>(mut args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
+        let action = args.next().ok_or("fix necesita «apply» o «undo»")?;
+        let target = args
+            .next()
+            .ok_or_else(|| format!("fix {action} necesita un valor"))?;
+        let (mut dry_run, mut yes, mut json) = (false, false, false);
+        for arg in args {
+            match arg {
+                "--dry-run" if action == "apply" => dry_run = true,
+                "--yes" => yes = true,
+                "--json" => json = true,
+                other => return Err(format!("opción desconocida: {other}")),
+            }
+        }
+        match action {
+            "apply" => {
+                let valid = !target.is_empty()
+                    && target.bytes().all(|b| {
+                        b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-'
+                    });
+                if !valid {
+                    return Err(format!(
+                        "«{target}» no es el nombre de un arreglo (mira `purifex fixes`)"
+                    ));
+                }
+                Ok(Self::FixApply {
+                    id: target.to_string(),
+                    dry_run,
+                    yes,
+                    json,
+                })
+            }
+            "undo" => {
+                let seq = target
+                    .trim_start_matches('#')
+                    .parse()
+                    .map_err(|_| format!("«{target}» no es un número del historial"))?;
+                Ok(Self::FixUndo { seq, yes, json })
+            }
+            other => Err(format!("fix {other}: solo existen «apply» y «undo»")),
+        }
+    }
+
     fn parse_compare<'a>(args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
         let (mut json, mut names) = (false, Vec::new());
         for arg in args {
@@ -255,6 +338,10 @@ impl Command {
                 | Self::Sessions { json: true }
                 | Self::Analyze { json: true, .. }
                 | Self::Compare { json: true, .. }
+                | Self::Fixes { json: true }
+                | Self::FixApply { json: true, .. }
+                | Self::FixUndo { json: true, .. }
+                | Self::History { json: true }
         )
     }
 
@@ -280,6 +367,24 @@ impl Command {
                 .compare(before.as_deref(), after.as_deref())
                 .map(|r| Outcome::Comparison(Box::new(r)))
                 .map_err(|e| format!("No se pudo comparar: {e}")),
+            Self::Fixes { .. } => services
+                .fixes()
+                .map(Outcome::Fixes)
+                .map_err(|e| format!("No se pudieron calcular los arreglos: {e}")),
+            Self::FixApply {
+                id, dry_run, yes, ..
+            } => services
+                .apply_fix(&id, yes, dry_run)
+                .map(|r| Outcome::Fix(Box::new(r)))
+                .map_err(|e| format!("No se aplicó: {e}")),
+            Self::FixUndo { seq, yes, .. } => services
+                .undo_fix(seq, yes)
+                .map(|r| Outcome::Fix(Box::new(r)))
+                .map_err(|e| format!("No se deshizo: {e}")),
+            Self::History { .. } => services
+                .history()
+                .map(Outcome::History)
+                .map_err(|e| format!("No se pudo leer el historial: {e}")),
             Self::Ui(_) => Err("la interfaz la abre el programa, no un servicio".into()),
             Self::Analyze { id, .. } => services
                 .analyze(id.as_deref())
@@ -605,5 +710,82 @@ mod tests {
             "{}",
             out.text
         );
+    }
+
+    #[test]
+    fn the_orders_of_the_fixes_are_read() {
+        assert_eq!(
+            Command::parse(&["fixes", "--json"]).unwrap(),
+            Command::Fixes { json: true }
+        );
+        assert_eq!(
+            Command::parse(&["history"]).unwrap(),
+            Command::History { json: false }
+        );
+        assert_eq!(
+            Command::parse(&["fix", "apply", "lol.close-client-during-game", "--dry-run"]).unwrap(),
+            Command::FixApply {
+                id: "lol.close-client-during-game".into(),
+                dry_run: true,
+                yes: false,
+                json: false
+            }
+        );
+        assert_eq!(
+            Command::parse(&["fix", "apply", "lol.close-client-during-game", "--yes"]).unwrap(),
+            Command::FixApply {
+                id: "lol.close-client-during-game".into(),
+                dry_run: false,
+                yes: true,
+                json: false
+            }
+        );
+        assert_eq!(
+            Command::parse(&["fix", "undo", "#3", "--yes"]).unwrap(),
+            Command::FixUndo {
+                seq: 3,
+                yes: true,
+                json: false
+            }
+        );
+        for bad in [
+            &["fix"][..],
+            &["fix", "apply"],
+            &["fix", "install", "x"],
+            &["fix", "apply", "Bad Name"],
+            &["fix", "apply", "../x"],
+            &["fix", "undo", "x"],
+            &["fix", "undo", "1", "--dry-run"],
+            &["fixes", "--all"],
+        ] {
+            assert!(Command::parse(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn with_no_fixes_available_the_orders_say_so_and_fail() {
+        let mut app = app(FakeInventory::with(vec![]));
+        let fixes = Command::Fixes { json: false }.run(&mut app, &mut |_| {});
+        assert!(
+            fixes.ok && fixes.text.contains("no los justifica"),
+            "{}",
+            fixes.text
+        );
+        let apply = Command::FixApply {
+            id: "lol.close-client-during-game".into(),
+            dry_run: false,
+            yes: true,
+            json: false,
+        }
+        .run(&mut app, &mut |_| {});
+        assert!(
+            !apply.ok && apply.text.contains("No se aplicó"),
+            "{}",
+            apply.text
+        );
+        assert!(Command::History { json: false }
+            .run(&mut app, &mut |_| {})
+            .text
+            .contains("Todavía no"));
     }
 }

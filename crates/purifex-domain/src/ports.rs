@@ -7,6 +7,7 @@ use std::time::Duration;
 use crate::date::Date;
 use crate::device::Device;
 use crate::draw::{Size, TextStyle};
+use crate::fix::{HistoryEntry, SettingValue};
 use crate::sample::Sample;
 
 /// The devices present in the computer, with the driver each one runs.
@@ -77,4 +78,21 @@ pub trait SessionArchive {
 pub trait TextMetrics {
     /// The size of `text` in one line, in the units of the style.
     fn measure(&self, text: &str, style: &TextStyle) -> Size;
+}
+
+/// The settings that fixes change. It reads and writes each one by the id of its
+/// fix; everything about *where* it lives (a file, the registry) is its own.
+pub trait FixBackend {
+    /// The value now. A setting that is not written is `Unset`, not an error.
+    fn current(&self, id: &str) -> Result<SettingValue, String>;
+    /// What stops the change right now, as things to do (`Cierra el cliente`).
+    fn blockers(&self, id: &str) -> Result<Vec<String>, String>;
+    /// Writes the value, keeping a copy of what it replaces.
+    fn set(&mut self, id: &str, value: &SettingValue) -> Result<(), String>;
+}
+
+/// What has been changed, line by line. Lines are only added, never rewritten.
+pub trait HistoryStore {
+    fn entries(&self) -> Result<Vec<HistoryEntry>, String>;
+    fn append(&mut self, entry: &HistoryEntry) -> Result<(), String>;
 }

@@ -10,7 +10,7 @@ use crate::process_group::{group_of, Group};
 use crate::session::SessionSummary;
 
 /// Thresholds. Each one is a judgment call, so they live in one place.
-mod limit {
+pub(crate) mod limit {
     /// Graphics card use from which it is the limit.
     pub const GPU_BOUND: f32 = 95.0;
     /// Below this the card has room, so a pinned core is the limit.

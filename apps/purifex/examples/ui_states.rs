@@ -158,8 +158,18 @@ mod states {
                     ],
                     failed: vec![],
                 });
-                if args.get(2).map(String::as_str) == Some("confirm") {
-                    model.confirm = Some(Confirm::Clean("Inkscape".into()));
+                model.traces_open = true;
+                match args.get(2).map(String::as_str) {
+                    Some("all") => model.confirm = Some(Confirm::CleanAll("Inkscape".into())),
+                    Some("uninstall") => {
+                        model.traces_open = false;
+                        model.confirm = Some(Confirm::Uninstall("HKLM64:Discord".into()));
+                    }
+                    Some("unchecked") => {
+                        model.unchecked =
+                            vec![r"C:\Users\yo\AppData\Local\Programs\Inkscape".into()];
+                    }
+                    _ => {}
                 }
             }
             "offers" => {

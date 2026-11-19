@@ -1,24 +1,19 @@
-//! The apps page: the installed apps, each with a button that starts its own
-//! uninstaller, and, once one was uninstalled from here, a panel to look for what it
-//! left behind and remove it to the quarantine. What may be removed is decided in
-//! the domain (`app_traces`); this only shows it and asks for confirmation.
+//! The apps page: the installed apps, each with a button that asks to uninstall it,
+//! a search, and a panel for the traces of an app that was uninstalled. The questions
+//! and the list of traces are dialogs (`dialog`); what may be removed is decided in
+//! the domain (`app_traces`). This only shows and asks.
 
-use purifex_domain::app_traces::Trace;
 use purifex_domain::apps::{size_text, InstalledApp};
 use purifex_domain::draw::Rect;
-use purifex_domain::view::{Action, Confirm, Model};
+use purifex_domain::view::{Action, Model};
 
 use crate::canvas::Canvas;
 use crate::drivers_page::search_box;
-use crate::fixes_page::{confirm_height, confirmation};
 use crate::page;
 use crate::theme::{self, Tone};
 use crate::widgets::{button, button_width, icon_box, panel, tag};
 
 const ROW_H: f32 = 60.0;
-const MAX_TRACES: usize = 10;
-
-const CLEAN_QUESTION: &str = "Los restos se mueven a una cuarentena (las claves del registro se guardan antes) y quedan en el historial, donde puedes devolverlos. Incluye datos tuyos de la app, como ajustes y partidas guardadas. ¿Quitar?";
 
 fn info(c: &mut Canvas, area: Rect, text: &str) -> f32 {
     let style = theme::mono(12.5, theme::TEXT);
@@ -40,47 +35,11 @@ fn info(c: &mut Canvas, area: Rect, text: &str) -> f32 {
     h + 16.0
 }
 
-fn trace_line(c: &mut Canvas, t: &Trace, x: f32, y: f32, width: f32) {
-    let style = theme::mono(12.0, theme::TEXT);
-    let size = size_text(Some(t.bytes / 1024));
-    c.text_cut(x, y, &t.location, style, width - 220.0);
-    c.text(
-        x + width - 200.0,
-        y,
-        &size,
-        theme::mono(12.0, theme::TEXT_2),
-    );
-    if t.user_data {
-        tag(
-            c,
-            x + width - 120.0,
-            y - 3.0,
-            "datos tuyos",
-            Tone::Amber,
-            None,
-        );
-    }
-    c.text_cut(
-        x,
-        y + 17.0,
-        &t.why,
-        theme::mono(11.0, theme::TEXT_3),
-        width - 40.0,
-    );
-}
-
-/// The panel to look for the traces of the app uninstalled from here.
+/// The panel of the app uninstalled from here (or seen to disappear): look for what it
+/// left, and open the window with the list.
 fn cleanup_panel(c: &mut Canvas, m: &Model, name: &str, area: Rect, y: f32) -> f32 {
-    let traces = m.traces.as_ref().filter(|r| r.app == name);
-    let shown = traces.map_or(0, |r| r.proposed.len().min(MAX_TRACES));
-    let body = match traces {
-        None => 0.0,
-        Some(r) if r.proposed.is_empty() => 30.0,
-        Some(r) => {
-            12.0 + shown as f32 * 44.0 + if r.proposed.len() > shown { 22.0 } else { 0.0 } + 68.0
-        }
-    };
-    let rect = Rect::new(area.x, y, area.w, 76.0 + body);
+    let report = m.traces.as_ref().filter(|r| r.app == name);
+    let rect = Rect::new(area.x, y, area.w, 84.0);
     panel(c, rect);
     c.icon("trash-2", rect.x + 18.0, rect.y + 18.0, 18.0, theme::AMBER);
     c.text(
@@ -89,125 +48,54 @@ fn cleanup_panel(c: &mut Canvas, m: &Model, name: &str, area: Rect, y: f32) -> f
         &format!("Restos de {name}"),
         theme::sans(14.0, theme::TEXT).bold(),
     );
+    let summary = match report {
+        None if m.finding.is_some() => "Buscando lo que dejó…".to_string(),
+        None => "Cuando el desinstalador termine, Purifex busca lo que dejó. No se borra nada al buscar.".to_string(),
+        Some(r) if r.proposed.is_empty() => "No se encontraron restos.".to_string(),
+        Some(r) => {
+            let bytes: u64 = r.proposed.iter().map(|t| t.bytes).sum();
+            format!("Se encontraron {} restos ({}).", r.proposed.len(), size_text(Some(bytes / 1024)))
+        }
+    };
     c.paragraph(
         rect.x + 46.0,
         rect.y + 40.0,
-        rect.w - 360.0,
-        "Cuando el desinstalador termine, busca lo que dejó. No se borra nada al buscar.",
+        rect.w - 520.0,
+        &summary,
         theme::mono(12.0, theme::TEXT_2),
         Some(2),
     );
-    let find = if traces.is_some() {
+    let find = if report.is_some() {
         "Buscar otra vez"
     } else {
         "Buscar restos"
     };
-    let w = button_width(c, "Buscar otra vez");
+    let (find_w, view_w) = (
+        button_width(c, "Buscar otra vez"),
+        button_width(c, "Ver restos"),
+    );
     let busy = m.finding.is_some();
+    let x = rect.right() - 16.0 - find_w;
     button(
         c,
-        Rect::new(rect.right() - 16.0 - w, rect.y + 16.0, w, 44.0),
+        Rect::new(x, rect.y + 20.0, find_w, 44.0),
         find,
         "search",
         false,
         (!busy).then(|| Action::FindTraces(name.to_string())),
     );
-    if let Some(r) = traces {
-        let top = rect.y + 76.0;
-        if r.proposed.is_empty() {
-            c.text(
-                rect.x + 18.0,
-                top + 4.0,
-                "No se encontraron restos.",
-                theme::mono(12.5, theme::TEXT_2),
-            );
-        } else {
-            c.line(rect.x, top, rect.right(), top, theme::LINE);
-            for (i, t) in r.proposed.iter().take(MAX_TRACES).enumerate() {
-                trace_line(
-                    c,
-                    t,
-                    rect.x + 18.0,
-                    top + 16.0 + i as f32 * 44.0,
-                    rect.w - 36.0,
-                );
-            }
-            let mut below = top + 16.0 + shown as f32 * 44.0;
-            if r.proposed.len() > shown {
-                let more = format!("y {} más", r.proposed.len() - shown);
-                c.text(
-                    rect.x + 18.0,
-                    below - 8.0,
-                    &more,
-                    theme::mono(12.0, theme::TEXT_3),
-                );
-                below += 22.0;
-            }
-            let remove = "Quitar restos";
-            let rw = button_width(c, remove);
-            let asked = matches!(m.confirm, Some(Confirm::Clean(_)));
-            button(
-                c,
-                Rect::new(rect.right() - 16.0 - rw, below - 4.0, rw, 44.0),
-                remove,
-                "trash-2",
-                false,
-                (!asked).then(|| Action::AskClean(name.to_string())),
-            );
-        }
+    if report.is_some_and(|r| !r.proposed.is_empty()) {
+        let view = Rect::new(x - 12.0 - view_w, rect.y + 20.0, view_w, 44.0);
+        button(
+            c,
+            view,
+            "Ver restos",
+            "list-checks",
+            true,
+            Some(Action::OpenTraces),
+        );
     }
     rect.h + 16.0
-}
-
-/// The row of the app being asked about: the question and its two buttons in place,
-/// so they are where the user is looking (the list is long and scrolled).
-fn asking_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
-    c.fill(bar, 0.0, Tone::Amber.fill());
-    c.line(
-        bar.x,
-        bar.bottom() - 0.5,
-        bar.right(),
-        bar.bottom() - 0.5,
-        theme::LINE_SOFT,
-    );
-    icon_box(
-        c,
-        bar.x + 16.0,
-        bar.y + 10.0,
-        40.0,
-        "triangle-alert",
-        Tone::Amber,
-    );
-    let name = theme::sans(13.5, theme::TEXT).bold();
-    c.text_cut(bar.x + 70.0, bar.y + 10.0, &app.name, name, bar.w - 520.0);
-    c.text_cut(
-        bar.x + 70.0,
-        bar.y + 32.0,
-        "Se abrirá su desinstalador oficial; lo terminas tú en su ventana.",
-        theme::mono(11.5, theme::AMBER),
-        bar.w - 520.0,
-    );
-    let (yes, no) = ("Desinstalar", "Cancelar");
-    let (yes_w, no_w) = (button_width(c, yes), button_width(c, no));
-    let y = bar.y + 10.0;
-    let yes_x = bar.right() - 16.0 - no_w - 12.0 - yes_w;
-    button(
-        c,
-        Rect::new(yes_x, y, yes_w, 40.0),
-        yes,
-        "trash-2",
-        true,
-        Some(Action::Confirm),
-    );
-    let no_x = bar.right() - 16.0 - no_w;
-    button(
-        c,
-        Rect::new(no_x, y, no_w, 40.0),
-        no,
-        "x",
-        false,
-        Some(Action::CancelConfirm),
-    );
 }
 
 fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
@@ -298,12 +186,11 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     );
     for (i, app) in apps.iter().enumerate() {
         c.reveal(if i < 12 { 18 * i as u64 } else { 0 });
-        let bar = Rect::new(rect.x, rect.y + 48.0 + i as f32 * ROW_H, rect.w, ROW_H);
-        if m.confirm == Some(Confirm::Uninstall(app.id.clone())) {
-            asking_row(c, app, bar);
-        } else {
-            app_row(c, app, bar);
-        }
+        app_row(
+            c,
+            app,
+            Rect::new(rect.x, rect.y + 48.0 + i as f32 * ROW_H, rect.w, ROW_H),
+        );
     }
     c.reveal(0);
     if apps.is_empty() {
@@ -315,12 +202,6 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
         );
     }
     height
-}
-
-/// The question at the top of the page: the one about removing traces (its button is
-/// up there too). The one about uninstalling is in the row of the app itself.
-fn question(m: &Model) -> Option<&'static str> {
-    matches!(m.confirm, Some(Confirm::Clean(_))).then_some(CLEAN_QUESTION)
 }
 
 /// When what was typed matches no installed app, it may be one that is already gone
@@ -374,7 +255,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
         "Desinstalador",
         "lo que cada app registró en Windows",
         "Apps",
-        "Desinstala con el desinstalador oficial de cada app y después busca y quita lo que deja. Nada se borra sin que lo confirmes, y lo quitado va a una cuarentena de donde se puede devolver.",
+        "Desinstala con el desinstalador oficial de cada app y, cuando termine, Purifex te muestra lo que dejó para quitarlo todo de una vez o elegir. Lo quitado va a una cuarentena de donde se puede devolver.",
     );
     if let Some(error) = &m.error {
         y += page::error_box(c, Rect::new(area.x, y, area.w, 0.0), error);
@@ -391,11 +272,6 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
     }
     if let Some(text) = &m.message {
         y += info(c, Rect::new(area.x, y, area.w, 0.0), text);
-    }
-    if let Some(q) = question(m) {
-        let h = confirm_height(c, q, area.w);
-        confirmation(c, q, Rect::new(area.x, y, area.w, h));
-        y += h + 16.0;
     }
     if let Some(name) = &m.uninstalled {
         y += cleanup_panel(c, m, name, area, y);
@@ -414,7 +290,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use purifex_domain::app_traces::TraceKind;
+    use purifex_domain::app_traces::{Trace, TraceKind};
     use purifex_domain::apps::AppKind;
     use purifex_domain::cleanup_log::CleanReport;
     use purifex_domain::draw::Op;
@@ -461,13 +337,21 @@ mod tests {
         )
     }
 
-    fn trace(location: &str, user_data: bool) -> Trace {
-        Trace {
-            kind: TraceKind::Folder,
-            location: location.into(),
-            bytes: 4096,
-            why: "lleva el nombre de la app".into(),
-            user_data,
+    fn report(n: usize) -> CleanReport {
+        CleanReport {
+            app: "Discord".into(),
+            preview: true,
+            removed: vec![],
+            proposed: (0..n)
+                .map(|i| Trace {
+                    kind: TraceKind::Folder,
+                    location: format!(r"C:\x\{i}"),
+                    bytes: 4096,
+                    why: "w".into(),
+                    user_data: false,
+                })
+                .collect(),
+            failed: vec![],
         }
     }
 
@@ -484,69 +368,43 @@ mod tests {
     }
 
     #[test]
-    fn asking_shows_the_question_with_confirm_and_cancel_and_the_page_says_it_is_reading_before_the_data(
-    ) {
-        let mut m = model();
-        m.confirm = Some(Confirm::Uninstall("HKLM64:Discord".into()));
-        let (texts, actions) = render(&m);
-        assert!(texts.join(" ").contains("desinstalador oficial"));
-        assert!(actions.contains(&Action::Confirm) && actions.contains(&Action::CancelConfirm));
+    fn the_page_says_it_is_reading_before_the_data_and_does_not_draw_the_questions_itself() {
         let (waiting, _) = render(&Model::default());
         assert!(waiting.iter().any(|t| t.contains("Leyendo las apps")));
+        let mut m = model();
+        m.confirm = Some(purifex_domain::view::Confirm::Uninstall(
+            "HKLM64:Discord".into(),
+        ));
+        let (texts, actions) = render(&m);
+        assert!(
+            !texts.join(" ").contains("desinstalador oficial de esta"),
+            "the question is a dialog now"
+        );
+        assert!(
+            !actions.contains(&Action::Confirm),
+            "its buttons are the dialog's"
+        );
     }
 
     #[test]
-    fn after_an_uninstall_the_traces_can_be_looked_for_and_then_removed_with_a_confirmation() {
+    fn the_panel_of_a_gone_app_looks_for_its_traces_and_opens_the_list_when_there_are_some() {
         let mut m = model();
         m.uninstalled = Some("Discord".into());
         let (texts, actions) = render(&m);
         assert!(texts.contains(&"Restos de Discord".to_string()));
         assert!(actions.contains(&Action::FindTraces("Discord".into())));
         assert!(
-            !actions.contains(&Action::AskClean("Discord".into())),
-            "nothing to remove before looking"
+            !actions.contains(&Action::OpenTraces),
+            "nothing to see before looking"
         );
-        m.traces = Some(CleanReport {
-            app: "Discord".into(),
-            preview: true,
-            removed: vec![],
-            proposed: vec![
-                trace(r"C:\Users\u\AppData\Roaming\Discord", true),
-                trace(r"HKCU\Software\Discord", false),
-            ],
-            failed: vec![],
-        });
+        m.traces = Some(report(3));
         let (texts, actions) = render(&m);
-        assert!(texts.contains(&r"C:\Users\u\AppData\Roaming\Discord".to_string()));
-        assert!(
-            texts.contains(&"datos tuyos".to_string()),
-            "the user's data is marked"
-        );
-        assert!(actions.contains(&Action::AskClean("Discord".into())));
-        m.confirm = Some(Confirm::Clean("Discord".into()));
+        assert!(texts.join(" ").contains("Se encontraron 3 restos"));
+        assert!(actions.contains(&Action::OpenTraces));
+        m.traces = Some(report(0));
         let (texts, actions) = render(&m);
-        assert!(texts.join(" ").contains("cuarentena"));
-        assert!(
-            !actions.contains(&Action::AskClean("Discord".into())),
-            "already asking"
-        );
-    }
-
-    #[test]
-    fn no_traces_says_so_and_a_message_of_the_last_action_is_shown() {
-        let mut m = model();
-        m.uninstalled = Some("Discord".into());
-        m.message = Some("Se quitaron 2 restos de Discord".into());
-        m.traces = Some(CleanReport {
-            app: "Discord".into(),
-            preview: true,
-            removed: vec![],
-            proposed: vec![],
-            failed: vec![],
-        });
-        let (texts, _) = render(&m);
         assert!(texts.contains(&"No se encontraron restos.".to_string()));
-        assert!(texts.join(" ").contains("Se quitaron 2 restos"));
+        assert!(!actions.contains(&Action::OpenTraces));
     }
 
     #[test]
@@ -558,20 +416,23 @@ mod tests {
             .join(" ")
             .contains("No hay ninguna app instalada que se llame «obs studio»"));
         assert!(actions.contains(&Action::FindTraces("obs studio".into())));
-        // A name that matches an installed app is just a filter.
         m.query = "discord".into();
         let (texts, actions) = render(&m);
         assert!(!texts.join(" ").contains("No hay ninguna app instalada"));
         assert!(!actions.iter().any(|a| matches!(a, Action::FindTraces(_))));
-        // Too short to search safely: no button.
         m.query = "zz".into();
         let (_, actions) = render(&m);
-        assert!(!actions.iter().any(|a| matches!(a, Action::FindTraces(_))));
-        // Once looked for, the cleaning panel takes over.
-        m.query = "obs studio".into();
-        m.uninstalled = Some("obs studio".into());
+        assert!(
+            !actions.iter().any(|a| matches!(a, Action::FindTraces(_))),
+            "too short to search safely"
+        );
+    }
+
+    #[test]
+    fn a_message_of_the_last_action_is_shown() {
+        let mut m = model();
+        m.message = Some("Se quitaron 2 restos de Discord".into());
         let (texts, _) = render(&m);
-        assert!(texts.contains(&"Restos de obs studio".to_string()));
-        assert!(!texts.join(" ").contains("No hay ninguna app instalada"));
+        assert!(texts.join(" ").contains("Se quitaron 2 restos"));
     }
 }

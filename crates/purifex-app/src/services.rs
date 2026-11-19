@@ -84,7 +84,12 @@ pub trait Services {
     fn uninstall_app(&mut self, query: &str) -> Result<InstalledApp, String>;
     /// The traces of an app; with `confirmed` (and the app already uninstalled) it
     /// removes them to the quarantine, without it only says which.
-    fn clean_app(&mut self, query: &str, confirmed: bool) -> Result<CleanReport, String>;
+    fn clean_app(
+        &mut self,
+        query: &str,
+        confirmed: bool,
+        only: Option<&[String]>,
+    ) -> Result<CleanReport, String>;
     /// Puts back what removal `seq` took out.
     fn restore_cleanup(&mut self, seq: u64) -> Result<CleanupEntry, String>;
     fn cleanup_history(&self) -> Result<Vec<CleanupEntry>, String>;
@@ -293,14 +298,19 @@ where
         self.cleaning.uninstall(&apps, query)
     }
 
-    fn clean_app(&mut self, query: &str, confirmed: bool) -> Result<CleanReport, String> {
+    fn clean_app(
+        &mut self,
+        query: &str,
+        confirmed: bool,
+        only: Option<&[String]>,
+    ) -> Result<CleanReport, String> {
         let all = self
             .inventory
             .as_ref()
             .ok_or("esta versión no sabe leer las apps instaladas")?
             .apps()?;
         let listed = listed(all.clone());
-        self.cleaning.clean(&listed, &all, query, confirmed)
+        self.cleaning.clean(&listed, &all, query, confirmed, only)
     }
 
     fn restore_cleanup(&mut self, seq: u64) -> Result<CleanupEntry, String> {

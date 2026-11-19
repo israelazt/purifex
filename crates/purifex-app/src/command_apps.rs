@@ -109,10 +109,10 @@ impl AppsCommand {
         match self {
             Self::List { .. } => services.apps().map(Outcome::Apps),
             Self::Traces { name, .. } => services
-                .clean_app(&name, false)
+                .clean_app(&name, false, None)
                 .map(|r| Outcome::Clean(Box::new(r))),
             Self::Clean { name, yes, .. } => services
-                .clean_app(&name, yes)
+                .clean_app(&name, yes, None)
                 .map(|r| Outcome::Clean(Box::new(r))),
             Self::Uninstall { name, yes } => {
                 if !yes {

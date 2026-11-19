@@ -3,12 +3,23 @@
 //! is missing. Reading takes a moment, so an action only marks that something is
 //! pending and says "busy": the interface draws that, and then `tick` reads.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// How often the list is read while an uninstaller started here is running.
+const WATCH_EVERY: Duration = if cfg!(test) {
+    Duration::from_millis(10)
+} else {
+    Duration::from_millis(1500)
+};
+/// How long an uninstaller is waited for.
+const WATCH_FOR: Duration = Duration::from_secs(30 * 60);
 
 use purifex_domain::driver_offers::Offers;
 use purifex_domain::view::{Action, Confirm, Model, Page};
 
 use crate::services::Services;
+
+mod apps;
 
 pub struct Core {
     services: Box<dyn Services>,
@@ -17,6 +28,9 @@ pub struct Core {
     pending: bool,
     /// The apps of the list before it is read again, to see which one disappeared.
     previous_apps: Option<Vec<purifex_domain::apps::InstalledApp>>,
+    /// The app whose uninstaller was started here, when it was last looked for in the
+    /// list, and when it was started: when it disappears the uninstall has finished.
+    watching: Option<(purifex_domain::apps::InstalledApp, Instant, Instant)>,
 }
 
 impl Core {
@@ -30,6 +44,7 @@ impl Core {
             },
             pending: true,
             previous_apps: None,
+            watching: None,
         }
     }
 
@@ -76,6 +91,35 @@ impl Core {
             }
             Action::AskUninstall(id) => self.model.confirm = Some(Confirm::Uninstall(id)),
             Action::AskClean(name) => self.model.confirm = Some(Confirm::Clean(name)),
+            Action::AskCleanAll(name) => self.model.confirm = Some(Confirm::CleanAll(name)),
+            Action::ToggleTrace(location) => {
+                let unchecked = &mut self.model.unchecked;
+                match unchecked.iter().position(|l| *l == location) {
+                    Some(at) => {
+                        unchecked.remove(at);
+                    }
+                    None => unchecked.push(location),
+                }
+            }
+            Action::SelectTraces(all) => {
+                self.model.unchecked = match (&self.model.traces, all) {
+                    (Some(report), false) => {
+                        report.proposed.iter().map(|t| t.location.clone()).collect()
+                    }
+                    _ => Vec::new(),
+                };
+            }
+            Action::OpenTraces => {
+                self.model.traces_open = self
+                    .model
+                    .traces
+                    .as_ref()
+                    .is_some_and(|r| !r.proposed.is_empty());
+            }
+            Action::CloseTraces => {
+                self.model.traces_open = false;
+                self.model.confirm = None;
+            }
             Action::FindTraces(name) => {
                 (self.model.traces, self.model.message) = (None, None);
                 (self.model.uninstalled, self.model.finding) = (Some(name.clone()), Some(name));
@@ -117,7 +161,8 @@ impl Core {
             Confirm::Apply(id) => self.services.apply_fix(&id, true, false),
             Confirm::Undo(seq) => self.services.undo_fix(seq, true),
             Confirm::Uninstall(id) => return self.uninstalled(&id),
-            Confirm::Clean(name) => return self.cleaned(&name),
+            Confirm::Clean(name) => return self.cleaned(&name, false),
+            Confirm::CleanAll(name) => return self.cleaned(&name, true),
         };
         match result {
             Ok(report) => {
@@ -133,60 +178,11 @@ impl Core {
         }
     }
 
-    /// The app that was in `old` and is no longer listed (the user uninstalled it,
-    /// here or elsewhere): remembered, shown, and its name returned to look for its
-    /// traces. Protected apps are not considered: their ids change when they update.
-    fn vanished(&mut self, old: &[purifex_domain::apps::InstalledApp]) -> Option<String> {
-        let now = self.model.apps.as_deref()?;
-        let gone = old
-            .iter()
-            .find(|a| a.protection().is_none() && !now.iter().any(|n| n.id == a.id))?
-            .clone();
-        let _ = self.services.note_uninstalled(&gone);
-        self.model.uninstalled = Some(gone.name.clone());
-        self.model.traces = None;
-        self.model.message = Some(format!(
-            "{} ya no está instalada. Estos son los restos que dejó.",
-            gone.name
-        ));
-        Some(gone.name)
-    }
-
-    /// Starts the uninstaller of an app; its traces are looked for afterwards.
-    fn uninstalled(&mut self, id: &str) {
-        match self.services.uninstall_app(id) {
-            Ok(app) => {
-                self.model.message = Some(format!(
-                    "Se abrió el desinstalador de {}. Cuando termine, pulsa «Buscar restos».",
-                    app.name
-                ));
-                (self.model.uninstalled, self.model.traces) = (Some(app.name), None);
-            }
-            Err(error) => self.model.error = Some(error),
-        }
-    }
-
-    /// Removes the traces of an app to the quarantine.
-    fn cleaned(&mut self, name: &str) {
-        match self.services.clean_app(name, true) {
-            Ok(report) => {
-                let (done, failed) = (report.removed.len(), report.failed.len());
-                self.model.message = Some(format!(
-                    "Se quitaron {done} restos de {name} a la cuarentena{}. Para devolverlos: purifex apps restore N.",
-                    if failed > 0 { format!(" ({failed} no se pudieron quitar)") } else { String::new() }
-                ));
-                (self.model.traces, self.model.apps) = (None, None);
-                self.expect_reading();
-            }
-            Err(error) => self.model.error = Some(error),
-        }
-    }
-
     /// Marks as busy if the current page lacks something.
     fn expect_reading(&mut self) {
         let missing = self.missing();
         // A search of offers still going must be picked up, whatever page is shown.
-        self.pending = missing || self.model.offers == Offers::Searching;
+        self.pending = missing || self.model.offers == Offers::Searching || self.watching.is_some();
         self.model.busy = missing;
     }
 
@@ -228,10 +224,10 @@ impl Core {
         if !self.pending {
             return false;
         }
-        let arrived = self.poll_offers();
+        let arrived = self.poll_offers() | self.check_watch();
         if !self.missing() {
             // Only the search of offers is going: nothing to read, nothing blocks.
-            self.pending = self.model.offers == Offers::Searching;
+            self.pending = self.model.offers == Offers::Searching || self.watching.is_some();
             self.model.busy = false;
             return arrived;
         }
@@ -269,8 +265,16 @@ impl Core {
                 }
             }
             if let Some(name) = self.model.finding.take() {
-                match self.services.clean_app(&name, false) {
-                    Ok(report) => self.model.traces = Some(report),
+                match self.services.clean_app(&name, false, None) {
+                    Ok(report) => {
+                        // Found: the window with the list opens by itself, everything checked.
+                        self.model.traces_open = !report.proposed.is_empty();
+                        self.model.unchecked = Vec::new();
+                        if report.proposed.is_empty() {
+                            self.model.message = Some(format!("{name}: no se encontraron restos."));
+                        }
+                        self.model.traces = Some(report);
+                    }
                     Err(error) => note("restos", error),
                 }
             }
@@ -322,7 +326,7 @@ impl Core {
         if !errors.is_empty() {
             self.model.error = Some(errors.join(" · "));
         }
-        self.pending = self.model.offers == Offers::Searching;
+        self.pending = self.model.offers == Offers::Searching || self.watching.is_some();
         self.model.busy = false;
         true
     }
@@ -1109,5 +1113,159 @@ mod tests {
         c.tick();
         assert_eq!(c.model().uninstalled.as_deref(), Some("OBS Studio"));
         assert_eq!(c.model().traces.as_ref().unwrap().proposed.len(), 1);
+    }
+
+    fn two_traces_core(
+        installed: &crate::testing::FakeApps,
+    ) -> (
+        Core,
+        std::rc::Rc<std::cell::RefCell<crate::testing::CleanLog>>,
+    ) {
+        use crate::testing::{CleanLog, FakeCleaning, FakeFinder};
+        use crate::Cleaning;
+        use purifex_domain::app_traces::{Candidate, TraceKind};
+        let log = std::rc::Rc::new(std::cell::RefCell::new(CleanLog::default()));
+        let found = ["obs-studio", "OBS Studio"]
+            .map(|n| Candidate {
+                kind: TraceKind::Folder,
+                location: format!(r"C:\ProgramData\{n}"),
+                bytes: 10,
+                registered_install: false,
+            })
+            .to_vec();
+        let core = Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_apps(Box::new(installed.clone()))
+            .with_cleaning(Cleaning::new(
+                Box::new(FakeFinder(found)),
+                Box::new(FakeCleaning(log.clone())),
+                Box::new(FakeCleaning(log.clone())),
+            )),
+        ));
+        (core, log)
+    }
+
+    #[test]
+    fn when_the_uninstaller_finishes_the_list_of_traces_opens_by_itself() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        installed.0.borrow_mut().push(fake_app("OBS Studio"));
+        let (mut c, _) = two_traces_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::AskUninstall("HKLM64:OBS Studio".into()));
+        c.apply(Action::Confirm);
+        assert!(
+            c.needs_tick(),
+            "it keeps looking while the uninstaller runs"
+        );
+        // Still installed: nothing happens, however many times it looks.
+        for _ in 0..5 {
+            std::thread::sleep(Duration::from_millis(15));
+            assert!(!c.tick());
+        }
+        assert!(!c.model().traces_open);
+        // The uninstaller finishes.
+        installed.0.borrow_mut().clear();
+        let mut changed = false;
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(15));
+            changed |= c.tick();
+            if c.model().traces_open {
+                break;
+            }
+        }
+        assert!(
+            changed && c.model().traces_open,
+            "the window opens by itself"
+        );
+        assert_eq!(c.model().traces.as_ref().unwrap().proposed.len(), 2);
+        assert!(c.model().unchecked.is_empty(), "everything starts checked");
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("ya se desinstaló"));
+        assert!(!c.needs_tick(), "it stopped watching");
+    }
+
+    #[test]
+    fn only_the_checked_traces_go_unless_everything_is_asked_for() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        let (mut c, log) = two_traces_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        c.tick();
+        assert!(c.model().traces_open);
+        let first = r"C:\ProgramData\obs-studio".to_string();
+        // Uncheck one, remove the rest.
+        c.apply(Action::ToggleTrace(first.clone()));
+        assert_eq!(c.model().unchecked, std::slice::from_ref(&first));
+        c.apply(Action::AskClean("OBS Studio".into()));
+        c.apply(Action::Confirm);
+        assert_eq!(
+            log.borrow().removed,
+            [r"C:\ProgramData\OBS Studio"],
+            "the unchecked one stayed"
+        );
+        assert!(!c.model().traces_open);
+        // "Eliminar todo rastro" ignores the checkboxes.
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        c.tick();
+        c.apply(Action::SelectTraces(false));
+        assert_eq!(c.model().unchecked.len(), 2);
+        c.apply(Action::AskCleanAll("OBS Studio".into()));
+        assert_eq!(
+            c.model().confirm,
+            Some(Confirm::CleanAll("OBS Studio".into()))
+        );
+        c.apply(Action::Confirm);
+        assert_eq!(
+            log.borrow().removed.len(),
+            3,
+            "the two of this round, with the one left before"
+        );
+    }
+
+    #[test]
+    fn with_nothing_checked_nothing_is_removed_and_the_user_is_told() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        let (mut c, log) = two_traces_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        c.tick();
+        c.apply(Action::SelectTraces(false));
+        c.apply(Action::AskClean("OBS Studio".into()));
+        c.apply(Action::Confirm);
+        assert!(log.borrow().removed.is_empty());
+        assert_eq!(
+            c.model().message.as_deref(),
+            Some("No hay ningún resto marcado.")
+        );
+        c.apply(Action::SelectTraces(true));
+        assert!(c.model().unchecked.is_empty());
+        c.apply(Action::CloseTraces);
+        assert!(!c.model().traces_open);
+        c.apply(Action::OpenTraces);
+        assert!(
+            c.model().traces_open,
+            "it can be opened again while the list exists"
+        );
     }
 }

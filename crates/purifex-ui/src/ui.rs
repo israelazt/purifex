@@ -12,6 +12,7 @@ use purifex_domain::view::{Action, Model, Page};
 
 use crate::anim::Anims;
 use crate::canvas::{Canvas, Hit};
+use crate::dialog::{self, DialogView};
 use crate::scrollbar::{Pressed, Scrollbar};
 use crate::theme::{self, PAGE_PAD, SIDEBAR_W, TOPBAR_H};
 use crate::{apps_page, drivers_page, fixes_page, overview_page, sessions_page, shell};
@@ -55,6 +56,12 @@ pub struct Ui {
     /// to the top, where they are drawn (the user may be far below).
     seen_notice: (Option<String>, Option<String>),
     bar: Scrollbar,
+    /// The dialog being shown (kept while it fades out, when the model no longer has it).
+    dialog: Option<DialogView>,
+    /// A dialog is open: it alone answers to the pointer and the keys.
+    modal: bool,
+    /// What Escape does while it is open.
+    modal_cancel: Option<Action>,
     content_height: f32,
     viewport_height: f32,
     mouse: Option<(f32, f32)>,
@@ -86,6 +93,9 @@ impl Ui {
             last_ms: 0,
             seen_notice: (None, None),
             bar: Scrollbar::default(),
+            dialog: None,
+            modal: false,
+            modal_cancel: None,
             content_height: 0.0,
             viewport_height: 0.0,
             mouse: None,
@@ -155,6 +165,17 @@ impl Ui {
         let anims = std::mem::take(&mut self.anims);
         let mut c = Canvas::new(text, self.mouse).with_anims(anims, self.entered_ms);
         c.search_focus = self.search_focus;
+        // A dialog: it fades in and out, and while it shows nothing under it answers.
+        let wanted = dialog::view(model);
+        let open = wanted.is_some();
+        self.modal_cancel = wanted.as_ref().map(|v| v.cancel.clone());
+        if wanted.is_some() {
+            self.dialog = wanted;
+        }
+        let shown = c.value("dialog", if open { 1.0 } else { 0.0 }, dialog::DIALOG_MS);
+        let covered = shown > 0.001;
+        self.modal = open;
+        c.block_mouse(covered);
         let main = Rect::new(
             SIDEBAR_W,
             TOPBAR_H,
@@ -195,6 +216,15 @@ impl Ui {
         }
         shell::sidebar(&mut c, model, height);
         shell::topbar(&mut c, model, width);
+        if covered {
+            c.block_mouse(false);
+            c.clear_hits();
+            if let Some(view) = &self.dialog {
+                dialog::draw(&mut c, view, shown, width, height);
+            }
+        } else {
+            self.dialog = None;
+        }
         self.search_box = c.take_search_box();
         self.anims = c.take_anims();
         self.anims.end();
@@ -231,6 +261,21 @@ impl Ui {
     pub fn event(&mut self, event: UiEvent) -> UiOutput {
         let mut out = UiOutput::default();
         match event {
+            // A dialog is open: it alone answers.
+            UiEvent::Press { x, y } if self.modal => {
+                self.mouse = Some((x, y));
+                if let Some(index) = self.hit_at(x, y) {
+                    out.actions.push(self.hits[index].action.clone());
+                    out.redraw = true;
+                }
+            }
+            UiEvent::Key(Key::Escape) if self.modal => {
+                if let Some(action) = self.modal_cancel.clone() {
+                    out.actions.push(action);
+                    out.redraw = true;
+                }
+            }
+            UiEvent::Wheel { .. } | UiEvent::Key(_) | UiEvent::Char(_) if self.modal => {}
             UiEvent::Move { x, y } if self.bar.dragging() => {
                 self.mouse = Some((x, y));
                 // Holding the thumb: the page follows the pointer at once, with no glide.
@@ -822,5 +867,131 @@ mod tests {
         assert!(ui.event(inside(b, 0.0)).redraw, "going to the next row");
         assert!(ui.event(UiEvent::Leave).redraw, "leaving the window");
         assert!(!ui.event(UiEvent::Leave).redraw);
+    }
+
+    /// The apps page with two apps, optionally with a dialog open.
+    fn apps_model(confirm: Option<purifex_domain::view::Confirm>) -> Model {
+        let app = |name: &str| purifex_domain::apps::InstalledApp {
+            id: format!("HKLM64:{name}"),
+            name: name.into(),
+            publisher: Some("Acme".into()),
+            version: None,
+            install_location: None,
+            uninstall: Some("u.exe".into()),
+            quiet_uninstall: None,
+            size_kb: None,
+            kind: purifex_domain::apps::AppKind::Desktop,
+            hidden: false,
+        };
+        Model {
+            page: Page::Apps,
+            apps: Some(vec![app("Discord"), app("Git")]),
+            confirm,
+            ..Model::default()
+        }
+    }
+
+    fn click_on(ui: &mut Ui, action: &Action) -> Vec<Action> {
+        let rect = ui
+            .hits
+            .iter()
+            .find(|h| h.action == *action)
+            .unwrap_or_else(|| panic!("no {action:?}"))
+            .rect;
+        ui.event(UiEvent::Press {
+            x: rect.x + 4.0,
+            y: rect.y + 4.0,
+        })
+        .actions
+    }
+
+    #[test]
+    fn while_a_dialog_is_open_only_it_answers_and_escape_cancels_it() {
+        use purifex_domain::view::Confirm;
+        let page = apps_model(None);
+        let asking = apps_model(Some(Confirm::Uninstall("HKLM64:Discord".into())));
+        let mut ui = Ui::new();
+        frame_at(&mut ui, &page, 0);
+        // Without the dialog the page's own button answers.
+        let ask = Action::AskUninstall("HKLM64:Git".into());
+        assert_eq!(click_on(&mut ui, &ask), std::slice::from_ref(&ask));
+        // With it open, that same button is under the dialog: it does nothing.
+        for ms in (16..=400).step_by(16) {
+            frame_at(&mut ui, &asking, ms);
+        }
+        assert!(
+            ui.hits.iter().all(|h| h.action != ask),
+            "what is under the dialog is not clickable"
+        );
+        assert_eq!(click_on(&mut ui, &Action::Confirm), [Action::Confirm]);
+        assert_eq!(
+            click_on(&mut ui, &Action::CancelConfirm),
+            [Action::CancelConfirm]
+        );
+        // The wheel and the keys do not move the page behind it; Escape cancels.
+        assert!(!ui.event(UiEvent::Wheel { dy: 200.0 }).redraw);
+        assert!(!ui.event(UiEvent::Key(Key::PageDown)).redraw);
+        assert_eq!(
+            ui.event(UiEvent::Key(Key::Escape)).actions,
+            [Action::CancelConfirm]
+        );
+    }
+
+    #[test]
+    fn a_dialog_fades_in_and_out_and_the_window_stops_asking_for_pictures_when_it_is_gone() {
+        use purifex_domain::view::Confirm;
+        let page = apps_model(None);
+        let asking = apps_model(Some(Confirm::Uninstall("HKLM64:Discord".into())));
+        let mut ui = Ui::new();
+        for ms in (0..=800).step_by(16) {
+            frame_at(&mut ui, &page, ms);
+        }
+        assert!(!ui.animating());
+        let has_dialog = |ops: &[Op]| {
+            ops.iter().any(
+                |o| matches!(o, Op::Text { text, .. } if text.contains("¿Desinstalar Discord?")),
+            )
+        };
+        frame_at(&mut ui, &asking, 1000);
+        assert!(ui.animating(), "it starts to appear");
+        let first = frame_at(&mut ui, &asking, 1016);
+        assert!(has_dialog(&first), "a frame later it is there, still faint");
+        let alpha = |ops: &[Op]| {
+            ops.iter().find_map(|o| match o {
+                Op::Text { text, style, .. } if text.contains("¿Desinstalar Discord?") => {
+                    Some(style.color.a)
+                }
+                _ => None,
+            })
+        };
+        let early = alpha(&first).unwrap();
+        let settled = alpha(&frame_at(&mut ui, &asking, 1400)).unwrap();
+        assert!(early < settled && settled == 255, "{early} -> {settled}");
+        // The model closes it: it is still drawn while it fades, then gone.
+        let fading = frame_at(&mut ui, &page, 1416);
+        assert!(
+            has_dialog(&fading),
+            "kept from the last view while it fades out"
+        );
+        assert!(ui.animating());
+        let gone = frame_at(&mut ui, &page, 2000);
+        assert!(!has_dialog(&gone));
+        assert!(
+            !ui.animating(),
+            "nothing moves: the window waits for messages again"
+        );
+    }
+
+    #[test]
+    fn with_animations_off_a_dialog_is_there_at_once_and_gone_at_once() {
+        use purifex_domain::view::Confirm;
+        let mut ui = Ui::new();
+        ui.set_reduced_motion(true);
+        let asking = apps_model(Some(Confirm::Uninstall("HKLM64:Discord".into())));
+        let has = |ops: &[Op]| {
+            ops.iter().any(|o| matches!(o, Op::Text { text, style, .. } if text.contains("¿Desinstalar") && style.color.a == 255))
+        };
+        assert!(has(&frame_at(&mut ui, &asking, 0)));
+        assert!(!has(&frame_at(&mut ui, &apps_model(None), 16)));
     }
 }

@@ -38,6 +38,7 @@ pub struct Canvas<'a> {
     /// Every place drawn with a hover effect, so the window knows when the pointer
     /// goes from one to another (a row, not only a button) and draws again.
     regions: Vec<(Rect, Option<Rect>)>,
+    blocked: bool,
 }
 
 impl<'a> Canvas<'a> {
@@ -55,6 +56,7 @@ impl<'a> Canvas<'a> {
             dy: 0.0,
             entered_ms: 0,
             regions: Vec::new(),
+            blocked: false,
         }
     }
 
@@ -96,6 +98,23 @@ impl<'a> Canvas<'a> {
     /// What is drawn from here on is not part of an appearing block: opaque and in place.
     pub fn rest(&mut self) {
         (self.alpha, self.dy) = (1.0, 0.0);
+    }
+
+    /// Draws from here on with this opacity and this much below its place (a dialog
+    /// that is appearing); `rest` puts it back.
+    pub fn fade(&mut self, alpha: f32, dy: f32) {
+        (self.alpha, self.dy) = (alpha.clamp(0.0, 1.0), dy);
+    }
+
+    /// While `true` the pointer is not over anything (a dialog is over the page).
+    pub fn block_mouse(&mut self, blocked: bool) {
+        self.blocked = blocked;
+    }
+
+    /// Forgets the clickable places drawn so far: what is under a dialog is not clickable.
+    pub fn clear_hits(&mut self) {
+        self.hits.clear();
+        self.regions.clear();
     }
 
     /// How much `rect` is hovered, 0 to 1, moving smoothly (see `Anims::hover`).
@@ -320,9 +339,10 @@ impl<'a> Canvas<'a> {
 
     /// Whether the pointer is over `rect` (and not hidden by a clip).
     pub fn hovered(&self, rect: Rect) -> bool {
-        self.mouse.is_some_and(|(x, y)| {
-            rect.contains(x, y) && self.clips.last().is_none_or(|c| c.contains(x, y))
-        })
+        !self.blocked
+            && self.mouse.is_some_and(|(x, y)| {
+                rect.contains(x, y) && self.clips.last().is_none_or(|c| c.contains(x, y))
+            })
     }
 }
 

@@ -9,6 +9,7 @@ pub mod anim;
 mod apps_page;
 pub mod canvas;
 mod compare_panel;
+mod dialog;
 mod drivers_filters;
 pub mod drivers_page;
 pub mod fixes_page;

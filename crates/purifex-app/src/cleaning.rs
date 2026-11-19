@@ -163,6 +163,7 @@ impl Cleaning {
         all: &[InstalledApp],
         query: &str,
         confirmed: bool,
+        only: Option<&[String]>,
     ) -> Result<CleanReport, String> {
         let (app, installed) = self.resolve(apps, all, query)?;
         let finder = self
@@ -183,10 +184,18 @@ impl Cleaning {
         if installed {
             return Err(format!("{} sigue instalada: termina su desinstalador primero (los restos de una app en uso no se tocan)", app.name));
         }
+        // With a selection only those places go, and only if the rules still propose
+        // them: what is asked for is always checked against `propose` above.
+        let chosen: Vec<_> = proposed
+            .into_iter()
+            .filter(|t| {
+                only.is_none_or(|keep| keep.iter().any(|k| k.eq_ignore_ascii_case(&t.location)))
+            })
+            .collect();
         let store = self.store()?;
         let mut log = store.entries()?;
         let (mut removed, mut failed) = (Vec::new(), Vec::new());
-        for trace in &proposed {
+        for trace in &chosen {
             let seq = next_seq(&log);
             match store.remove(trace, seq) {
                 Ok(kept) => {
@@ -337,9 +346,9 @@ mod tests {
     fn the_traces_can_be_previewed_while_installed_but_never_removed() {
         let (mut c, log) = cleaning(vec![folder(DATA)]);
         let apps = vec![app("Discord", "Discord Inc.")];
-        let preview = c.clean(&apps, &apps, "Discord", false).unwrap();
+        let preview = c.clean(&apps, &apps, "Discord", false, None).unwrap();
         assert!(preview.preview && preview.proposed.len() == 1);
-        let err = c.clean(&apps, &apps, "Discord", true).unwrap_err();
+        let err = c.clean(&apps, &apps, "Discord", true, None).unwrap_err();
         assert!(err.contains("sigue instalada"));
         assert!(log.borrow().removed.is_empty(), "nothing touched");
     }
@@ -350,7 +359,7 @@ mod tests {
         let mut apps = vec![app("Discord", "Discord Inc."), app("Git", "G")];
         c.uninstall(&apps, "Discord").unwrap();
         apps.remove(0); // the uninstaller finished: the system no longer lists it
-        let report = c.clean(&apps, &apps, "Discord", true).unwrap();
+        let report = c.clean(&apps, &apps, "Discord", true, None).unwrap();
         assert_eq!(report.removed.len(), 2);
         assert!(report.removed[0].seq < report.removed[1].seq);
         assert_eq!(log.borrow().removed.len(), 2);
@@ -369,7 +378,7 @@ mod tests {
         let mut apps = vec![app("Discord", "Discord Inc.")];
         c.uninstall(&apps, "Discord").unwrap();
         apps.clear();
-        let report = c.clean(&apps, &apps, "Discord", true).unwrap();
+        let report = c.clean(&apps, &apps, "Discord", true, None).unwrap();
         assert_eq!(log.borrow().removed, [DATA]);
         assert_eq!(report.removed.len(), 1);
     }
@@ -381,7 +390,7 @@ mod tests {
         let mut apps = vec![app("Discord", "D")];
         c.uninstall(&apps, "Discord").unwrap();
         apps.clear();
-        let report = c.clean(&apps, &apps, "Discord", true).unwrap();
+        let report = c.clean(&apps, &apps, "Discord", true, None).unwrap();
         assert_eq!(report.removed.len(), 1);
         assert_eq!(report.failed.len(), 1);
         assert!(report.to_text().contains("no se pudo quitar"));
@@ -391,9 +400,9 @@ mod tests {
     fn an_app_that_is_gone_can_be_cleaned_by_its_name_even_if_it_was_not_uninstalled_from_here() {
         let (mut c, log) = cleaning(vec![folder(DATA)]);
         // Uninstalled by the user outside Purifex: nothing remembered, only the name.
-        let preview = c.clean(&[], &[], "Discord", false).unwrap();
+        let preview = c.clean(&[], &[], "Discord", false, None).unwrap();
         assert_eq!(preview.proposed.len(), 1);
-        let done = c.clean(&[], &[], "Discord", true).unwrap();
+        let done = c.clean(&[], &[], "Discord", true, None).unwrap();
         assert_eq!(done.removed.len(), 1);
         assert_eq!(log.borrow().removed, [DATA]);
     }
@@ -403,14 +412,18 @@ mod tests {
         let (mut c, log) = cleaning(vec![folder(DATA), folder(r"C:\Program Files\Git")]);
         let installed = vec![app("Git", "G"), app("Git LFS", "G")];
         // "gi" is ambiguous between two installed apps: not taken for an uninstalled one.
-        let err = c.clean(&installed, &installed, "gi", true).unwrap_err();
+        let err = c
+            .clean(&installed, &installed, "gi", true, None)
+            .unwrap_err();
         assert!(err.contains("sigue instalada"), "{err}");
         // The name of an installed app, in other words, is just as installed.
-        let err = c.clean(&[], &installed, "git lfs tool", true).unwrap_err();
+        let err = c
+            .clean(&[], &installed, "git lfs tool", true, None)
+            .unwrap_err();
         assert!(err.contains("sigue instalada"), "{err}");
         // Short or broad names cannot be searched safely.
         for generic in ["Go", "Microsoft", "Windows", "  "] {
-            assert!(c.clean(&[], &[], generic, true).is_err(), "{generic}");
+            assert!(c.clean(&[], &[], generic, true, None).is_err(), "{generic}");
         }
         assert!(log.borrow().removed.is_empty(), "nothing was touched");
     }
@@ -421,7 +434,11 @@ mod tests {
         let mut apps = vec![app("Discord", "D")];
         c.uninstall(&apps, "Discord").unwrap();
         apps.clear();
-        let seq = c.clean(&apps, &apps, "Discord", true).unwrap().removed[0].seq;
+        let seq = c
+            .clean(&apps, &apps, "Discord", true, None)
+            .unwrap()
+            .removed[0]
+            .seq;
         let line = c.restore(seq).unwrap();
         assert_eq!(line.restores, Some(seq));
         assert_eq!(log.borrow().restored, [DATA]);

@@ -117,3 +117,11 @@ Archivos en `assets/` (compilados dentro del programa; no se leen del disco):
 | `purifex.ico` | El mismo icono en 16–256 px, **para el instalador y los accesos directos** (aún no está dentro del `.exe`: incrustarlo exigiría una dependencia de compilación) |
 
 `purifex-icon.png` y `purifex.ico` se generaron a partir de `logo-dark-mode.png`; si cambia el logo hay que regenerarlos.
+
+## Diálogos
+
+Ventanas modales dibujadas por la propia interfaz (`crates/purifex-ui/src/dialog.rs`), no ventanas del sistema: así comparten el tema, la animación y el coste cero en reposo.
+
+- **Aparecen y se van animados** (190 ms): el fondo se atenúa y la ventana se funde y sube 18 unidades. Al cerrarse se siguen dibujando desde la última vista mientras se desvanecen. Con «Mostrar animaciones» apagado en Windows, aparecen y desaparecen al instante.
+- **Modales de verdad:** con uno abierto, nada de lo que hay debajo responde (clics, rueda, teclas, hover). Solo responden sus botones. `Escape` lo cancela. Un clic fuera no lo cierra.
+- **Qué muestran** lo decide el modelo (`dialog::view`): ¿Desinstalar X?, la lista de restos con casillas, y la confirmación de «Eliminar todo rastro» / «Eliminar marcados». Las confirmaciones de Arreglos siguen en línea (pendiente de pasar a diálogo).

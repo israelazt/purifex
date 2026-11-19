@@ -25,6 +25,10 @@ pub enum Page {
     Apps,
 }
 
+/// The traces listed in the window of traces (the rest are only taken by removing
+/// them all): the window has to fit in the smallest the program can be.
+pub const TRACES_LISTED: usize = 9;
+
 /// What the user is being asked to confirm before something is changed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Confirm {
@@ -34,8 +38,10 @@ pub enum Confirm {
     Undo(u64),
     /// Start the uninstaller of the app with this id.
     Uninstall(String),
-    /// Remove the traces of the app with this name (to the quarantine).
+    /// Remove the checked traces of the app with this name (to the quarantine).
     Clean(String),
+    /// Remove every trace of the app with this name, with no selecting.
+    CleanAll(String),
 }
 
 /// Which devices the drivers table lists.
@@ -80,6 +86,10 @@ pub struct Model {
     pub traces: Option<CleanReport>,
     /// The name of an app whose traces are being looked for.
     pub finding: Option<String>,
+    /// The window with the list of traces is open.
+    pub traces_open: bool,
+    /// Places of the list the user unchecked (all start checked).
+    pub unchecked: Vec<String>,
     /// What an apps action did, in a sentence.
     pub message: Option<String>,
     /// Something is being read: the picture says so before the wait.
@@ -103,8 +113,18 @@ pub enum Action {
     /// The window came back to the front: read the apps again (the user may have
     /// uninstalled one meanwhile).
     RefreshApps,
-    /// Asks to remove those traces: the user is asked to confirm.
+    /// Asks to remove the checked traces: the user is asked to confirm.
     AskClean(String),
+    /// Asks to remove every trace without selecting: same, it must be confirmed.
+    AskCleanAll(String),
+    /// Checks or unchecks one place of the list of traces.
+    ToggleTrace(String),
+    /// Checks all of them (`true`) or none.
+    SelectTraces(bool),
+    /// Opens the window of traces again.
+    OpenTraces,
+    /// Closes the window of traces without removing anything.
+    CloseTraces,
     SetFilter(DriverFilter),
     SetQuery(String),
     SelectSession(String),

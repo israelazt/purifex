@@ -74,3 +74,5 @@ Pendiente (no hecho todavía):
 - Al pulsar «Desinstalar» y confirmar en el diálogo, se abre el desinstalador oficial y Purifex **espera a que termine**: lee la lista cada 1,5 s (hasta 30 min) y, cuando la app desaparece, busca sus restos y **abre solo la ventana con la lista**, todo marcado.
 - En esa ventana: casillas para elegir, «Eliminar marcados (N)» y **«Eliminar todo rastro»** (un solo paso, sin elegir, con confirmación). Hasta 9 restos se listan; si hay más, solo «Eliminar todo rastro» se lleva los demás. Lo quitado va a la cuarentena y se puede devolver.
 - Funciona también si la app se desinstala por fuera de Purifex (al volver a la ventana se ve que desapareció) o si se escribe su nombre en el buscador de Apps.
+
+> Plan ampliado de limpieza profunda (igualar a Revo Uninstaller): ver `docs/DEEP_CLEAN_PLAN.md`.

@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use purifex_domain::analysis::Analysis;
 use purifex_domain::compare::ComparisonReport;
-use purifex_domain::driver_offers::{match_offers, DeviceOffer};
+use purifex_domain::driver_offers::OfferReport;
+use purifex_domain::driver_tiers::report;
 use purifex_domain::drivers_view::DriversView;
 use purifex_domain::fix::{FixReport, HistoryEntry, Proposal};
 use purifex_domain::overview::Overview;
@@ -56,7 +57,7 @@ pub trait Services {
     /// Starts asking Windows Update for newer drivers, in the background.
     fn start_offers(&mut self) -> Result<(), String>;
     /// Waits up to `wait` for that search. `None` = still going.
-    fn poll_offers(&mut self, wait: Duration) -> Option<Result<Vec<DeviceOffer>, String>>;
+    fn poll_offers(&mut self, wait: Duration) -> Option<Result<OfferReport, String>>;
 }
 
 /// The services of the application over real (or fake) ports.
@@ -161,7 +162,7 @@ where
         self.offering.start()
     }
 
-    fn poll_offers(&mut self, wait: Duration) -> Option<Result<Vec<DeviceOffer>, String>> {
+    fn poll_offers(&mut self, wait: Duration) -> Option<Result<OfferReport, String>> {
         let found = self.offering.poll(wait)?;
         Some(found.and_then(|offers| {
             let devices: Vec<_> = self
@@ -170,7 +171,7 @@ where
                 .into_iter()
                 .filter(|d| d.is_physical())
                 .collect();
-            Ok(match_offers(&devices, &offers))
+            Ok(report(&devices, &offers, self.scanner.today()))
         }))
     }
 }

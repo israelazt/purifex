@@ -13,6 +13,11 @@ impl<I: SystemInventory, C: Clock> Scanner<I, C> {
         Self { inventory, clock }
     }
 
+    /// Today's day, by the clock of the scanner.
+    pub fn today(&self) -> purifex_domain::date::Date {
+        self.clock.today()
+    }
+
     /// The devices present, as the system lists them.
     pub fn devices(&self) -> Result<Vec<purifex_domain::device::Device>, String> {
         self.inventory.devices()

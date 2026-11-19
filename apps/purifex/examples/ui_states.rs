@@ -153,7 +153,11 @@ mod states {
                     today,
                     5,
                 )));
-                model.offers = Offers::Found(found);
+                model.offers = Offers::Found(purifex_domain::driver_offers::OfferReport {
+                    offers: found,
+                    unresolved: vec![],
+                    vendor_covered: 0,
+                });
             }
             _ => {}
         }

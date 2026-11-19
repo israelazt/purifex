@@ -34,6 +34,16 @@ pub struct DeviceOffer {
     pub risk: Risk,
 }
 
+/// What the search found: the offers, and who covers the rest of the devices.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct OfferReport {
+    pub offers: Vec<DeviceOffer>,
+    /// Devices that need a driver and that nobody covers (for the user's AI).
+    pub unresolved: Vec<crate::driver_tiers::Unresolved>,
+    /// Devices whose maker has a catalog that code can read (not read yet).
+    pub vendor_covered: usize,
+}
+
 /// The state of the search for offers, as the interface shows it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum Offers {
@@ -41,7 +51,7 @@ pub enum Offers {
     #[default]
     NotAsked,
     Searching,
-    Found(Vec<DeviceOffer>),
+    Found(OfferReport),
     Failed(String),
 }
 
@@ -49,7 +59,10 @@ impl Offers {
     /// The offer for a device row (identical devices share name and class).
     pub fn for_device(&self, name: &str, class: &str) -> Option<&DeviceOffer> {
         match self {
-            Self::Found(found) => found.iter().find(|o| o.name == name && o.class == class),
+            Self::Found(report) => report
+                .offers
+                .iter()
+                .find(|o| o.name == name && o.class == class),
             _ => None,
         }
     }
@@ -113,14 +126,18 @@ pub fn match_offers(devices: &[Device], offers: &[Offer]) -> Vec<DeviceOffer> {
     found
 }
 
-/// The offers as text for the command line.
-pub fn offers_to_text(offers: &[DeviceOffer]) -> String {
+/// The report as text for the command line.
+pub fn offers_to_text(report: &OfferReport) -> String {
+    use crate::driver_tiers::Need;
     use std::fmt::Write;
-    if offers.is_empty() {
-        return "Windows Update no ofrece drivers más nuevos que los instalados.".into();
-    }
     let mut out = String::new();
-    for o in offers {
+    if report.offers.is_empty() {
+        out.push_str(
+            "Windows Update no ofrece drivers más nuevos que los instalados.
+",
+        );
+    }
+    for o in &report.offers {
         let version = o
             .version
             .map_or("versión sin indicar".to_string(), |v| v.to_string());
@@ -131,6 +148,31 @@ pub fn offers_to_text(offers: &[DeviceOffer]) -> String {
                 out,
                 "  cuidado: pantalla, red, disco o sistema; no se toca sin pedirlo expresamente"
             );
+        }
+    }
+    if report.vendor_covered > 0 {
+        let _ = writeln!(
+            out,
+            "
+{} dispositivos tienen catálogo del fabricante (aún sin consultar).",
+            report.vendor_covered
+        );
+    }
+    if !report.unresolved.is_empty() {
+        let _ = writeln!(
+            out,
+            "
+Sin fuente automática (los resolvería tu IA por MCP):"
+        );
+        for u in &report.unresolved {
+            let why = match u.need {
+                Need::MissingDriver => "sin driver".to_string(),
+                Need::Fault { code } => format!("fallo, código {code}"),
+                Need::OldDriver { days } => {
+                    format!("driver de hace {:.1} años", days as f64 / 365.25)
+                }
+            };
+            let _ = writeln!(out, "• {} ({}) — {why}", u.name, u.class);
         }
     }
     out

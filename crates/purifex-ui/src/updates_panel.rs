@@ -24,18 +24,21 @@ fn status(offers: &Offers) -> (String, Tone) {
             "Buscando en Windows Update… puede tardar hasta un minuto. Puedes seguir usando la app.".into(),
             Tone::Blue,
         ),
-        Offers::Found(found) if found.is_empty() => (
-            "Windows Update no ofrece drivers más nuevos que los instalados.".into(),
-            Tone::Green,
-        ),
-        Offers::Found(found) => (
-            format!(
-                "{} {} con un driver más nuevo disponible. Todavía no se instala nada desde Purifex.",
-                found.len(),
-                if found.len() == 1 { "dispositivo" } else { "dispositivos" }
-            ),
-            Tone::Blue,
-        ),
+        Offers::Found(report) => {
+            let mut text = match report.offers.len() {
+                0 => "Windows Update no ofrece drivers más nuevos que los instalados.".to_string(),
+                1 => "1 dispositivo con un driver más nuevo disponible.".to_string(),
+                n => format!("{n} dispositivos con un driver más nuevo disponible."),
+            };
+            if !report.unresolved.is_empty() {
+                text += &format!(
+                    " {} sin fuente automática: los resolvería tu IA por MCP.",
+                    report.unresolved.len()
+                );
+            }
+            text += " Todavía no se instala nada desde Purifex.";
+            (text, if report.offers.is_empty() { Tone::Green } else { Tone::Blue })
+        }
         Offers::Failed(error) => (format!("No se pudo buscar: {error}"), Tone::Red),
     }
 }
@@ -98,6 +101,7 @@ pub fn row_tag(c: &mut Canvas, offer: &DeviceOffer, x: f32, y: f32) {
 #[cfg(test)]
 mod tests {
     use purifex_domain::draw::Op;
+    use purifex_domain::driver_offers::OfferReport;
     use purifex_domain::version::DriverVersion;
 
     use super::*;
@@ -152,21 +156,44 @@ mod tests {
         assert!(texts.iter().any(|t| t.contains("Buscando")));
     }
 
+    fn report(offers: Vec<DeviceOffer>, unresolved: usize) -> Offers {
+        use purifex_domain::driver_tiers::{Need, Unresolved};
+        let unresolved = (0..unresolved)
+            .map(|i| Unresolved {
+                instance_id: format!("USB_{i}"),
+                name: format!("Dispositivo {i}"),
+                class: "Net".into(),
+                hardware_ids: vec![],
+                installed: None,
+                need: Need::Fault { code: 31 },
+            })
+            .collect();
+        Offers::Found(OfferReport {
+            offers,
+            unresolved,
+            vendor_covered: 0,
+        })
+    }
+
     #[test]
     fn the_result_says_how_many_devices_have_something_newer_or_that_nothing_does() {
-        let (none, _) = panel_for(Offers::Found(vec![]));
-        assert!(none
-            .iter()
-            .any(|t| t.contains("no ofrece drivers más nuevos")));
-        let (one, _) = panel_for(Offers::Found(vec![offer(Risk::Normal)]));
+        let (none, _) = panel_for(report(vec![], 0));
+        assert!(none.join(" ").contains("no ofrece drivers más nuevos"));
+        let (one, _) = panel_for(report(vec![offer(Risk::Normal)], 0));
         assert!(one
-            .iter()
-            .any(|t| t.starts_with("1 dispositivo con un driver más nuevo")));
-        let (two, _) = panel_for(Offers::Found(vec![
-            offer(Risk::Normal),
-            offer(Risk::Normal),
-        ]));
-        assert!(two.iter().any(|t| t.starts_with("2 dispositivos")));
+            .join(" ")
+            .contains("1 dispositivo con un driver más nuevo"));
+        let (two, _) = panel_for(report(vec![offer(Risk::Normal), offer(Risk::Normal)], 0));
+        assert!(two.join(" ").contains("2 dispositivos"));
+    }
+
+    #[test]
+    fn devices_nobody_covers_are_counted_for_the_ai() {
+        let (texts, _) = panel_for(report(vec![], 2));
+        assert!(
+            texts.join(" ").contains("2 sin fuente automática"),
+            "{texts:?}"
+        );
     }
 
     #[test]

@@ -631,11 +631,11 @@ mod tests {
         c.apply(Action::Go(Page::Overview));
         assert!(c.needs_tick());
         tick_until_done(&mut c);
-        let Offers::Found(found) = &c.model().offers else {
+        let Offers::Found(report) = &c.model().offers else {
             panic!("{:?}", c.model().offers)
         };
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].version, DriverVersion::parse("2.0.0.0"));
+        assert_eq!(report.offers.len(), 1);
+        assert_eq!(report.offers[0].version, DriverVersion::parse("2.0.0.0"));
     }
 
     #[test]

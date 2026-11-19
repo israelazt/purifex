@@ -3,7 +3,7 @@
 
 use purifex_domain::analysis::Analysis;
 use purifex_domain::compare::ComparisonReport;
-use purifex_domain::driver_offers::{offers_to_text, DeviceOffer};
+use purifex_domain::driver_offers::{offers_to_text, OfferReport};
 use purifex_domain::fix::{history_to_text, proposals_to_text, FixReport, HistoryEntry, Proposal};
 use purifex_domain::report::ScanReport;
 use purifex_domain::session_list::{rows_to_text, SessionRow};
@@ -18,7 +18,7 @@ pub enum Outcome {
     Sessions(Vec<SessionRow>),
     Analysis(Box<Analysis>),
     Comparison(Box<ComparisonReport>),
-    Offers(Vec<DeviceOffer>),
+    Offers(OfferReport),
     Fixes(Vec<Proposal>),
     Fix(Box<FixReport>),
     History(Vec<HistoryEntry>),
@@ -55,7 +55,9 @@ impl Outcome {
             Self::Sessions(rows) => serde_json::json!({ "sessions": rows }),
             Self::Analysis(analysis) => return analysis.to_json(),
             Self::Comparison(report) => return report.to_json(),
-            Self::Offers(offers) => serde_json::json!({ "offers": offers }),
+            Self::Offers(report) => {
+                return serde_json::to_string_pretty(report).unwrap_or_else(|_| "{}".into())
+            }
             Self::Fixes(proposals) => serde_json::json!({ "fixes": proposals }),
             Self::Fix(report) => return report.to_json(),
             Self::History(entries) => serde_json::json!({ "history": entries }),

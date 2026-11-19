@@ -13,6 +13,7 @@ pub mod diagnosis;
 pub mod draw;
 pub mod driver_candidate;
 pub mod driver_offers;
+pub mod driver_tiers;
 pub mod drivers_view;
 pub mod fix;
 pub mod icons;

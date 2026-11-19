@@ -172,21 +172,21 @@ impl Ui {
                 out.redraw = self.scroll != before;
             }
             UiEvent::Char(c) if self.search_focus => {
-                out.actions
-                    .push(Action::SetQuery(format!("{}{c}", self.query)));
+                let query = format!("{}{c}", self.query);
+                out.actions.push(self.typed(query));
                 out.redraw = true;
             }
             UiEvent::Key(Key::Backspace) if self.search_focus => {
                 let mut query = self.query.clone();
                 query.pop();
-                out.actions.push(Action::SetQuery(query));
+                out.actions.push(self.typed(query));
                 out.redraw = true;
             }
             UiEvent::Key(Key::Escape) if self.search_focus => {
                 if self.query.is_empty() {
                     self.search_focus = false;
                 } else {
-                    out.actions.push(Action::SetQuery(String::new()));
+                    out.actions.push(self.typed(String::new()));
                 }
                 out.redraw = true;
             }
@@ -204,6 +204,14 @@ impl Ui {
             _ => {}
         }
         out
+    }
+
+    /// The search text after a key, remembered at once: several keys can arrive
+    /// before the next picture (a paste, a held key), and each must add to the
+    /// last one, not to what the last picture showed.
+    fn typed(&mut self, query: String) -> Action {
+        self.query = query.clone();
+        Action::SetQuery(query)
     }
 
     /// Whether the search has the keyboard (the page draws its caret).
@@ -325,6 +333,27 @@ mod tests {
     }
 
     #[test]
+    fn keys_that_arrive_before_the_next_picture_all_count() {
+        let model = Model {
+            page: Page::Drivers,
+            ..Model::default()
+        };
+        let mut ui = ui_with_frame(&model);
+        ui.event(UiEvent::Key(Key::CtrlK));
+        // No frame between them: what a paste or a held key does.
+        let typed: Vec<Action> = "nvidia"
+            .chars()
+            .flat_map(|c| ui.event(UiEvent::Char(c)).actions)
+            .collect();
+        assert_eq!(typed.last(), Some(&Action::SetQuery("nvidia".into())));
+        assert_eq!(typed[2], Action::SetQuery("nvi".into()));
+        let erased: Vec<Action> = (0..3)
+            .flat_map(|_| ui.event(UiEvent::Key(Key::Backspace)).actions)
+            .collect();
+        assert_eq!(erased.last(), Some(&Action::SetQuery("nvi".into())));
+    }
+
+    #[test]
     fn typing_goes_to_the_search_only_while_it_has_the_keyboard() {
         let model = Model {
             page: Page::Drivers,
@@ -341,9 +370,10 @@ mod tests {
             ui.event(UiEvent::Char('i')).actions,
             [Action::SetQuery("nvi".into())]
         );
+        // The text it just asked for is what the next key works on: "nvi" loses its last letter.
         assert_eq!(
             ui.event(UiEvent::Key(Key::Backspace)).actions,
-            [Action::SetQuery("n".into())]
+            [Action::SetQuery("nv".into())]
         );
         assert_eq!(
             ui.event(UiEvent::Key(Key::Escape)).actions,

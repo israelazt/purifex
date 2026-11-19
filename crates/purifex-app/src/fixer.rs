@@ -233,68 +233,16 @@ mod tests {
     use purifex_domain::session_csv::parse;
 
     use super::*;
-
-    /// What the fake setting holds and what it was asked, kept where the test can see it.
-    #[derive(Default)]
-    struct State {
-        value: Option<SettingValue>,
-        blockers: Vec<String>,
-        writes: Vec<SettingValue>,
-        /// The write is accepted but the value does not change.
-        does_not_stick: bool,
-        history: Vec<HistoryEntry>,
-        history_full: bool,
-    }
-
-    #[derive(Clone)]
-    struct Fake(Rc<RefCell<State>>);
-
-    impl FixBackend for Fake {
-        fn current(&self, _: &str) -> Result<SettingValue, String> {
-            self.0
-                .borrow()
-                .value
-                .clone()
-                .ok_or_else(|| "no está instalado".to_string())
-        }
-        fn blockers(&self, _: &str) -> Result<Vec<String>, String> {
-            Ok(self.0.borrow().blockers.clone())
-        }
-        fn set(&mut self, _: &str, value: &SettingValue) -> Result<(), String> {
-            let mut state = self.0.borrow_mut();
-            state.writes.push(value.clone());
-            if !state.does_not_stick {
-                state.value = Some(value.clone());
-            }
-            Ok(())
-        }
-    }
-
-    impl HistoryStore for Fake {
-        fn entries(&self) -> Result<Vec<HistoryEntry>, String> {
-            Ok(self.0.borrow().history.clone())
-        }
-        fn append(&mut self, entry: &HistoryEntry) -> Result<(), String> {
-            if self.0.borrow().history_full {
-                return Err("disco lleno".into());
-            }
-            self.0.borrow_mut().history.push(entry.clone());
-            Ok(())
-        }
-    }
+    use crate::testing::{FakeFixes, FixState};
 
     fn game(client: f32) -> Analysis {
         let csv = format!("t_s,cpu_total,cpu_max_core,game_cpu,game_mb,groups\n1.0,40.0,80.0,13.0,900,league_client={client}\n300.0,40.0,80.0,13.0,900,league_client={client}\n");
         Analysis::of("lol-1", parse(&csv).unwrap()).unwrap()
     }
 
-    fn fixer(value: Option<SettingValue>) -> (Fixer, Rc<RefCell<State>>) {
-        let state = Rc::new(RefCell::new(State {
-            value,
-            ..State::default()
-        }));
-        let fake = Fake(state.clone());
-        (Fixer::new(Box::new(fake.clone()), Box::new(fake)), state)
+    fn fixer(value: Option<SettingValue>) -> (Fixer, Rc<RefCell<FixState>>) {
+        let (fake, state) = FakeFixes::with(value);
+        (fake.fixer(), state)
     }
 
     fn off() -> Option<SettingValue> {

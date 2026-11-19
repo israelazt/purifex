@@ -1,10 +1,12 @@
 //! Fakes of the ports, for the tests of this crate.
 
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 use std::time::Duration;
 
 use purifex_domain::date::Date;
 use purifex_domain::device::Device;
+use purifex_domain::fix::{HistoryEntry, SettingValue};
 use purifex_domain::ports::{
     Clock, PerformanceSampler, SamplerInfo, SessionArchive, SessionFile, SessionInfo,
     SystemInventory,
@@ -202,5 +204,70 @@ impl SessionArchive for FakeArchive {
             .find(|(i, _)| i == id)
             .map(|(_, csv)| csv.clone())
             .ok_or_else(|| format!("no existe la grabación «{id}»"))
+    }
+}
+
+/// What the fake setting holds and what it was asked, kept where a test can see it.
+#[derive(Default)]
+pub struct FixState {
+    pub value: Option<SettingValue>,
+    pub blockers: Vec<String>,
+    pub writes: Vec<SettingValue>,
+    /// The write is accepted but the value does not change.
+    pub does_not_stick: bool,
+    pub history: Vec<HistoryEntry>,
+    pub history_full: bool,
+}
+
+/// A setting and a history in memory: the test keeps a second handle to see them.
+#[derive(Clone)]
+pub struct FakeFixes(pub Rc<RefCell<FixState>>);
+
+impl FakeFixes {
+    pub fn with(value: Option<SettingValue>) -> (Self, Rc<RefCell<FixState>>) {
+        let state = Rc::new(RefCell::new(FixState {
+            value,
+            ..FixState::default()
+        }));
+        (Self(state.clone()), state)
+    }
+
+    /// A `Fixer` over this fake.
+    pub fn fixer(&self) -> crate::fixer::Fixer {
+        crate::fixer::Fixer::new(Box::new(self.clone()), Box::new(self.clone()))
+    }
+}
+
+impl purifex_domain::ports::FixBackend for FakeFixes {
+    fn current(&self, _: &str) -> Result<SettingValue, String> {
+        self.0
+            .borrow()
+            .value
+            .clone()
+            .ok_or_else(|| "no está instalado".to_string())
+    }
+    fn blockers(&self, _: &str) -> Result<Vec<String>, String> {
+        Ok(self.0.borrow().blockers.clone())
+    }
+    fn set(&mut self, _: &str, value: &SettingValue) -> Result<(), String> {
+        let mut state = self.0.borrow_mut();
+        state.writes.push(value.clone());
+        if !state.does_not_stick {
+            state.value = Some(value.clone());
+        }
+        Ok(())
+    }
+}
+
+impl purifex_domain::ports::HistoryStore for FakeFixes {
+    fn entries(&self) -> Result<Vec<HistoryEntry>, String> {
+        Ok(self.0.borrow().history.clone())
+    }
+    fn append(&mut self, entry: &HistoryEntry) -> Result<(), String> {
+        if self.0.borrow().history_full {
+            return Err("disco lleno".into());
+        }
+        self.0.borrow_mut().history.push(entry.clone());
+        Ok(())
     }
 }

@@ -7,6 +7,7 @@ use crate::analysis::Analysis;
 use crate::compare::ComparisonReport;
 use crate::device_category::Category;
 use crate::drivers_view::{DriverRow, DriversView};
+use crate::fix::{FixReport, HistoryEntry, Proposal};
 use crate::overview::Overview;
 use crate::session_list::SessionRow;
 
@@ -16,6 +17,16 @@ pub enum Page {
     Overview,
     Drivers,
     Sessions,
+    Fixes,
+}
+
+/// What the user is being asked to confirm before something is changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Confirm {
+    /// Apply the fix with this id.
+    Apply(String),
+    /// Undo the change with this number of the history.
+    Undo(u64),
 }
 
 /// Which devices the drivers table lists.
@@ -37,6 +48,13 @@ pub struct Model {
     pub analysis: Option<Analysis>,
     /// The chosen game against the game before it, when there is one.
     pub comparison: Option<ComparisonReport>,
+    /// The fixes worth offering and the changes made so far.
+    pub fixes: Option<Vec<Proposal>>,
+    pub history: Option<Vec<HistoryEntry>>,
+    /// Waiting for the user to confirm a change.
+    pub confirm: Option<Confirm>,
+    /// What the last change did (shown until the user goes elsewhere).
+    pub notice: Option<FixReport>,
     /// The recording shown in the Sessions page.
     pub selected: Option<String>,
     pub filter: DriverFilter,
@@ -54,6 +72,13 @@ pub enum Action {
     SetFilter(DriverFilter),
     SetQuery(String),
     SelectSession(String),
+    /// Asks to apply a fix: nothing changes yet, the user is asked to confirm.
+    AskFix(String),
+    /// Asks to undo a change of the history: same, it must be confirmed.
+    AskUndo(u64),
+    /// Carries out what is waiting for confirmation.
+    Confirm,
+    CancelConfirm,
 }
 
 impl Model {

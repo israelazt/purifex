@@ -3,7 +3,7 @@
 //! is missing. Reading takes a moment, so an action only marks that something is
 //! pending and says "busy": the interface draws that, and then `tick` reads.
 
-use purifex_domain::view::{Action, Model, Page};
+use purifex_domain::view::{Action, Confirm, Model, Page};
 
 use crate::services::Services;
 
@@ -41,23 +41,56 @@ impl Core {
             Action::Go(page) => {
                 self.model.page = page;
                 self.model.error = None;
+                // What was waiting for a confirmation, or told of a change, stays on its page.
+                (self.model.confirm, self.model.notice) = (None, None);
                 self.expect_reading();
             }
             Action::Rescan => {
                 let m = &mut self.model;
                 (m.overview, m.drivers, m.sessions, m.analysis, m.comparison) =
                     (None, None, None, None, None);
+                (m.fixes, m.history, m.confirm, m.notice) = (None, None, None, None);
                 m.error = None;
                 self.expect_reading();
             }
             Action::SetFilter(filter) => self.model.filter = filter,
             Action::SetQuery(query) => self.model.query = query,
+            Action::AskFix(id) => self.model.confirm = Some(Confirm::Apply(id)),
+            Action::AskUndo(seq) => self.model.confirm = Some(Confirm::Undo(seq)),
+            Action::CancelConfirm => self.model.confirm = None,
+            Action::Confirm => self.confirmed(),
             Action::SelectSession(id) => {
                 self.model.selected = Some(id);
                 self.model.analysis = None;
                 self.model.comparison = None;
                 self.model.error = None;
                 self.expect_reading();
+            }
+        }
+    }
+
+    /// Carries out what was waiting for the user's confirmation. The change is
+    /// made by the services (which check it is still proposed, that nothing blocks
+    /// it and that it holds); here only its result is kept to be shown.
+    fn confirmed(&mut self) {
+        let Some(confirm) = self.model.confirm.take() else {
+            return;
+        };
+        self.model.error = None;
+        let result = match confirm {
+            Confirm::Apply(id) => self.services.apply_fix(&id, true, false),
+            Confirm::Undo(seq) => self.services.undo_fix(seq, true),
+        };
+        match result {
+            Ok(report) => {
+                self.model.notice = Some(report);
+                // What is offered and what was changed are different now.
+                (self.model.fixes, self.model.history) = (None, None);
+                self.expect_reading();
+            }
+            Err(error) => {
+                self.model.notice = None;
+                self.model.error = Some(error);
             }
         }
     }
@@ -73,6 +106,7 @@ impl Core {
         let m = &self.model;
         let page_lacks = match m.page {
             Page::Overview => false,
+            Page::Fixes => m.fixes.is_none() || m.history.is_none(),
             Page::Drivers => m.drivers.is_none(),
             Page::Sessions => {
                 m.analysis.is_none()
@@ -123,6 +157,20 @@ impl Core {
                 Err(error) => note("drivers", error),
             }
         }
+        if self.model.page == Page::Fixes {
+            if self.model.fixes.is_none() {
+                match self.services.fixes() {
+                    Ok(fixes) => self.model.fixes = Some(fixes),
+                    Err(error) => note("arreglos", error),
+                }
+            }
+            if self.model.history.is_none() {
+                match self.services.history() {
+                    Ok(history) => self.model.history = Some(history),
+                    Err(error) => note("historial", error),
+                }
+            }
+        }
         if self.model.page == Page::Sessions && self.model.analysis.is_none() {
             // With nothing chosen, the newest recording that can be read.
             let chosen = self.model.selected.clone().or_else(|| {
@@ -143,7 +191,9 @@ impl Core {
                 }
             }
         }
-        self.model.error = (!errors.is_empty()).then(|| errors.join(" · "));
+        if !errors.is_empty() {
+            self.model.error = Some(errors.join(" · "));
+        }
         self.pending = false;
         self.model.busy = false;
     }
@@ -152,6 +202,7 @@ impl Core {
 #[cfg(test)]
 mod tests {
     use purifex_domain::device::Device;
+    use purifex_domain::fix::SettingValue;
     use purifex_domain::view::DriverFilter;
 
     use super::*;
@@ -297,6 +348,133 @@ mod tests {
         c.apply(Action::SelectSession("lol-20261118-120000".into()));
         c.tick();
         assert!(c.model().comparison.is_none(), "a test is not compared");
+    }
+
+    const CLIENT_HEAVY: &str = "t_s,cpu_total,cpu_max_core,game_cpu,game_mb,groups\n1.0,40.0,80.0,13.0,900,league_client=16.0\n300.0,40.0,80.0,13.0,900,league_client=16.0\n";
+
+    fn fixes_core(
+        value: Option<SettingValue>,
+    ) -> (
+        Core,
+        std::rc::Rc<std::cell::RefCell<crate::testing::FixState>>,
+    ) {
+        let (fake, state) = crate::testing::FakeFixes::with(value);
+        let app = App::new(
+            Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+            Recorder::new(
+                FakeSampler::new(0, 1, true),
+                FakeClock::ticking(0),
+                FakeFile::default(),
+            ),
+            Archive::new(FakeArchive::with(&[("lol-20261118-145915", CLIENT_HEAVY)])),
+        )
+        .with_fixer(fake.fixer());
+        let mut core = Core::new(Box::new(app));
+        core.tick();
+        core.apply(Action::Go(Page::Fixes));
+        core.tick();
+        (core, state)
+    }
+
+    #[test]
+    fn the_fixes_page_reads_what_is_proposed_and_the_history() {
+        let (c, _) = fixes_core(Some(SettingValue::Bool(false)));
+        assert_eq!(c.model().fixes.as_ref().unwrap().len(), 1);
+        assert!(c.model().history.as_ref().unwrap().is_empty());
+        assert!(!c.model().busy && c.model().error.is_none());
+    }
+
+    #[test]
+    fn asking_to_apply_changes_nothing_until_it_is_confirmed_and_can_be_cancelled() {
+        let (mut c, state) = fixes_core(Some(SettingValue::Bool(false)));
+        let id = c.model().fixes.as_ref().unwrap()[0].id.clone();
+        c.apply(Action::AskFix(id.clone()));
+        assert_eq!(c.model().confirm, Some(Confirm::Apply(id)));
+        assert!(state.borrow().writes.is_empty(), "asking is not doing");
+        c.apply(Action::CancelConfirm);
+        assert!(c.model().confirm.is_none());
+        c.apply(Action::Confirm);
+        assert!(
+            state.borrow().writes.is_empty(),
+            "a confirmation with nothing to confirm does nothing"
+        );
+    }
+
+    #[test]
+    fn confirming_applies_it_notes_it_and_what_is_offered_is_read_again() {
+        let (mut c, state) = fixes_core(Some(SettingValue::Bool(false)));
+        let id = c.model().fixes.as_ref().unwrap()[0].id.clone();
+        c.apply(Action::AskFix(id));
+        c.apply(Action::Confirm);
+        assert_eq!(state.borrow().value, Some(SettingValue::Bool(true)));
+        assert!(c
+            .model()
+            .notice
+            .as_ref()
+            .is_some_and(|n| !n.preview && n.seq == Some(1)));
+        assert!(
+            c.model().confirm.is_none() && c.model().busy,
+            "it reads again what is offered"
+        );
+        c.tick();
+        assert!(
+            c.model().fixes.as_ref().unwrap().is_empty(),
+            "it is already done: nothing to offer"
+        );
+        assert_eq!(c.model().history.as_ref().unwrap().len(), 1);
+        assert!(
+            c.model().notice.is_some(),
+            "the notice stays after the reading"
+        );
+    }
+
+    #[test]
+    fn a_change_that_cannot_be_made_is_shown_and_nothing_is_changed() {
+        let (mut c, state) = fixes_core(Some(SettingValue::Bool(false)));
+        state.borrow_mut().blockers = vec!["Cierra el cliente de League".into()];
+        let id = c.model().fixes.as_ref().unwrap()[0].id.clone();
+        c.apply(Action::AskFix(id));
+        c.apply(Action::Confirm);
+        assert!(c
+            .model()
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("Cierra el cliente de League"));
+        assert!(c.model().notice.is_none());
+        assert!(state.borrow().writes.is_empty());
+    }
+
+    #[test]
+    fn a_change_can_be_undone_from_the_history_with_its_own_confirmation() {
+        let (mut c, state) = fixes_core(Some(SettingValue::Bool(false)));
+        let id = c.model().fixes.as_ref().unwrap()[0].id.clone();
+        c.apply(Action::AskFix(id));
+        c.apply(Action::Confirm);
+        c.tick();
+        c.apply(Action::AskUndo(1));
+        assert_eq!(c.model().confirm, Some(Confirm::Undo(1)));
+        assert_eq!(
+            state.borrow().value,
+            Some(SettingValue::Bool(true)),
+            "still applied until confirmed"
+        );
+        c.apply(Action::Confirm);
+        assert_eq!(state.borrow().value, Some(SettingValue::Bool(false)));
+        c.tick();
+        assert_eq!(
+            c.model().fixes.as_ref().unwrap().len(),
+            1,
+            "offered again once undone"
+        );
+    }
+
+    #[test]
+    fn leaving_the_page_forgets_a_pending_confirmation_and_the_notice() {
+        let (mut c, _) = fixes_core(Some(SettingValue::Bool(false)));
+        c.apply(Action::AskFix("x".into()));
+        c.apply(Action::Go(Page::Overview));
+        assert!(c.model().confirm.is_none() && c.model().notice.is_none());
     }
 
     #[test]

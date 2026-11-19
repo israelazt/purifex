@@ -50,6 +50,12 @@ pub trait TraceFinder {
     ) -> Result<Vec<crate::app_traces::Candidate>, String>;
 }
 
+/// Looks at an app that is still installed and says what its traces will be
+/// recognised by once it is gone: its programs and the extensions it registered.
+pub trait SeedProbe {
+    fn observe(&self, app: &crate::apps::InstalledApp) -> crate::seeds::Seeds;
+}
+
 /// Starts the uninstaller that the app registered (and does not wait for it).
 pub trait Uninstaller {
     fn launch(&self, app: &crate::apps::InstalledApp) -> Result<(), String>;

@@ -119,6 +119,8 @@ mod states {
                     size_kb: Some(kb),
                     kind: AppKind::Desktop,
                     hidden: false,
+                    display_icon: None,
+                    observed: Default::default(),
                 };
                 model.page = Page::Apps;
                 model.apps = Some(vec![

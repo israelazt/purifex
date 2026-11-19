@@ -20,8 +20,8 @@ fn main() {
     use purifex_platform::{
         install_stderr_log, BrowserOpener, JsonlCandidates, JsonlHistory, LocalCleanup,
         LocalSessionArchive, LocalSessionFile, RegisteredUninstaller, RegistryApps,
-        SetupApiInventory, SystemClock, SystemFixes, WindowsSampler, WindowsTraceFinder,
-        WindowsUpdateOffers,
+        SetupApiInventory, SystemClock, SystemFixes, WindowsSampler, WindowsSeedProbe,
+        WindowsTraceFinder, WindowsUpdateOffers,
     };
 
     install_stderr_log();
@@ -46,11 +46,14 @@ fn main() {
         .with_candidates(Candidates::new(Box::new(JsonlCandidates::new())))
         .with_opener(Box::new(BrowserOpener))
         .with_apps(Box::new(RegistryApps))
-        .with_cleaning(Cleaning::new(
-            Box::new(WindowsTraceFinder),
-            Box::new(RegisteredUninstaller),
-            Box::new(LocalCleanup::new()),
-        ));
+        .with_cleaning(
+            Cleaning::new(
+                Box::new(WindowsTraceFinder),
+                Box::new(RegisteredUninstaller),
+                Box::new(LocalCleanup::new()),
+            )
+            .with_probe(Box::new(WindowsSeedProbe)),
+        );
     if matches!(command, Command::Mcp) {
         let stdin = std::io::stdin();
         if let Err(error) = purifex_app::mcp::serve(&mut app, stdin.lock(), std::io::stdout()) {

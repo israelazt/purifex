@@ -55,6 +55,8 @@ impl AppInventory for RegistryApps {
                     size_kb: key.number("EstimatedSize").map(u64::from),
                     kind: AppKind::Desktop,
                     hidden: is_hidden(&key, &sub),
+                    display_icon: key.text("DisplayIcon"),
+                    observed: Default::default(),
                 });
             }
         }

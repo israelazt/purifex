@@ -310,6 +310,8 @@ mod tests {
             size_kb: Some(2048),
             kind: AppKind::Desktop,
             hidden: false,
+            display_icon: None,
+            observed: Default::default(),
         }
     }
 

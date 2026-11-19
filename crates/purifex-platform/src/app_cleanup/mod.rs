@@ -6,7 +6,9 @@ mod finder;
 mod launcher;
 mod quarantine;
 mod registry_write;
+mod seed_probe;
 
 pub use finder::WindowsTraceFinder;
 pub use launcher::RegisteredUninstaller;
 pub use quarantine::LocalCleanup;
+pub use seed_probe::WindowsSeedProbe;

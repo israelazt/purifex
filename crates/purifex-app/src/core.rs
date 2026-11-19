@@ -871,6 +871,8 @@ mod tests {
             size_kb: Some(1024),
             kind: purifex_domain::apps::AppKind::Desktop,
             hidden: false,
+            display_icon: None,
+            observed: Default::default(),
         }
     }
 

@@ -882,6 +882,8 @@ mod tests {
             size_kb: None,
             kind: purifex_domain::apps::AppKind::Desktop,
             hidden: false,
+            display_icon: None,
+            observed: Default::default(),
         };
         Model {
             page: Page::Apps,

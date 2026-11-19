@@ -32,6 +32,14 @@ pub struct InstalledApp {
     /// The app says it is a part of the system or of another program (hidden in
     /// Windows' own list of apps), or it is an update.
     pub hidden: bool,
+    /// The icon the app registered (`"C:\X\x.exe",0`): its folder is a seed when
+    /// the app gave no install location.
+    #[serde(default)]
+    pub display_icon: Option<String>,
+    /// What was observed of the app before its uninstaller was started (its programs
+    /// and file extensions), kept because afterwards nothing is left to look at.
+    #[serde(default)]
+    pub observed: crate::seeds::Seeds,
 }
 
 impl InstalledApp {
@@ -146,6 +154,8 @@ mod tests {
             size_kb: Some(2048),
             kind: AppKind::Desktop,
             hidden: false,
+            display_icon: None,
+            observed: Default::default(),
         }
     }
 

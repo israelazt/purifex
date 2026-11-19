@@ -40,7 +40,7 @@ mod window;
 mod windows_update;
 
 #[cfg(windows)]
-pub use app_cleanup::{LocalCleanup, RegisteredUninstaller, WindowsTraceFinder};
+pub use app_cleanup::{LocalCleanup, RegisteredUninstaller, WindowsSeedProbe, WindowsTraceFinder};
 #[cfg(windows)]
 pub use apps_registry::RegistryApps;
 #[cfg(windows)]

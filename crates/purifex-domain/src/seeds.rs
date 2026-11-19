@@ -57,25 +57,64 @@ impl Seeds {
     }
 }
 
-/// The seeds the registry entry alone gives: `InstallLocation`, else the folder of the
-/// uninstall command. The `.exe` names and extensions are observed before uninstalling
-/// and added with `Seeds::new`.
+/// The seeds of an app: its folder (`InstallLocation`; else the one observed before
+/// uninstalling; else the folder of its icon; else the one of its uninstall command),
+/// and the `.exe` names and extensions observed before it was uninstalled.
 pub fn seeds_of(app: &InstalledApp) -> Seeds {
+    let from_icon = || {
+        let icon = app.display_icon.as_deref()?;
+        let path = command_path(icon).or_else(|| {
+            // `C:\x\x.exe,0` or `C:\x\x.ico` without quotes.
+            let path = icon.rsplit_once(',').map_or(icon, |(p, _)| p);
+            Some(path.trim().to_string())
+        })?;
+        usable_folder(&parent(&path)?)
+    };
+    let from_uninstall = || {
+        app.uninstall
+            .as_deref()
+            .and_then(command_path)
+            .and_then(|p| parent(&p))
+            .and_then(|f| usable_folder(&f))
+    };
     let folder = app
         .install_location
         .as_deref()
         .and_then(usable_folder)
-        .or_else(|| {
-            app.uninstall
-                .as_deref()
-                .and_then(command_path)
-                .and_then(|p| parent(&p))
-                .and_then(|f| usable_folder(&f))
-        });
+        .or_else(|| app.observed.folder.as_deref().and_then(usable_folder))
+        .or_else(from_icon)
+        .or_else(from_uninstall);
     Seeds {
         folder,
-        ..Seeds::default()
+        exes: app.observed.exes.clone(),
+        extensions: app.observed.extensions.clone(),
     }
+}
+
+/// The extensions whose program is inside `folder`. `extensions` pairs each extension
+/// with the ProgId it names; `commands_of(progid)` gives the texts of that ProgId that
+/// say what it runs (`shell\open\command`, `DefaultIcon`).
+pub fn extensions_into(
+    folder: &str,
+    extensions: &[(String, String)],
+    commands_of: impl Fn(&str) -> Vec<String>,
+) -> Vec<String> {
+    let Some(folder) = usable_folder(folder) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = extensions
+        .iter()
+        .filter(|(_, progid)| {
+            commands_of(progid)
+                .iter()
+                .any(|text| crate::reference::path_refers_to(text, &folder))
+        })
+        .map(|(ext, _)| ext.to_lowercase())
+        .filter(|e| usable_extension(e))
+        .collect();
+    found.sort();
+    found.dedup();
+    found
 }
 
 fn parent(path: &str) -> Option<String> {
@@ -150,6 +189,8 @@ mod tests {
             size_kb: None,
             kind: AppKind::Desktop,
             hidden: false,
+            display_icon: None,
+            observed: Default::default(),
         }
     }
 
@@ -209,6 +250,59 @@ mod tests {
         ] {
             assert_eq!(seeds_of(&app(None, Some(cmd))).folder, None, "{cmd}");
         }
+    }
+
+    #[test]
+    fn the_icon_and_what_was_observed_are_seeds_when_the_location_is_missing() {
+        let mut a = app(None, None);
+        a.display_icon = Some(r#""C:\Program Files\Kdenlive\bin\kdenlive.exe",0"#.into());
+        assert_eq!(
+            seeds_of(&a).folder,
+            Some(r"C:\Program Files\Kdenlive\bin".into())
+        );
+        a.display_icon = Some(r"C:\Games\Cool Game\game.exe,1".into());
+        assert_eq!(seeds_of(&a).folder, Some(r"C:\Games\Cool Game".into()));
+        a.observed = Seeds::new(Some(r"C:\Observed\Place"), &["k.exe".into()], &[]);
+        a.observed.exes = vec!["kdenlive.exe".into()];
+        a.observed.extensions = vec![".kdenlive".into()];
+        let s = seeds_of(&a);
+        assert_eq!(
+            s.folder,
+            Some(r"C:\Observed\Place".into()),
+            "observed before the icon"
+        );
+        assert_eq!(
+            (s.exes, s.extensions),
+            (vec!["kdenlive.exe".into()], vec![".kdenlive".into()])
+        );
+        a.install_location = Some(r"C:\Program Files\Real".into());
+        assert_eq!(seeds_of(&a).folder, Some(r"C:\Program Files\Real".into()));
+    }
+
+    #[test]
+    fn an_app_remembered_before_these_fields_existed_still_reads() {
+        let old = r#"{"id":"x","name":"Old","publisher":null,"version":null,"install_location":null,"uninstall":null,"quiet_uninstall":null,"size_kb":null,"kind":"desktop","hidden":false}"#;
+        let a = InstalledApp::from_line(old).unwrap();
+        assert!(a.observed.is_empty() && a.display_icon.is_none());
+    }
+
+    #[test]
+    fn extensions_are_those_whose_program_is_inside_the_folder() {
+        let pairs = vec![
+            (".kdenlive".to_string(), "Kdenlive".to_string()),
+            (".txt".to_string(), "txtfile".to_string()),
+            (".mp4".to_string(), "VLC.mp4".to_string()),
+        ];
+        let commands = |progid: &str| match progid {
+            "Kdenlive" => vec![r#""C:\Program Files\Kdenlive\bin\kdenlive.exe" "%1""#.to_string()],
+            "txtfile" => vec![r"C:\Windows\system32\NOTEPAD.EXE %1".to_string()],
+            _ => vec![r"C:\Program Files\Kdenlive2\x.exe".to_string()],
+        };
+        assert_eq!(
+            extensions_into(r"C:\Program Files\Kdenlive", &pairs, commands),
+            vec![".kdenlive"]
+        );
+        assert!(extensions_into(r"C:\Program Files", &pairs, commands).is_empty());
     }
 
     #[test]

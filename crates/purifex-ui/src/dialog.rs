@@ -437,6 +437,8 @@ mod tests {
             size_kb: None,
             kind: AppKind::Desktop,
             hidden: false,
+            display_icon: None,
+            observed: Default::default(),
         };
         let m = Model {
             apps: Some(vec![app]),

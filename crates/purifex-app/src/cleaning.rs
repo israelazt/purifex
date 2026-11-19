@@ -8,13 +8,14 @@
 use purifex_domain::app_traces::{names_of, propose, simple};
 use purifex_domain::apps::{AppKind, InstalledApp};
 use purifex_domain::cleanup_log::{is_restored, next_seq, CleanReport, CleanupEntry, CleanupState};
-use purifex_domain::ports::{CleanupStore, TraceFinder, Uninstaller};
+use purifex_domain::ports::{CleanupStore, SeedProbe, TraceFinder, Uninstaller};
 
 #[derive(Default)]
 pub struct Cleaning {
     finder: Option<Box<dyn TraceFinder>>,
     launcher: Option<Box<dyn Uninstaller>>,
     store: Option<Box<dyn CleanupStore>>,
+    probe: Option<Box<dyn SeedProbe>>,
 }
 
 /// The app that `query` names (its id, its name, or a part of it that only one has).
@@ -56,7 +57,14 @@ impl Cleaning {
             finder: Some(finder),
             launcher: Some(launcher),
             store: Some(store),
+            probe: None,
         }
+    }
+
+    /// What is observed of an app before its uninstaller starts (kept with it).
+    pub fn with_probe(mut self, probe: Box<dyn SeedProbe>) -> Self {
+        self.probe = Some(probe);
+        self
     }
 
     fn store(&mut self) -> Result<&mut Box<dyn CleanupStore>, String> {
@@ -71,14 +79,18 @@ impl Cleaning {
         apps: &[InstalledApp],
         query: &str,
     ) -> Result<InstalledApp, String> {
-        let app = find(apps, query)?.clone();
+        let mut app = find(apps, query)?.clone();
         if let Some(why) = app.protection() {
             return Err(format!("{} no se desinstala desde aquí: {why}", app.name));
         }
         if self.launcher.is_none() {
             return Err("esta versión no sabe desinstalar".into());
         }
-        // Remembered first: once the uninstaller finishes the system forgets the app.
+        // Observed and remembered first: once the uninstaller finishes the system
+        // forgets the app, and its folder and programs are gone.
+        if let Some(probe) = &self.probe {
+            app.observed = probe.observe(&app);
+        }
         self.store()?.remember(&app)?;
         if let Some(launcher) = &self.launcher {
             launcher.launch(&app)?;
@@ -145,6 +157,8 @@ impl Cleaning {
             size_kb: None,
             kind: AppKind::Desktop,
             hidden: false,
+            display_icon: None,
+            observed: Default::default(),
         };
         if names_of(&unknown).is_empty() {
             return Err(format!(
@@ -276,6 +290,8 @@ mod tests {
             size_kb: None,
             kind: AppKind::Desktop,
             hidden: false,
+            display_icon: None,
+            observed: Default::default(),
         }
     }
 
@@ -316,6 +332,36 @@ mod tests {
         assert!(find(&apps, "gi").unwrap_err().contains("varias apps"));
         assert!(find(&apps, "nada").unwrap_err().contains("no hay ninguna"));
         assert!(find(&apps, " ").is_err());
+    }
+
+    struct FakeProbe;
+
+    impl SeedProbe for FakeProbe {
+        fn observe(&self, app: &InstalledApp) -> purifex_domain::seeds::Seeds {
+            purifex_domain::seeds::Seeds::new(
+                Some(r"C:\Program Files\Discord"),
+                &[format!("{}.exe", app.name.to_lowercase())],
+                &[".dsc".into()],
+            )
+        }
+    }
+
+    #[test]
+    fn what_is_observed_of_the_app_is_remembered_before_its_uninstaller_starts() {
+        let (c, log) = cleaning(vec![]);
+        let mut c = c.with_probe(Box::new(FakeProbe));
+        c.uninstall(&[app("Discord", "Discord Inc.")], "Discord")
+            .unwrap();
+        let kept = log.borrow().remembered[0].observed.clone();
+        assert_eq!(kept.exes, ["discord.exe"]);
+        assert_eq!(kept.extensions, [".dsc"]);
+        assert_eq!(kept.folder.as_deref(), Some(r"C:\Program Files\Discord"));
+        // Without a probe nothing is observed and uninstalling still works.
+        let (mut plain, log) = cleaning(vec![]);
+        plain
+            .uninstall(&[app("Discord", "Discord Inc.")], "Discord")
+            .unwrap();
+        assert!(log.borrow().remembered[0].observed.is_empty());
     }
 
     #[test]

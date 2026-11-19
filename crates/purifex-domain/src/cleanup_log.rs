@@ -100,8 +100,28 @@ Para quitarlos (a cuarentena, con deshacer): purifex apps clean \"{}\" --yes",
         out
     }
 
+    /// The report as JSON: each trace with its `kind` (`folder`, `file`, `registry_key`,
+    /// `registry_value`), `evidence` and, for a value, its `value`; and `counts` of what
+    /// the report is about (the proposed traces of a preview, the removed ones otherwise).
     pub fn to_json(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap_or_else(|_| "{}".into())
+        let mut json = serde_json::to_value(self).unwrap_or_default();
+        let traces: Vec<Trace> = if self.preview {
+            self.proposed.clone()
+        } else {
+            self.removed.iter().map(|e| e.trace.clone()).collect()
+        };
+        let counts = crate::app_traces::Counts::of(&traces);
+        if let Some(object) = json.as_object_mut() {
+            object.insert(
+                "counts".into(),
+                serde_json::json!({
+                    "files": counts.files,
+                    "registry": counts.registry,
+                    "bytes": counts.bytes,
+                }),
+            );
+        }
+        serde_json::to_string_pretty(&json).unwrap_or_else(|_| "{}".into())
     }
 }
 
@@ -172,6 +192,93 @@ pub fn cleanup_to_text(entries: &[CleanupEntry]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn mixed_report(preview: bool) -> CleanReport {
+        use crate::app_traces::Evidence;
+        let folder = Trace {
+            kind: TraceKind::Folder,
+            location: r"C:\Users\u\AppData\Roaming\Kdenlive".into(),
+            bytes: 2048,
+            why: "w".into(),
+            user_data: true,
+            value: None,
+            evidence: Evidence::NameMatch,
+        };
+        let value = Trace {
+            kind: TraceKind::RegistryValue,
+            location: r"HKCU\Software\X\MuiCache".into(),
+            bytes: 0,
+            why: "w".into(),
+            user_data: false,
+            value: Some("k.exe.FriendlyAppName".into()),
+            evidence: Evidence::PathReference,
+        };
+        let entries = |ts: &[Trace]| -> Vec<CleanupEntry> {
+            ts.iter()
+                .enumerate()
+                .map(|(i, t)| CleanupEntry {
+                    seq: i as u64 + 1,
+                    app: "Kdenlive".into(),
+                    trace: t.clone(),
+                    kept: "k".into(),
+                    state: CleanupState::Removed,
+                    restores: None,
+                })
+                .collect()
+        };
+        let all = [folder, value];
+        CleanReport {
+            app: "Kdenlive".into(),
+            preview,
+            removed: if preview { vec![] } else { entries(&all) },
+            proposed: if preview { all.to_vec() } else { vec![] },
+            failed: vec![],
+        }
+    }
+
+    #[test]
+    fn the_text_says_the_evidence_of_each_line_and_the_counts() {
+        let text = mixed_report(true).to_text();
+        assert!(text.contains("evidencia: nombre de la app ·"), "{text}");
+        assert!(
+            text.contains("evidencia: referencia a la carpeta de la app"),
+            "{text}"
+        );
+        assert!(text.contains("[valor: k.exe.FriendlyAppName]"));
+        assert!(text.contains("Archivos y carpetas: 1 · Registro: 1 · 2 KB"));
+        let done = mixed_report(false).to_text();
+        assert!(
+            done.contains("Quitado: Archivos y carpetas: 1 · Registro: 1"),
+            "{done}"
+        );
+    }
+
+    #[test]
+    fn the_json_has_kind_evidence_value_and_counts_for_a_preview_and_for_a_removal() {
+        for preview in [true, false] {
+            let json: serde_json::Value =
+                serde_json::from_str(&mixed_report(preview).to_json()).unwrap();
+            let traces: Vec<&serde_json::Value> = if preview {
+                json["proposed"].as_array().unwrap().iter().collect()
+            } else {
+                json["removed"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|e| &e["trace"])
+                    .collect()
+            };
+            assert_eq!(traces[0]["kind"], "folder");
+            assert_eq!(traces[0]["evidence"], "name_match");
+            assert_eq!(traces[0]["value"], serde_json::Value::Null);
+            assert_eq!(traces[1]["kind"], "registry_value");
+            assert_eq!(traces[1]["evidence"], "path_reference");
+            assert_eq!(traces[1]["value"], "k.exe.FriendlyAppName");
+            assert_eq!(json["counts"]["files"], 1);
+            assert_eq!(json["counts"]["registry"], 1);
+            assert_eq!(json["counts"]["bytes"], 2048);
+        }
+    }
+
     #[test]
     fn a_value_copy_keeps_every_byte_and_a_damaged_one_is_an_error() {
         let bytes: Vec<u8> = (0..=255).collect();

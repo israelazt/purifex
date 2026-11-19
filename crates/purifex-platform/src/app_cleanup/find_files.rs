@@ -18,7 +18,7 @@ use super::lnk;
 /// The most entries read from one folder.
 const MAX_PER_FOLDER: usize = 10_000;
 /// The most shortcuts whose target is read in one folder.
-const MAX_SHORTCUTS: usize = 1_500;
+const MAX_SHORTCUTS: usize = 5_000;
 
 /// The user's folders that are looked at; replaceable to test against a temporary tree.
 pub struct UserPlaces {
@@ -153,28 +153,39 @@ fn shortcuts_in(
     out: &mut (&mut Vec<Candidate>, &mut bool),
 ) {
     let (found, complete) = out;
-    let by_extension = reading.by_extension;
-    let mut read = 0;
-    for (name, path) in files_of(dir) {
-        let lower = name.to_lowercase();
-        let Some(stem) = lower.strip_suffix(".lnk") else {
-            continue;
-        };
-        if by_extension && seeds.extensions.iter().any(|e| stem.ends_with(e.as_str())) {
+    let shortcuts: Vec<(String, PathBuf)> = files_of(dir)
+        .filter_map(|(name, path)| {
+            let lower = name.to_lowercase();
+            lower
+                .strip_suffix(".lnk")
+                .map(|stem| (stem.to_string(), path))
+        })
+        .collect();
+    // First by name, which costs nothing, over the whole list...
+    let mut unmatched = Vec::new();
+    for (stem, path) in shortcuts {
+        if reading.by_extension && seeds.extensions.iter().any(|e| stem.ends_with(e.as_str())) {
             found.extend(with_text(&path, None));
-            continue;
+        } else {
+            unmatched.push(path);
         }
-        let Some(folder) = &seeds.folder else {
-            continue;
-        };
-        read += 1;
-        if read > MAX_SHORTCUTS || Instant::now() > reading.until {
+    }
+    // ...then by target, which means reading each file: bounded in number and in time.
+    // Not for the recent files: they point to the user's documents, and the list is long.
+    if reading.by_extension {
+        return;
+    }
+    let Some(folder) = &seeds.folder else {
+        return;
+    };
+    for (read, path) in unmatched.iter().enumerate() {
+        if read >= MAX_SHORTCUTS || Instant::now() > reading.until {
             **complete = false;
             break;
         }
-        if let Some(target) = shortcut_target(&path) {
+        if let Some(target) = shortcut_target(path) {
             if path_refers_to(&target, folder) {
-                found.extend(with_text(&path, Some(target)));
+                found.extend(with_text(path, Some(target)));
             }
         }
     }
@@ -281,6 +292,30 @@ mod tests {
             .find(|c| c.location.ends_with("Editor.lnk"))
             .unwrap();
         assert_eq!(editor.text.as_deref(), Some(kdenlive_exe.as_str()));
+        let _ = fs::remove_dir_all(p.local.unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn a_long_list_of_recent_shortcuts_does_not_hide_the_ones_of_the_apps_extension() {
+        let p = tree("files-recent");
+        let recent = p
+            .roaming
+            .clone()
+            .unwrap()
+            .join("Microsoft")
+            .join("Windows")
+            .join("Recent");
+        for i in 0..1_700 {
+            fs::write(recent.join(format!("Doc {i}.docx.lnk")), b"x").unwrap();
+        }
+        put(
+            &p,
+            r"Roaming\Microsoft\Windows\Recent\Video.kdenlive.lnk",
+            b"x",
+        );
+        let (found, complete) = find_files(&p, &[], &seeds(), LONG);
+        assert_eq!(names_of(&found), ["Video.kdenlive.lnk"]);
+        assert!(complete);
         let _ = fs::remove_dir_all(p.local.unwrap().parent().unwrap());
     }
 

@@ -42,6 +42,7 @@ fn roots() -> Vec<PathBuf> {
     }
     if let Some(local) = &local {
         roots.push(local.join("Programs"));
+        roots.push(local.join("stalefiles"));
     }
     for name in ["ProgramFiles", "ProgramFiles(x86)"] {
         roots.extend(env_path(name));

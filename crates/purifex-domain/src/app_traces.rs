@@ -42,6 +42,21 @@ pub enum Evidence {
     CrashDump,
 }
 
+impl Evidence {
+    /// What proves it, in words for the person.
+    pub fn label(self) -> &'static str {
+        match self {
+            Evidence::RegisteredInstall => "carpeta de instalación registrada",
+            Evidence::NameMatch => "nombre de la app",
+            Evidence::NamePrefix => "nombre de la app + sufijo",
+            Evidence::PathReference => "referencia a la carpeta de la app",
+            Evidence::Association => "asociación de archivo",
+            Evidence::AssociatedExtension => "extensión de archivo de la app",
+            Evidence::CrashDump => "volcado de error",
+        }
+    }
+}
+
 /// A place that might belong to the app, as the finder found it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Candidate {
@@ -350,8 +365,9 @@ pub fn traces_to_text_for(app: &str, traces: &[Trace]) -> String {
         };
         let _ = writeln!(
             out,
-            "• {place}  {}{mark}\n    por qué: {}",
+            "• {place}  {}{mark}\n    evidencia: {} · por qué: {}",
             crate::apps::size_text(Some(t.bytes / 1024)),
+            t.evidence.label(),
             t.why
         );
     }

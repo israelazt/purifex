@@ -266,6 +266,12 @@ pub fn sidebar(c: &mut Canvas, m: &Model, height: f32) {
             badge: sessions_badge,
         },
         NavItem {
+            icon: "package",
+            label: "Apps",
+            page: Some(Page::Apps),
+            badge: None,
+        },
+        NavItem {
             icon: "sliders-horizontal",
             label: "Arreglos",
             page: Some(Page::Fixes),
@@ -349,6 +355,7 @@ mod tests {
                 Action::Go(Page::Overview),
                 Action::Go(Page::Drivers),
                 Action::Go(Page::Sessions),
+                Action::Go(Page::Apps),
                 Action::Go(Page::Fixes)
             ]
         );

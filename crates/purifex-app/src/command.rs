@@ -144,10 +144,11 @@ impl Command {
                         "drivers" => Page::Drivers,
                         "sessions" => Page::Sessions,
                         "fixes" => Page::Fixes,
+                        "apps" => Page::Apps,
                         other => {
                             return Err(format!(
-                                "página desconocida: {other} (overview, drivers, sessions, fixes)"
-                            ))
+                        "página desconocida: {other} (overview, drivers, sessions, fixes, apps)"
+                    ))
                         }
                     }
                 }

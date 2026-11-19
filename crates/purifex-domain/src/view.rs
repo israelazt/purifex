@@ -4,6 +4,8 @@
 //! does. Neither knows the other.
 
 use crate::analysis::Analysis;
+use crate::apps::InstalledApp;
+use crate::cleanup_log::CleanReport;
 use crate::compare::ComparisonReport;
 use crate::device_category::Category;
 use crate::driver_candidate::Candidate;
@@ -20,6 +22,7 @@ pub enum Page {
     Drivers,
     Sessions,
     Fixes,
+    Apps,
 }
 
 /// What the user is being asked to confirm before something is changed.
@@ -29,6 +32,10 @@ pub enum Confirm {
     Apply(String),
     /// Undo the change with this number of the history.
     Undo(u64),
+    /// Start the uninstaller of the app with this id.
+    Uninstall(String),
+    /// Remove the traces of the app with this name (to the quarantine).
+    Clean(String),
 }
 
 /// Which devices the drivers table lists.
@@ -65,6 +72,16 @@ pub struct Model {
     pub offers: Offers,
     /// Driver pages proposed by the user's AI (read on the drivers page).
     pub candidates: Option<Vec<Candidate>>,
+    /// The installed apps (read on the apps page).
+    pub apps: Option<Vec<InstalledApp>>,
+    /// The app whose uninstaller was started here (its traces can be looked for).
+    pub uninstalled: Option<String>,
+    /// The traces found for it (nothing removed yet).
+    pub traces: Option<CleanReport>,
+    /// The name of an app whose traces are being looked for.
+    pub finding: Option<String>,
+    /// What an apps action did, in a sentence.
+    pub message: Option<String>,
     /// Something is being read: the picture says so before the wait.
     pub busy: bool,
     pub error: Option<String>,
@@ -79,6 +96,12 @@ pub enum Action {
     SearchUpdates,
     /// Open the official page of a proposed driver in the browser.
     OpenPage(String),
+    /// Asks to uninstall an app (by id): the user is asked to confirm.
+    AskUninstall(String),
+    /// Look for the traces of an app that was uninstalled (by name).
+    FindTraces(String),
+    /// Asks to remove those traces: the user is asked to confirm.
+    AskClean(String),
     SetFilter(DriverFilter),
     SetQuery(String),
     SelectSession(String),
@@ -92,6 +115,24 @@ pub enum Action {
 }
 
 impl Model {
+    /// The apps the page lists, by name; the search filters by name and publisher.
+    pub fn visible_apps(&self) -> Vec<&InstalledApp> {
+        let query = self.query.trim().to_lowercase();
+        self.apps
+            .iter()
+            .flatten()
+            .filter(|a| {
+                query.is_empty()
+                    || a.name.to_lowercase().contains(&query)
+                    || a.publisher
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&query)
+            })
+            .collect()
+    }
+
     /// The proposal of the user's AI for a device, the newest one.
     pub fn candidate_for(&self, instance_id: &str) -> Option<&Candidate> {
         self.candidates

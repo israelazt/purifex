@@ -13,7 +13,7 @@ use purifex_domain::view::{Action, Model, Page};
 use crate::anim::Anims;
 use crate::canvas::{Canvas, Hit};
 use crate::theme::{self, PAGE_PAD, SIDEBAR_W, TOPBAR_H};
-use crate::{drivers_page, fixes_page, overview_page, sessions_page, shell};
+use crate::{apps_page, drivers_page, fixes_page, overview_page, sessions_page, shell};
 
 /// The time the page takes to go most of the way to where the wheel wants it.
 const SCROLL_MS: f32 = 70.0;
@@ -25,6 +25,7 @@ fn page_is_ready(m: &Model) -> bool {
         Page::Drivers => m.drivers.is_some(),
         Page::Sessions => m.sessions.is_some(),
         Page::Fixes => m.fixes.is_some() && m.history.is_some(),
+        Page::Apps => m.apps.is_some(),
     }
 }
 
@@ -155,6 +156,7 @@ impl Ui {
             Page::Drivers => drivers_page::draw(&mut c, model, area),
             Page::Sessions => sessions_page::draw(&mut c, model, area),
             Page::Fixes => fixes_page::draw(&mut c, model, area),
+            Page::Apps => apps_page::draw(&mut c, model, area),
         };
         c.rest();
         c.unclip();

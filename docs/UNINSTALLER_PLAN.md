@@ -49,3 +49,22 @@ Las pruebas con borrado real se hacen en una VM o con una app de prueba creada p
 - **Todo, sin rastro:** «Desinstalar y limpiar» incluye por defecto los datos del usuario de esa app (configuración, partidas, cachés). Contrapeso: la vista previa los lista aparte, marcados «datos tuyos», y se confirma todo junto; y nada se borra al instante: va a cuarentena 7 días, así que hasta entonces se puede recuperar.
 - **Cobertura total:** apps de escritorio y de la Tienda (MSIX) desde el principio, y también servicios, tareas, entradas de inicio, firewall, menú contextual y asociaciones de archivos.
 - Siguen en pie las reglas duras (nunca `Windows`, `System32`, claves de Microsoft ni nada compartido con otra app): «ningún rastro» significa ningún rastro **de esa app**.
+
+## Avance (2026-11-18)
+
+Funciona hoy, con pruebas y probado de punta a punta con una app de mentira (registro, carpetas y un desinstalador de juguete que deja restos):
+
+- Lectura de apps instaladas (registro de desinstalación: HKLM 64 y 32 bits y HKCU); las que otras apps o Windows necesitan se marcan «no tocar» y no se desinstalan desde aquí.
+- Lanzar el **desinstalador oficial** de la app (con confirmación). No espera: la app muestra su propia ventana y se termina allí. El comando se rechaza si encadena órdenes.
+- **Buscar restos** (vista previa, no toca nada) y **quitarlos**: solo si la app ya no está instalada. Las reglas del dominio (`app_traces`) rechazan Windows, System32, Program Files y carpetas amplias, y carpetas de un editor que tenga otra app instalada.
+- **Cuarentena**: carpetas movidas (no borradas) a `%LOCALAPPDATA%\Purifex\quarantine\N`; claves de registro exportadas a `.reg` antes de borrarlas; todo anotado en `cleanup.jsonl`; **devolver** cualquier eliminación (nunca sobrescribe).
+- Línea de órdenes: `purifex apps [traces|uninstall|clean|restore|history] NOMBRE [--yes] [--json]`. Pantalla: página **Apps**.
+
+Pendiente (no hecho todavía):
+
+- **Apps de la Tienda (MSIX)**: no se listan aún.
+- **Servicios, tareas programadas, entradas de inicio, reglas de firewall, menú contextual y asociaciones de archivos**: no se buscan aún; solo carpetas, archivos/accesos directos y claves de `Software\<nombre>`.
+- **Punto de restauración** del sistema antes de desinstalar: no se crea (pediría administrador); la cuarentena y la copia de las claves son la red de seguridad.
+- **Deshacer desde la pantalla** y **purgar la cuarentena a los 7 días**: hoy se devuelve con `purifex apps restore N` y la cuarentena no caduca sola.
+- Buscador de la página de Apps.
+- Probado con una app de mentira, **no con apps reales** de este PC.

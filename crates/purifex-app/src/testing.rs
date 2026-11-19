@@ -377,3 +377,13 @@ impl purifex_domain::ports::CleanupStore for FakeCleaning {
         Ok(self.0.borrow().remembered.clone())
     }
 }
+
+/// Installed apps that a test can change (an uninstaller finishing removes one).
+#[derive(Clone, Default)]
+pub struct FakeApps(pub Rc<RefCell<Vec<purifex_domain::apps::InstalledApp>>>);
+
+impl purifex_domain::ports::AppInventory for FakeApps {
+    fn apps(&self) -> Result<Vec<purifex_domain::apps::InstalledApp>, String> {
+        Ok(self.0.borrow().clone())
+    }
+}

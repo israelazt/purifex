@@ -104,6 +104,64 @@ mod states {
                     model.confirm = Some(Confirm::Undo(3));
                 }
             }
+            "apps" => {
+                use purifex_domain::app_traces::{Trace, TraceKind};
+                use purifex_domain::apps::{AppKind, InstalledApp};
+                use purifex_domain::cleanup_log::CleanReport;
+                let app = |name: &str, publisher: &str, kb: u64| InstalledApp {
+                    id: format!("HKLM64:{name}"),
+                    name: name.into(),
+                    publisher: Some(publisher.into()),
+                    version: Some("1.0".into()),
+                    install_location: None,
+                    uninstall: Some("u.exe".into()),
+                    quiet_uninstall: None,
+                    size_kb: Some(kb),
+                    kind: AppKind::Desktop,
+                    hidden: false,
+                };
+                model.page = Page::Apps;
+                model.apps = Some(vec![
+                    app("Discord", "Discord Inc.", 110_000),
+                    app("GIMP 2.10", "The GIMP Team", 1_250_000),
+                    app("Microsoft .NET Runtime 8", "Microsoft Corporation", 190_000),
+                ]);
+                model.uninstalled = Some("Inkscape".into());
+                model.message = Some(
+                    "Se abrió el desinstalador de Inkscape. Cuando termine, pulsa «Buscar restos»."
+                        .into(),
+                );
+                let trace = |location: &str, bytes: u64, user: bool, why: &str| Trace {
+                    kind: TraceKind::Folder,
+                    location: location.into(),
+                    bytes,
+                    why: why.into(),
+                    user_data: user,
+                };
+                model.traces = Some(CleanReport {
+                    app: "Inkscape".into(),
+                    preview: true,
+                    removed: vec![],
+                    proposed: vec![
+                        trace(
+                            r"C:\Users\yo\AppData\Roaming\inkscape",
+                            18_000_000,
+                            true,
+                            "lleva el nombre de la app: inkscape",
+                        ),
+                        trace(
+                            r"C:\Users\yo\AppData\Local\Programs\Inkscape",
+                            656_000_000,
+                            false,
+                            "la carpeta de instalación que registró la app",
+                        ),
+                    ],
+                    failed: vec![],
+                });
+                if args.get(2).map(String::as_str) == Some("confirm") {
+                    model.confirm = Some(Confirm::Clean("Inkscape".into()));
+                }
+            }
             "offers" => {
                 use purifex_domain::device::{Device, InstalledDriver};
                 use purifex_domain::driver_offers::{match_offers, Offer, Offers};

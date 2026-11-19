@@ -15,7 +15,7 @@ use crate::widgets::{button, button_width, icon_box, panel, tag};
 const PAD: f32 = 20.0;
 
 /// The question and the two buttons that follow a click on "Aplicar" or "Deshacer".
-fn confirmation(c: &mut Canvas, question: &str, bar: Rect) {
+pub(crate) fn confirmation(c: &mut Canvas, question: &str, bar: Rect) {
     c.fill(bar, 8.0, Tone::Amber.fill());
     c.stroke(bar, 8.0, 1.0, Tone::Amber.border());
     c.icon(
@@ -53,7 +53,7 @@ fn confirmation(c: &mut Canvas, question: &str, bar: Rect) {
     );
 }
 
-fn confirm_height(c: &Canvas, question: &str, width: f32) -> f32 {
+pub(crate) fn confirm_height(c: &Canvas, question: &str, width: f32) -> f32 {
     let (yes_w, no_w) = (button_width(c, "Confirmar"), button_width(c, "Cancelar"));
     let text_w = width - 16.0 - 24.0 - (yes_w + no_w + 12.0) - 32.0;
     let lines = c

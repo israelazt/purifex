@@ -52,7 +52,7 @@ impl Core {
                 let m = &mut self.model;
                 (m.overview, m.drivers, m.sessions, m.analysis, m.comparison) =
                     (None, None, None, None, None);
-                m.candidates = None;
+                (m.candidates, m.apps, m.traces) = (None, None, None);
                 (m.fixes, m.history, m.confirm, m.notice) = (None, None, None, None);
                 m.error = None;
                 self.expect_reading();
@@ -66,6 +66,13 @@ impl Core {
             },
             Action::OpenPage(url) => {
                 self.model.error = self.services.open_page(&url).err();
+            }
+            Action::AskUninstall(id) => self.model.confirm = Some(Confirm::Uninstall(id)),
+            Action::AskClean(name) => self.model.confirm = Some(Confirm::Clean(name)),
+            Action::FindTraces(name) => {
+                (self.model.traces, self.model.message) = (None, None);
+                self.model.finding = Some(name);
+                self.expect_reading();
             }
             Action::SetFilter(filter) => self.model.filter = filter,
             Action::SetQuery(query) => self.model.query = query,
@@ -94,6 +101,8 @@ impl Core {
         let result = match confirm {
             Confirm::Apply(id) => self.services.apply_fix(&id, true, false),
             Confirm::Undo(seq) => self.services.undo_fix(seq, true),
+            Confirm::Uninstall(id) => return self.uninstalled(&id),
+            Confirm::Clean(name) => return self.cleaned(&name),
         };
         match result {
             Ok(report) => {
@@ -106,6 +115,36 @@ impl Core {
                 self.model.notice = None;
                 self.model.error = Some(error);
             }
+        }
+    }
+
+    /// Starts the uninstaller of an app; its traces are looked for afterwards.
+    fn uninstalled(&mut self, id: &str) {
+        match self.services.uninstall_app(id) {
+            Ok(app) => {
+                self.model.message = Some(format!(
+                    "Se abrió el desinstalador de {}. Cuando termine, pulsa «Buscar restos».",
+                    app.name
+                ));
+                (self.model.uninstalled, self.model.traces) = (Some(app.name), None);
+            }
+            Err(error) => self.model.error = Some(error),
+        }
+    }
+
+    /// Removes the traces of an app to the quarantine.
+    fn cleaned(&mut self, name: &str) {
+        match self.services.clean_app(name, true) {
+            Ok(report) => {
+                let (done, failed) = (report.removed.len(), report.failed.len());
+                self.model.message = Some(format!(
+                    "Se quitaron {done} restos de {name} a la cuarentena{}. Para devolverlos: purifex apps restore N.",
+                    if failed > 0 { format!(" ({failed} no se pudieron quitar)") } else { String::new() }
+                ));
+                (self.model.traces, self.model.apps) = (None, None);
+                self.expect_reading();
+            }
+            Err(error) => self.model.error = Some(error),
         }
     }
 
@@ -123,6 +162,7 @@ impl Core {
         let page_lacks = match m.page {
             Page::Overview => false,
             Page::Fixes => m.fixes.is_none() || m.history.is_none(),
+            Page::Apps => m.apps.is_none() || m.finding.is_some(),
             Page::Drivers => m.drivers.is_none() || m.candidates.is_none(),
             Page::Sessions => {
                 m.analysis.is_none()
@@ -179,6 +219,20 @@ impl Core {
             match self.services.drivers() {
                 Ok(view) => self.model.drivers = Some(view),
                 Err(error) => note("drivers", error),
+            }
+        }
+        if self.model.page == Page::Apps {
+            if self.model.apps.is_none() {
+                match self.services.apps() {
+                    Ok(apps) => self.model.apps = Some(apps),
+                    Err(error) => note("apps", error),
+                }
+            }
+            if let Some(name) = self.model.finding.take() {
+                match self.services.clean_app(&name, false) {
+                    Ok(report) => self.model.traces = Some(report),
+                    Err(error) => note("restos", error),
+                }
             }
         }
         if self.model.page == Page::Drivers && self.model.candidates.is_none() {
@@ -759,5 +813,147 @@ mod tests {
             "the tick that brings the result says the model changed"
         );
         assert!(matches!(c.model().offers, Offers::Found(_)));
+    }
+
+    fn fake_app(name: &str) -> purifex_domain::apps::InstalledApp {
+        purifex_domain::apps::InstalledApp {
+            id: format!("HKLM64:{name}"),
+            name: name.into(),
+            publisher: Some("Discord Inc.".into()),
+            version: Some("1.0".into()),
+            install_location: None,
+            uninstall: Some("u.exe".into()),
+            quiet_uninstall: None,
+            size_kb: Some(1024),
+            kind: purifex_domain::apps::AppKind::Desktop,
+            hidden: false,
+        }
+    }
+
+    #[test]
+    fn the_apps_page_uninstalls_with_a_confirmation_then_finds_and_removes_the_traces() {
+        use crate::testing::{CleanLog, FakeApps, FakeCleaning, FakeFinder};
+        use crate::Cleaning;
+        use purifex_domain::app_traces::{Candidate, TraceKind};
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let installed = FakeApps::default();
+        installed.0.borrow_mut().push(fake_app("Discord"));
+        let log = Rc::new(RefCell::new(CleanLog::default()));
+        let found = vec![Candidate {
+            kind: TraceKind::Folder,
+            location: r"C:\Users\u\AppData\Roaming\Discord".into(),
+            bytes: 10,
+            registered_install: false,
+        }];
+        let mut c = Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_apps(Box::new(installed.clone()))
+            .with_cleaning(Cleaning::new(
+                Box::new(FakeFinder(found)),
+                Box::new(FakeCleaning(log.clone())),
+                Box::new(FakeCleaning(log.clone())),
+            )),
+        ));
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        assert!(c.model().busy, "the apps are read on the tick");
+        c.tick();
+        assert_eq!(c.model().visible_apps().len(), 1);
+        // Asking changes nothing; the uninstaller starts only on confirming.
+        c.apply(Action::AskUninstall("HKLM64:Discord".into()));
+        assert_eq!(
+            c.model().confirm,
+            Some(Confirm::Uninstall("HKLM64:Discord".into()))
+        );
+        assert!(log.borrow().launched.is_empty());
+        c.apply(Action::CancelConfirm);
+        assert!(log.borrow().launched.is_empty());
+        c.apply(Action::AskUninstall("HKLM64:Discord".into()));
+        c.apply(Action::Confirm);
+        assert_eq!(log.borrow().launched, ["Discord"]);
+        assert_eq!(c.model().uninstalled.as_deref(), Some("Discord"));
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("Buscar restos"));
+        // While it is still installed the traces can be looked at but not removed.
+        c.apply(Action::FindTraces("Discord".into()));
+        assert!(c.model().busy);
+        c.tick();
+        assert_eq!(c.model().traces.as_ref().unwrap().proposed.len(), 1);
+        c.apply(Action::AskClean("Discord".into()));
+        c.apply(Action::Confirm);
+        assert!(c
+            .model()
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("sigue instalada"));
+        assert!(log.borrow().removed.is_empty());
+        // The uninstaller finished: now they go to the quarantine.
+        installed.0.borrow_mut().clear();
+        c.apply(Action::AskClean("Discord".into()));
+        c.apply(Action::Confirm);
+        assert_eq!(log.borrow().removed.len(), 1);
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("Se quitaron 1 restos"));
+        assert!(c.model().traces.is_none());
+    }
+
+    #[test]
+    fn a_protected_app_cannot_be_uninstalled_from_the_page() {
+        use crate::testing::{CleanLog, FakeApps, FakeCleaning, FakeFinder};
+        use crate::Cleaning;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let installed = FakeApps::default();
+        let mut runtime = fake_app("Microsoft .NET Runtime");
+        runtime.publisher = Some("Microsoft Corporation".into());
+        installed.0.borrow_mut().push(runtime);
+        let log = Rc::new(RefCell::new(CleanLog::default()));
+        let mut c = Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_apps(Box::new(installed))
+            .with_cleaning(Cleaning::new(
+                Box::new(FakeFinder(vec![])),
+                Box::new(FakeCleaning(log.clone())),
+                Box::new(FakeCleaning(log.clone())),
+            )),
+        ));
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::AskUninstall("HKLM64:Microsoft .NET Runtime".into()));
+        c.apply(Action::Confirm);
+        assert!(c
+            .model()
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("no se desinstala desde aquí"));
+        assert!(log.borrow().launched.is_empty());
     }
 }

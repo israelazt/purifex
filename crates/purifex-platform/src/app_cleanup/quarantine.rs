@@ -11,8 +11,10 @@ use std::process::Command;
 
 use purifex_domain::app_traces::{Trace, TraceKind};
 use purifex_domain::apps::InstalledApp;
-use purifex_domain::cleanup_log::CleanupEntry;
+use purifex_domain::cleanup_log::{CleanupEntry, ValueCopy};
 use purifex_domain::ports::CleanupStore;
+
+use super::registry_write;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -72,9 +74,6 @@ fn last_part(location: &str) -> &str {
 
 impl CleanupStore for LocalCleanup {
     fn remove(&mut self, trace: &Trace, seq: u64) -> Result<String, String> {
-        if trace.kind == TraceKind::RegistryValue {
-            return Err("quitar un valor del registro aún no es posible".into());
-        }
         let folder = self.base()?.join("quarantine").join(seq.to_string());
         fs::create_dir_all(&folder).map_err(|e| format!("no se pudo crear la cuarentena: {e}"))?;
         match trace.kind {
@@ -94,10 +93,21 @@ impl CleanupStore for LocalCleanup {
                 let file_text = file.to_string_lossy().into_owned();
                 // Export first: if the delete is refused (no permission) nothing changed.
                 reg(&["export", &trace.location, &file_text, "/y"])?;
-                reg(&["delete", &trace.location, "/f"])?;
+                registry_write::delete_key_tree(&trace.location).map_err(|e| e.message())?;
                 Ok(file_text)
             }
-            TraceKind::RegistryValue => unreachable!("rejected above"),
+            TraceKind::RegistryValue => {
+                let name = trace.value.as_deref().ok_or("falta el nombre del valor")?;
+                let raw = registry_write::read_value_raw(&trace.location, name)
+                    .map_err(|e| e.message())?;
+                let copy = ValueCopy::new(&trace.location, name, raw.kind, &raw.data);
+                let file = folder.join("valor.json");
+                // The copy is on disk before the value is touched.
+                fs::write(&file, copy.to_json())
+                    .map_err(|e| format!("no se pudo guardar la copia del valor: {e}"))?;
+                registry_write::delete_value(&trace.location, name).map_err(|e| e.message())?;
+                Ok(file.to_string_lossy().into_owned())
+            }
         }
     }
 
@@ -115,7 +125,18 @@ impl CleanupStore for LocalCleanup {
             }
             TraceKind::RegistryKey => reg(&["import", &entry.kept]),
             TraceKind::RegistryValue => {
-                Err("devolver un valor del registro aún no es posible".into())
+                let text = fs::read_to_string(&entry.kept)
+                    .map_err(|e| format!("no se pudo leer la copia del valor: {e}"))?;
+                let copy = ValueCopy::from_json(&text)?;
+                if registry_write::read_value_raw(&copy.key, &copy.name).is_ok() {
+                    return Err("ya hay un valor con ese nombre: no se sobrescribe".into());
+                }
+                let value = registry_write::RawValue {
+                    kind: copy.kind,
+                    data: copy.data()?,
+                };
+                registry_write::set_value_raw(&copy.key, &copy.name, &value)
+                    .map_err(|e| e.message())
             }
         }
     }
@@ -270,6 +291,93 @@ mod tests {
         store.restore(&entry(1, t, kept)).unwrap();
         assert!(reg(&["query", &key, "/v", "Valor"]).is_ok(), "and back");
         reg(&["delete", &key, "/f"]).unwrap();
+        let _ = fs::remove_dir_all(&work);
+    }
+
+    fn utf16(text: &str, nul: usize) -> Vec<u8> {
+        let mut data: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        data.extend(std::iter::repeat_n(0, nul * 2));
+        data
+    }
+
+    fn value_trace(key: &str, name: &str) -> Trace {
+        let mut t = trace(TraceKind::RegistryValue, key);
+        t.value = Some(name.into());
+        t
+    }
+
+    #[test]
+    fn a_registry_value_of_every_type_comes_back_exactly_and_its_neighbours_stay() {
+        use registry_write::{delete_key_tree, read_value_raw, set_value_raw, RawValue};
+        let work = temp("q-value");
+        let key = format!(r"HKCU\Software\PurifexTest\valores_{}", std::process::id());
+        let values = [
+            ("sz", 1, utf16(r"C:\Apps\X\x.exe ñ", 1)),
+            ("expand", 2, utf16(r"%ProgramFiles%\X", 1)),
+            ("binary", 3, vec![0, 1, 2, 254, 255]),
+            ("dword", 4, 0xDEADBEEFu32.to_le_bytes().to_vec()),
+            ("multi", 7, utf16("uno\0dos", 2)),
+            ("empty", 3, vec![]),
+            ("nombre con espacios \\ y raro", 1, utf16("x", 1)),
+        ];
+        for (name, kind, data) in &values {
+            let v = RawValue {
+                kind: *kind,
+                data: data.clone(),
+            };
+            set_value_raw(&key, name, &v).unwrap();
+        }
+        let neighbour = RawValue {
+            kind: 1,
+            data: utf16("vecino", 1),
+        };
+        set_value_raw(&key, "vecino", &neighbour).unwrap();
+        let mut store = LocalCleanup::in_dir(work.join("Purifex"));
+        for (seq, (name, kind, data)) in values.iter().enumerate() {
+            let t = value_trace(&key, name);
+            let kept = store.remove(&t, seq as u64 + 1).unwrap();
+            assert_eq!(
+                read_value_raw(&key, name),
+                Err(registry_write::RegError::NotFound)
+            );
+            assert!(kept.ends_with("valor.json"));
+            store.restore(&entry(seq as u64 + 1, t, kept)).unwrap();
+            let back = read_value_raw(&key, name).unwrap();
+            assert_eq!((back.kind, &back.data), (*kind, data), "{name}");
+        }
+        assert_eq!(read_value_raw(&key, "vecino").unwrap(), neighbour);
+        delete_key_tree(&key).unwrap();
+        let _ = fs::remove_dir_all(&work);
+    }
+
+    #[test]
+    fn a_value_is_never_overwritten_and_a_missing_one_is_an_error() {
+        use registry_write::{delete_key_tree, set_value_raw, RawValue};
+        let work = temp("q-value-guard");
+        let key = format!(r"HKCU\Software\PurifexTest\guardas_{}", std::process::id());
+        let v = RawValue {
+            kind: 1,
+            data: utf16("a", 1),
+        };
+        set_value_raw(&key, "v", &v).unwrap();
+        let mut store = LocalCleanup::in_dir(work.join("Purifex"));
+        let t = value_trace(&key, "v");
+        let kept = store.remove(&t, 1).unwrap();
+        assert!(store.remove(&t, 2).unwrap_err().contains("ya no existe"));
+        set_value_raw(
+            &key,
+            "v",
+            &RawValue {
+                kind: 1,
+                data: utf16("nuevo", 1),
+            },
+        )
+        .unwrap();
+        let err = store.restore(&entry(1, t, kept)).unwrap_err();
+        assert!(err.contains("no se sobrescribe"));
+        let no_name = trace(TraceKind::RegistryValue, &key);
+        assert!(store.remove(&no_name, 3).is_err());
+        delete_key_tree(&key).unwrap();
         let _ = fs::remove_dir_all(&work);
     }
 

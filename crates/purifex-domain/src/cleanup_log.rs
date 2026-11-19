@@ -105,6 +105,53 @@ Para quitarlos (a cuarentena, con deshacer): purifex apps clean \"{}\" --yes",
     }
 }
 
+/// The copy of one registry value kept in the quarantine: where it was, its type code
+/// and its bytes (as hexadecimal text, so the file is plain JSON), exactly as read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ValueCopy {
+    pub key: String,
+    pub name: String,
+    pub kind: u32,
+    pub hex: String,
+}
+
+impl ValueCopy {
+    pub fn new(key: &str, name: &str, kind: u32, data: &[u8]) -> ValueCopy {
+        use std::fmt::Write;
+        let mut hex = String::with_capacity(data.len() * 2);
+        for b in data {
+            let _ = write!(hex, "{b:02x}");
+        }
+        ValueCopy {
+            key: key.into(),
+            name: name.into(),
+            kind,
+            hex,
+        }
+    }
+
+    pub fn data(&self) -> Result<Vec<u8>, String> {
+        if !self.hex.len().is_multiple_of(2) || !self.hex.is_ascii() {
+            return Err("la copia del valor está dañada".into());
+        }
+        (0..self.hex.len())
+            .step_by(2)
+            .map(|i| {
+                u8::from_str_radix(&self.hex[i..i + 2], 16)
+                    .map_err(|_| "la copia del valor está dañada".to_string())
+            })
+            .collect()
+    }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default()
+    }
+
+    pub fn from_json(text: &str) -> Result<ValueCopy, String> {
+        serde_json::from_str(text).map_err(|e| format!("la copia del valor está dañada: {e}"))
+    }
+}
+
 pub fn cleanup_to_text(entries: &[CleanupEntry]) -> String {
     use std::fmt::Write;
     if entries.is_empty() {
@@ -125,6 +172,24 @@ pub fn cleanup_to_text(entries: &[CleanupEntry]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_value_copy_keeps_every_byte_and_a_damaged_one_is_an_error() {
+        let bytes: Vec<u8> = (0..=255).collect();
+        let copy = ValueCopy::new(r"HKCU\Software\X", "n", 3, &bytes);
+        let back = ValueCopy::from_json(&copy.to_json()).unwrap();
+        assert_eq!(back.data().unwrap(), bytes);
+        assert_eq!(
+            ValueCopy::new("k", "n", 3, &[]).data().unwrap(),
+            Vec::<u8>::new()
+        );
+        for bad in ["abc", "zz", "é1"] {
+            let mut c = copy.clone();
+            c.hex = bad.into();
+            assert!(c.data().is_err(), "{bad}");
+        }
+        assert!(ValueCopy::from_json("{rota").is_err());
+    }
+
     use crate::app_traces::TraceKind;
 
     fn entry(seq: u64, state: CleanupState, restores: Option<u64>) -> CleanupEntry {

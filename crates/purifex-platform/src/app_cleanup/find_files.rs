@@ -6,6 +6,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use purifex_domain::app_traces::{simple, Candidate};
 use purifex_domain::reference::path_refers_to;
@@ -70,7 +71,17 @@ fn with_text(path: &Path, text: Option<String>) -> Option<Candidate> {
     Some(c)
 }
 
-pub fn find_files(places: &UserPlaces, names: &[String], seeds: &Seeds) -> Vec<Candidate> {
+/// Looks for the files. Reading shortcut targets is the slow part (a cold disk, a
+/// virus scanner): after `budget` it stops reading them and says so (`false` = it did
+/// not finish), keeping what it had found.
+pub fn find_files(
+    places: &UserPlaces,
+    names: &[String],
+    seeds: &Seeds,
+    budget: Duration,
+) -> (Vec<Candidate>, bool) {
+    let until = Instant::now() + budget;
+    let mut complete = true;
     let mut found = Vec::new();
     // Settings: `<name>rc`, `<name>.ini`... next to the others of the user.
     let data_dirs = [
@@ -102,12 +113,19 @@ pub fn find_files(places: &UserPlaces, names: &[String], seeds: &Seeds) -> Vec<C
         shortcuts_in(
             &roaming.join(r"Microsoft\Windows\Recent"),
             seeds,
-            true,
-            &mut found,
+            Reading {
+                by_extension: true,
+                until,
+            },
+            &mut (&mut found, &mut complete),
         );
     }
     for folder in &places.shortcut_folders {
-        shortcuts_in(folder, seeds, false, &mut found);
+        let plain = Reading {
+            by_extension: false,
+            until,
+        };
+        shortcuts_in(folder, seeds, plain, &mut (&mut found, &mut complete));
         for sub in fs::read_dir(folder)
             .into_iter()
             .flatten()
@@ -115,14 +133,27 @@ pub fn find_files(places: &UserPlaces, names: &[String], seeds: &Seeds) -> Vec<C
             .take(2_000)
         {
             if sub.file_type().is_ok_and(|t| t.is_dir()) {
-                shortcuts_in(&sub.path(), seeds, false, &mut found);
+                shortcuts_in(&sub.path(), seeds, plain, &mut (&mut found, &mut complete));
             }
         }
     }
-    found
+    (found, complete)
 }
 
-fn shortcuts_in(dir: &Path, seeds: &Seeds, by_extension: bool, found: &mut Vec<Candidate>) {
+#[derive(Clone, Copy)]
+struct Reading {
+    by_extension: bool,
+    until: Instant,
+}
+
+fn shortcuts_in(
+    dir: &Path,
+    seeds: &Seeds,
+    reading: Reading,
+    out: &mut (&mut Vec<Candidate>, &mut bool),
+) {
+    let (found, complete) = out;
+    let by_extension = reading.by_extension;
     let mut read = 0;
     for (name, path) in files_of(dir) {
         let lower = name.to_lowercase();
@@ -137,7 +168,8 @@ fn shortcuts_in(dir: &Path, seeds: &Seeds, by_extension: bool, found: &mut Vec<C
             continue;
         };
         read += 1;
-        if read > MAX_SHORTCUTS {
+        if read > MAX_SHORTCUTS || Instant::now() > reading.until {
+            **complete = false;
             break;
         }
         if let Some(target) = shortcut_target(&path) {
@@ -153,6 +185,7 @@ mod tests {
     use super::super::lnk::shortcut;
     use super::*;
 
+    const LONG: Duration = Duration::from_secs(60);
     const APP: &str = r"C:\Program Files\Kdenlive";
 
     fn tree(name: &str) -> UserPlaces {
@@ -229,7 +262,8 @@ mod tests {
         );
         put(&p, r"Desktop\broken.lnk", b"not a shortcut");
 
-        let found = find_files(&p, &["kdenlive".into()], &seeds());
+        let (found, complete) = find_files(&p, &["kdenlive".into()], &seeds(), LONG);
+        assert!(complete);
         assert_eq!(
             names_of(&found),
             [
@@ -251,6 +285,21 @@ mod tests {
     }
 
     #[test]
+    fn past_its_budget_it_stops_reading_shortcuts_says_so_and_keeps_what_it_found() {
+        let p = tree("files-late");
+        put(&p, r"Local\kdenliverc", b"x");
+        put(
+            &p,
+            r"Desktop\Editor.lnk",
+            &shortcut(&format!(r"{APP}\k.exe"), true, true),
+        );
+        let (found, complete) = find_files(&p, &["kdenlive".into()], &seeds(), Duration::ZERO);
+        assert!(!complete);
+        assert_eq!(names_of(&found), ["kdenliverc"]);
+        let _ = fs::remove_dir_all(p.local.unwrap().parent().unwrap());
+    }
+
+    #[test]
     fn without_seeds_or_names_nothing_is_found() {
         let p = tree("files-none");
         put(&p, r"Local\kdenliverc", b"x");
@@ -259,7 +308,7 @@ mod tests {
             r"Desktop\Editor.lnk",
             &shortcut(&format!(r"{APP}\k.exe"), true, true),
         );
-        assert!(find_files(&p, &[], &Seeds::default()).is_empty());
+        assert!(find_files(&p, &[], &Seeds::default(), LONG).0.is_empty());
         let _ = fs::remove_dir_all(p.local.unwrap().parent().unwrap());
     }
 
@@ -270,6 +319,7 @@ mod tests {
             roaming: None,
             shortcut_folders: vec![PathBuf::from(r"C:\tampoco\existe")],
         };
-        assert!(find_files(&p, &["kdenlive".into()], &seeds()).is_empty());
+        let (found, complete) = find_files(&p, &["kdenlive".into()], &seeds(), LONG);
+        assert!(found.is_empty() && complete);
     }
 }

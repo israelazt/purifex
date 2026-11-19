@@ -182,3 +182,11 @@ Cada tarea termina con **pruebas, `tools/check.ps1`, clippy de Linux, commit, pu
 1. ¿Se incluyen los restos de **HKLM** desde la fase 3 (informando «requiere administrador» cuando no se pueda), o se hace todo HKCU primero y HKLM con la fase 6? *Recomiendo lo segundo para tener algo probado antes.*
 2. ¿Se muestran los **accesos recientes y volcados de error** en la lista por defecto marcados, o desmarcados? *Recomiendo marcados, igual que Revo, con «Eliminar todo rastro» como atajo.*
 3. Orden de las fases: *recomiendo 1 → 2 → 3 (HKCU y archivos) → 4 → 5 → 7 → 6.* La fase 7 (vaciar cuarentena) va antes que los permisos porque sin ella «eliminar» sigue sin liberar espacio.
+
+---
+
+## 9. Estado (2026-11-19)
+
+- **Fases 1, 2 y 3 hechas** (dominio, escritura de registro y cuarentena de valores, buscadores). Falta conectar los buscadores a `Cleaning` (4.1): hoy `Cleaning::clean` juzga con `seeds_of(app)`, sin las extensiones que el buscador descubre en `Classes`; hay que devolverlas junto a los candidatos para que `judge_with` las use.
+- **3.5, tiempos medidos en este PC** (`cargo test --release -p purifex-platform measure_the_real_search -- --ignored --nocapture`, en caliente): búsqueda completa **≈ 0,4 s** (descubrir extensiones en `Classes` ≈ 0,1 s, archivos ≈ 0,25 s, valores ≈ 0,01 s, asociaciones ≈ 0,04 s). **En frío** (primera lectura de los accesos directos tras un rato) la parte de archivos tardó **5,6 s**: se añadió un **presupuesto de 1,5 s** para leer destinos de accesos directos; al pasarse, se sigue con lo encontrado y se deja un aviso en el registro de Purifex. Pendiente: mostrar ese aviso en la interfaz (fase 5).
+- Fuera de la lista fija por ahora: `Start\TileProperties\W~{…}\<app>`, `CloudStore\…\appmetadata$<app>` y `…\PolicyConfig\PropertyStore\…` (rutas con subclaves variables): se documentarán con su motivo al comparar con Revo (criterio B).

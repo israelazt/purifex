@@ -20,6 +20,8 @@ use super::find_registry::{
 use crate::registry::{Key, View};
 
 const REPARSE_POINT: u32 = 0x400;
+/// How long reading shortcut targets may take before the search goes on without them.
+const FILES_BUDGET: std::time::Duration = std::time::Duration::from_millis(1_500);
 /// The most entries looked at when adding up the size of a folder.
 const MAX_ENTRIES: usize = 200_000;
 
@@ -129,7 +131,14 @@ impl TraceFinder for WindowsTraceFinder {
         seeds.extensions.extend(discover_extensions(&hives, &seeds));
         seeds.extensions.sort();
         seeds.extensions.dedup();
-        found.extend(find_files(&UserPlaces::real(), &names, &seeds));
+        let (files, complete) = find_files(&UserPlaces::real(), &names, &seeds, FILES_BUDGET);
+        if !complete {
+            purifex_domain::log_warn!(
+                "the search for shortcuts of {} ran out of time: the list may be incomplete",
+                app.name
+            );
+        }
+        found.extend(files);
         found.extend(find_values(&hives, &seeds));
         found.extend(find_associations(&hives, &seeds));
         found.extend(find_program_keys(&hives, &names, &seeds));
@@ -166,5 +175,86 @@ impl TraceFinder for WindowsTraceFinder {
             }
         }
         Ok(found)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Instant;
+
+    use purifex_domain::apps::{AppKind, InstalledApp};
+
+    use super::super::find_files::{find_files, UserPlaces};
+    use super::super::find_registry::{
+        discover_extensions, find_associations, find_program_keys, find_values, Hives,
+    };
+    use super::*;
+
+    /// Not a test: `cargo test -p purifex-platform measure_the_real_search -- --ignored
+    /// --nocapture` prints how long each part of the search takes on this computer.
+    #[test]
+    #[ignore]
+    fn measure_the_real_search() {
+        let app = InstalledApp {
+            id: "x".into(),
+            name: "Kdenlive".into(),
+            publisher: None,
+            version: None,
+            install_location: Some(r"C:\Program Files\Kdenlive".into()),
+            uninstall: None,
+            quiet_uninstall: None,
+            size_kb: None,
+            kind: AppKind::Desktop,
+            hidden: false,
+            display_icon: None,
+            observed: Default::default(),
+        };
+        let names = names_of(&app);
+        let hives = Hives::real();
+        let t = Instant::now();
+        let mut seeds = seeds_of(&app);
+        println!(
+            "seeds            {:>6.0} ms",
+            t.elapsed().as_secs_f64() * 1e3
+        );
+        let t = Instant::now();
+        seeds.extensions = discover_extensions(&hives, &seeds);
+        println!(
+            "discover (Classes) {:>4.0} ms  {} found",
+            t.elapsed().as_secs_f64() * 1e3,
+            seeds.extensions.len()
+        );
+        let t = Instant::now();
+        let n = find_files(&UserPlaces::real(), &names, &seeds, FILES_BUDGET)
+            .0
+            .len();
+        println!(
+            "files            {:>6.0} ms  {n}",
+            t.elapsed().as_secs_f64() * 1e3
+        );
+        let t = Instant::now();
+        let n = find_values(&hives, &seeds).len();
+        println!(
+            "values           {:>6.0} ms  {n}",
+            t.elapsed().as_secs_f64() * 1e3
+        );
+        let t = Instant::now();
+        let n = find_associations(&hives, &seeds).len();
+        println!(
+            "associations     {:>6.0} ms  {n}",
+            t.elapsed().as_secs_f64() * 1e3
+        );
+        let t = Instant::now();
+        let n = find_program_keys(&hives, &names, &seeds).len();
+        println!(
+            "program keys     {:>6.0} ms  {n}",
+            t.elapsed().as_secs_f64() * 1e3
+        );
+        let t = Instant::now();
+        let n = WindowsTraceFinder.candidates(&app).unwrap().len();
+        println!(
+            "WHOLE SEARCH     {:>6.0} ms  {n}",
+            t.elapsed().as_secs_f64() * 1e3
+        );
     }
 }

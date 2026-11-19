@@ -40,6 +40,17 @@ impl purifex_domain::ports::CandidateStore for FakeCandidates {
     }
 }
 
+/// A browser that only remembers what it was asked to open.
+#[derive(Clone, Default)]
+pub struct FakeOpener(pub Rc<RefCell<Vec<String>>>);
+
+impl purifex_domain::ports::UrlOpener for FakeOpener {
+    fn open(&self, url: &str) -> Result<(), String> {
+        self.0.borrow_mut().push(url.to_string());
+        Ok(())
+    }
+}
+
 pub struct FakeInventory(Result<Vec<Device>, String>);
 
 impl FakeInventory {

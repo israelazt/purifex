@@ -55,6 +55,7 @@ impl Core {
                 let m = &mut self.model;
                 (m.overview, m.drivers, m.sessions, m.analysis, m.comparison) =
                     (None, None, None, None, None);
+                m.candidates = None;
                 (m.fixes, m.history, m.confirm, m.notice) = (None, None, None, None);
                 m.error = None;
                 self.expect_reading();
@@ -66,6 +67,9 @@ impl Core {
                 }
                 Err(error) => self.model.offers = Offers::Failed(error),
             },
+            Action::OpenPage(url) => {
+                self.model.error = self.services.open_page(&url).err();
+            }
             Action::SetFilter(filter) => self.model.filter = filter,
             Action::SetQuery(query) => self.model.query = query,
             Action::AskFix(id) => self.model.confirm = Some(Confirm::Apply(id)),
@@ -122,7 +126,7 @@ impl Core {
         let page_lacks = match m.page {
             Page::Overview => false,
             Page::Fixes => m.fixes.is_none() || m.history.is_none(),
-            Page::Drivers => m.drivers.is_none(),
+            Page::Drivers => m.drivers.is_none() || m.candidates.is_none(),
             Page::Sessions => {
                 m.analysis.is_none()
                     && m.sessions
@@ -171,6 +175,16 @@ impl Core {
             match self.services.drivers() {
                 Ok(view) => self.model.drivers = Some(view),
                 Err(error) => note("drivers", error),
+            }
+        }
+        if self.model.page == Page::Drivers && self.model.candidates.is_none() {
+            match self.services.candidates() {
+                Ok(list) => self.model.candidates = Some(list),
+                Err(error) => {
+                    // Shown once; not asked again on every visit.
+                    self.model.candidates = Some(Vec::new());
+                    note("propuestas", error);
+                }
             }
         }
         if self.model.page == Page::Fixes {
@@ -650,5 +664,63 @@ mod tests {
         bare.apply(Action::SearchUpdates);
         assert!(matches!(&bare.model().offers, Offers::Failed(e) if e.contains("no sabe buscar")));
         assert!(!bare.needs_tick());
+    }
+
+    #[test]
+    fn the_drivers_page_reads_the_proposals_and_opening_one_goes_through_the_browser() {
+        use crate::testing::{FakeCandidates, FakeOpener};
+        use crate::Candidates;
+        use purifex_domain::driver_candidate::{Candidate, Source};
+        use purifex_domain::ports::CandidateStore;
+        let mut store = FakeCandidates::default();
+        store
+            .add(&Candidate {
+                device: r"PCI\A".into(),
+                source: Source::Suggested,
+                url: "https://www.realtek.com/Download".into(),
+                version: DriverVersion::parse("2.0").unwrap(),
+                title: "t".into(),
+            })
+            .unwrap();
+        let opener = FakeOpener::default();
+        let mut c = Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_candidates(Candidates::new(Box::new(store)))
+            .with_opener(Box::new(opener.clone())),
+        ));
+        c.tick();
+        assert!(
+            c.model().candidates.is_none(),
+            "only the drivers page reads them"
+        );
+        c.apply(Action::Go(Page::Drivers));
+        c.tick();
+        assert_eq!(c.model().candidates.as_ref().unwrap().len(), 1);
+        c.apply(Action::OpenPage("https://www.realtek.com/Download".into()));
+        assert_eq!(
+            opener.0.borrow().as_slice(),
+            ["https://www.realtek.com/Download"]
+        );
+        assert_eq!(c.model().error, None);
+        // Whatever asks, a page that is not an official one is never opened.
+        c.apply(Action::OpenPage("https://realtek.com.evil.io/x".into()));
+        c.apply(Action::OpenPage(
+            "file:///C:/Windows/System32/cmd.exe".into(),
+        ));
+        assert_eq!(opener.0.borrow().len(), 1);
+        assert!(c
+            .model()
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("solo se abren"));
     }
 }

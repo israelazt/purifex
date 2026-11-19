@@ -6,14 +6,14 @@ use std::time::Duration;
 
 use purifex_domain::analysis::Analysis;
 use purifex_domain::compare::ComparisonReport;
-use purifex_domain::driver_candidate::{Candidate, Submission};
+use purifex_domain::driver_candidate::{is_official_page, Candidate, Submission};
 use purifex_domain::driver_offers::OfferReport;
 use purifex_domain::driver_tiers::report;
 use purifex_domain::drivers_view::DriversView;
 use purifex_domain::fix::{FixReport, HistoryEntry, Proposal};
 use purifex_domain::overview::Overview;
 use purifex_domain::ports::{
-    Clock, PerformanceSampler, SessionArchive, SessionFile, SystemInventory,
+    Clock, PerformanceSampler, SessionArchive, SessionFile, SystemInventory, UrlOpener,
 };
 use purifex_domain::report::{ScanReport, Scope};
 use purifex_domain::session_list::SessionRow;
@@ -72,6 +72,8 @@ pub trait Services {
     ) -> Result<Submission, String>;
     /// The proposals kept so far.
     fn candidates(&self) -> Result<Vec<Candidate>, String>;
+    /// Opens the official page of a proposal in the browser (nothing is downloaded).
+    fn open_page(&mut self, url: &str) -> Result<(), String>;
 }
 
 /// The services of the application over real (or fake) ports.
@@ -82,6 +84,7 @@ pub struct App<I, C, S, C2, F, A> {
     fixer: Fixer,
     offering: Offering,
     candidates: Candidates,
+    opener: Option<Box<dyn UrlOpener>>,
 }
 
 impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
@@ -93,7 +96,14 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
             fixer: Fixer::disabled(),
             offering: Offering::default(),
             candidates: Candidates::default(),
+            opener: None,
         }
+    }
+
+    /// What opens a web page (none until given).
+    pub fn with_opener(mut self, opener: Box<dyn UrlOpener>) -> Self {
+        self.opener = Some(opener);
+        self
     }
 
     /// Where the proposals for drivers are kept (none until given).
@@ -225,5 +235,16 @@ where
 
     fn candidates(&self) -> Result<Vec<Candidate>, String> {
         self.candidates.list()
+    }
+
+    fn open_page(&mut self, url: &str) -> Result<(), String> {
+        // Whatever asked for it, only an official https page is ever opened.
+        if !is_official_page(url) {
+            return Err("solo se abren páginas https de fabricantes conocidos".into());
+        }
+        self.opener
+            .as_ref()
+            .ok_or("esta versión no puede abrir páginas")?
+            .open(url)
     }
 }

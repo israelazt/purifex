@@ -6,6 +6,7 @@
 use crate::analysis::Analysis;
 use crate::compare::ComparisonReport;
 use crate::device_category::Category;
+use crate::driver_candidate::Candidate;
 use crate::driver_offers::Offers;
 use crate::drivers_view::{DriverRow, DriversView};
 use crate::fix::{FixReport, HistoryEntry, Proposal};
@@ -62,6 +63,8 @@ pub struct Model {
     pub query: String,
     /// What Windows Update offers (only asked when the user asks).
     pub offers: Offers,
+    /// Driver pages proposed by the user's AI (read on the drivers page).
+    pub candidates: Option<Vec<Candidate>>,
     /// Something is being read: the picture says so before the wait.
     pub busy: bool,
     pub error: Option<String>,
@@ -74,6 +77,8 @@ pub enum Action {
     Rescan,
     /// Ask Windows Update for newer drivers.
     SearchUpdates,
+    /// Open the official page of a proposed driver in the browser.
+    OpenPage(String),
     SetFilter(DriverFilter),
     SetQuery(String),
     SelectSession(String),
@@ -87,6 +92,15 @@ pub enum Action {
 }
 
 impl Model {
+    /// The proposal of the user's AI for a device, the newest one.
+    pub fn candidate_for(&self, instance_id: &str) -> Option<&Candidate> {
+        self.candidates
+            .as_ref()?
+            .iter()
+            .rev()
+            .find(|c| c.device == instance_id)
+    }
+
     /// The rows of the drivers table that the filter and the search let through.
     pub fn visible_drivers(&self) -> Vec<&DriverRow> {
         let Some(view) = &self.drivers else {

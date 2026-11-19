@@ -181,6 +181,12 @@ fn https_host(url: &str) -> Result<String, Reason> {
     }
 }
 
+/// Whether `url` is an `https` page of a known manufacturer. The last check before
+/// anything is opened, whatever checked it before.
+pub fn is_official_page(url: &str) -> bool {
+    https_host(url).is_ok_and(|host| is_official(&host))
+}
+
 fn is_official(host: &str) -> bool {
     OFFICIAL_DOMAINS
         .iter()
@@ -370,6 +376,20 @@ mod tests {
                 vec![why],
                 "{url}"
             );
+        }
+    }
+
+    #[test]
+    fn only_a_page_of_a_known_maker_over_https_may_be_opened() {
+        assert!(is_official_page("https://www.realtek.com/Download"));
+        for no in [
+            "http://www.realtek.com",
+            "https://realtek.com.evil.io",
+            "file:///C:/x.exe",
+            "https://x@realtek.com",
+            "",
+        ] {
+            assert!(!is_official_page(no), "{no}");
         }
     }
 

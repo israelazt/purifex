@@ -4,7 +4,6 @@
 
 use purifex_domain::device_category::Category;
 use purifex_domain::draw::Rect;
-use purifex_domain::driver_offers::DeviceOffer;
 use purifex_domain::drivers_view::{DriverRow, RowState};
 use purifex_domain::view::Model;
 
@@ -143,7 +142,10 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
             [rect.x + 16.0, class_x, version_x, state_x],
             device_w,
             class_w,
-            offers.for_device(&row.name, &row.class),
+            updates_panel::Extra {
+                offer: offers.for_device(&row.name, &row.class),
+                candidate: m.candidate_for(&row.instance_id),
+            },
         );
     }
     c.reveal(0);
@@ -157,7 +159,7 @@ fn draw_row(
     columns: [f32; 4],
     device_w: f32,
     class_w: f32,
-    offer: Option<&DeviceOffer>,
+    extra: updates_panel::Extra,
 ) {
     let [device_x, class_x, version_x, state_x] = columns;
     let hover = c.hover(bar);
@@ -240,16 +242,10 @@ fn draw_row(
         &date_text,
         theme::mono(12.0, theme::TEXT_2),
     );
-    match offer {
-        // Two tags: the state above and what Windows Update offers below.
-        Some(offer) => {
-            tag(c, state_x, bar.y + 8.0, &label, tone, icon);
-            updates_panel::row_tag(c, offer, state_x, bar.y + 34.0);
-        }
-        None => {
-            tag(c, state_x, bar.y + 21.0, &label, tone, icon);
-        }
-    }
+    // With something to say about a driver, two tags: the state above and it below.
+    let y = if extra.is_some() { 8.0 } else { 21.0 };
+    tag(c, state_x, bar.y + y, &label, tone, icon);
+    updates_panel::row_extra(c, &extra, state_x, bar.y + 34.0);
 }
 
 fn age_text(days: i64) -> String {

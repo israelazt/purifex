@@ -31,6 +31,11 @@ pub trait CandidateStore {
     fn add(&mut self, candidate: &crate::driver_candidate::Candidate) -> Result<(), String>;
 }
 
+/// Opens a web page in the user's browser. Nothing is downloaded by Purifex.
+pub trait UrlOpener {
+    fn open(&self, url: &str) -> Result<(), String>;
+}
+
 /// The clock: today's day, and a monotonic time to measure how long things take.
 pub trait Clock {
     fn today(&self) -> Date;

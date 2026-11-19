@@ -7,6 +7,8 @@ pub mod decode;
 pub mod nt_layout;
 
 #[cfg(windows)]
+mod browser;
+#[cfg(windows)]
 mod candidates_file;
 #[cfg(windows)]
 mod clock;
@@ -31,6 +33,8 @@ mod window;
 #[cfg(windows)]
 mod windows_update;
 
+#[cfg(windows)]
+pub use browser::BrowserOpener;
 #[cfg(windows)]
 pub use candidates_file::JsonlCandidates;
 #[cfg(windows)]

@@ -153,6 +153,13 @@ mod states {
                     today,
                     5,
                 )));
+                model.candidates = Some(vec![purifex_domain::driver_candidate::Candidate {
+                    device: r"PCI\VEN_8086&DEV_1".into(),
+                    source: purifex_domain::driver_candidate::Source::Suggested,
+                    url: "https://www.intel.com/download".into(),
+                    version: DriverVersion::parse("2.0").unwrap(),
+                    title: String::new(),
+                }]);
                 model.offers = Offers::Found(purifex_domain::driver_offers::OfferReport {
                     offers: found,
                     unresolved: vec![],

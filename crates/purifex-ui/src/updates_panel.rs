@@ -3,7 +3,7 @@
 //! that a row of the table shows when an offer exists for its device.
 
 use purifex_domain::draw::Rect;
-use purifex_domain::driver_candidate::Risk;
+use purifex_domain::driver_candidate::{Candidate, Risk};
 use purifex_domain::driver_offers::{DeviceOffer, Offers};
 use purifex_domain::view::{Action, Model};
 
@@ -85,6 +85,54 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
         Some(2),
     );
     HEIGHT + 16.0
+}
+
+/// What a row of the table can show about a driver besides its state.
+#[derive(Clone, Copy, Default)]
+pub struct Extra<'a> {
+    /// What Windows Update offers.
+    pub offer: Option<&'a DeviceOffer>,
+    /// The official page that the user's AI proposed.
+    pub candidate: Option<&'a Candidate>,
+}
+
+impl Extra<'_> {
+    pub fn is_some(&self) -> bool {
+        self.offer.is_some() || self.candidate.is_some()
+    }
+}
+
+/// Draws the tag of `extra` at (`x`, `y`): Windows Update's offer if there is one,
+/// else the proposed page, which is a button that opens it.
+pub fn row_extra(c: &mut Canvas, extra: &Extra, x: f32, y: f32) {
+    match (extra.offer, extra.candidate) {
+        (Some(offer), _) => row_tag(c, offer, x, y),
+        (None, Some(candidate)) => {
+            let rect = Rect::new(x, y, 190.0, 22.0);
+            let hover = c.hover(rect);
+            let width = tag(
+                c,
+                x,
+                y,
+                "Abrir página oficial",
+                Tone::Blue,
+                Some("arrow-right"),
+            );
+            if hover > 0.01 {
+                c.stroke(
+                    Rect::new(x, y, width, 22.0),
+                    4.0,
+                    1.0,
+                    Tone::Blue.color().with_alpha(0.9 * hover),
+                );
+            }
+            c.hit(
+                Rect::new(x, y, width, 22.0),
+                Action::OpenPage(candidate.url.clone()),
+            );
+        }
+        (None, None) => {}
+    }
 }
 
 /// The tag of an offer in a row of the table, at (`x`, `y`).
@@ -203,6 +251,52 @@ mod tests {
             .iter()
             .any(|t| t.contains("No se pudo buscar: sin conexión")));
         assert_eq!(actions, vec![Action::SearchUpdates]);
+    }
+
+    #[test]
+    fn a_proposed_page_is_a_button_that_opens_it_and_a_windows_offer_goes_first() {
+        use purifex_domain::driver_candidate::Source;
+        let page = Candidate {
+            device: "PCI_A".into(),
+            source: Source::Suggested,
+            url: "https://www.realtek.com/Download".into(),
+            version: DriverVersion::parse("2.0").unwrap(),
+            title: String::new(),
+        };
+        let mut c = Canvas::new(&FakeText, None);
+        row_extra(
+            &mut c,
+            &Extra {
+                offer: None,
+                candidate: Some(&page),
+            },
+            0.0,
+            0.0,
+        );
+        let (list, hits) = c.finish();
+        assert!(list
+            .ops
+            .iter()
+            .any(|op| matches!(op, Op::Text { text, .. } if text == "Abrir página oficial")));
+        assert_eq!(hits.len(), 1);
+        assert_eq!(
+            hits[0].action,
+            Action::OpenPage("https://www.realtek.com/Download".into())
+        );
+        // With an offer from Windows, that one is shown and there is nothing to click.
+        let o = offer(Risk::Normal);
+        let mut c = Canvas::new(&FakeText, None);
+        row_extra(
+            &mut c,
+            &Extra {
+                offer: Some(&o),
+                candidate: Some(&page),
+            },
+            0.0,
+            0.0,
+        );
+        let (_, hits) = c.finish();
+        assert!(hits.is_empty());
     }
 
     #[test]

@@ -16,8 +16,9 @@ fn say(line: &str) {
 fn main() {
     use purifex_app::{App, Archive, Candidates, Command, Fixer, Offering, Recorder, Scanner};
     use purifex_platform::{
-        install_stderr_log, JsonlCandidates, JsonlHistory, LocalSessionArchive, LocalSessionFile,
-        SetupApiInventory, SystemClock, SystemFixes, WindowsSampler, WindowsUpdateOffers,
+        install_stderr_log, BrowserOpener, JsonlCandidates, JsonlHistory, LocalSessionArchive,
+        LocalSessionFile, SetupApiInventory, SystemClock, SystemFixes, WindowsSampler,
+        WindowsUpdateOffers,
     };
 
     install_stderr_log();
@@ -39,7 +40,8 @@ fn main() {
     let mut app = App::new(scanner, recorder, archive)
         .with_fixer(fixer)
         .with_offers(offering)
-        .with_candidates(Candidates::new(Box::new(JsonlCandidates::new())));
+        .with_candidates(Candidates::new(Box::new(JsonlCandidates::new())))
+        .with_opener(Box::new(BrowserOpener));
     if matches!(command, Command::Mcp) {
         let stdin = std::io::stdin();
         if let Err(error) = purifex_app::mcp::serve(&mut app, stdin.lock(), std::io::stdout()) {

@@ -20,7 +20,7 @@ pub struct GroupLoad {
 }
 
 /// The game's own use of the computer.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 pub struct GameLoad {
     /// Percent of the whole CPU.
     pub cpu: f32,

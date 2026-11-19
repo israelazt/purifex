@@ -4,14 +4,14 @@
 //! second, and no process stays resident.
 
 mod cpu_clock;
+mod load;
 mod nvml;
 
 use std::collections::HashMap;
 use std::time::Instant;
 
 use purifex_domain::ports::{PerformanceSampler, SamplerInfo};
-use purifex_domain::process_group::{group_of, Group};
-use purifex_domain::sample::{effective_mhz, GameLoad, GroupLoad, ProcLoad, Sample};
+use purifex_domain::sample::{effective_mhz, Sample};
 use windows::Wdk::System::SystemInformation::SYSTEM_INFORMATION_CLASS;
 use windows::Win32::System::Power::{
     CallNtPowerInformation, POWER_INFORMATION_LEVEL, PROCESSOR_POWER_INFORMATION,
@@ -24,14 +24,10 @@ use crate::nt_query::{
     PROCESSES as SYSTEM_PROCESS_INFORMATION,
 };
 use cpu_clock::CpuClock;
+use load::{cpu_usage, process_loads, Identity};
 use nvml::Nvml;
 
 const PROCESSOR_INFORMATION: POWER_INFORMATION_LEVEL = POWER_INFORMATION_LEVEL(11);
-/// How many other processes each sample lists.
-const TOP_PROCESSES: usize = 5;
-/// Below this share of the CPU a process is not worth listing.
-const MIN_LISTED: f32 = 0.2;
-
 pub struct WindowsSampler {
     /// Names of the game's programs, lowercase.
     game: Vec<String>,
@@ -91,6 +87,26 @@ impl WindowsSampler {
         Ok(parse_processes(&self.buffer[..used.min(self.buffer.len())]))
     }
 
+    /// The graphics card and the clock counter are opened on the first sample only.
+    fn open_sources(&mut self) {
+        if self.sources_opened {
+            return;
+        }
+        self.sources_opened = true;
+        self.nvml = Nvml::open();
+        self.clock = CpuClock::open();
+    }
+
+    /// The ticks (100 ns) all the cores could have run since the last sample: the 100 %
+    /// of a share. Zero for the first sample.
+    fn capacity_since_last(&mut self, now: Instant, cores: usize) -> f64 {
+        let wall = self
+            .last_at
+            .map_or(0, |t| now.duration_since(t).as_nanos() / 100) as f64;
+        self.last_at = Some(now);
+        wall * cores.max(1) as f64
+    }
+
     fn is_game(&self, name: &str) -> bool {
         let name = name.to_lowercase();
         self.game.contains(&name)
@@ -142,102 +158,24 @@ impl PerformanceSampler for WindowsSampler {
         Ok(self.processes()?.iter().any(|p| self.is_game(&p.name)))
     }
 
-    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     fn sample(&mut self) -> Result<Sample, String> {
-        if !self.sources_opened {
-            self.sources_opened = true;
-            self.nvml = Nvml::open();
-            self.clock = CpuClock::open();
-        }
+        self.open_sources();
         let started = Instant::now();
         let processes = self.processes()?;
         let used = self.query(SYSTEM_PROCESSOR_PERFORMANCE, CORE_ENTRY)?;
         let cores = parse_cores(&self.buffer[..used.min(self.buffer.len())]);
-
-        // Wall time since the last sample, in 100 ns ticks, for the shares.
-        let wall = self
-            .last_at
-            .map_or(0, |t| started.duration_since(t).as_nanos() / 100) as f64;
-        self.last_at = Some(started);
-        let capacity = wall * cores.len().max(1) as f64;
-        let share = |delta: u64| {
-            if capacity > 0.0 {
-                (delta as f64 / capacity * 100.0) as f32
-            } else {
-                0.0
-            }
-        };
-
-        let (mut cpu_total, mut cpu_max_core, mut dpc_interrupt) = (0f32, 0f32, 0f32);
-        if self.last_cores.len() == cores.len() && !cores.is_empty() {
-            let (mut busy, mut all, mut dpc) = (0u64, 0u64, 0u64);
-            for (now, before) in cores.iter().zip(&self.last_cores) {
-                let total = now.total.saturating_sub(before.total);
-                let idle = now.idle.saturating_sub(before.idle);
-                let work = total.saturating_sub(idle);
-                busy += work;
-                all += total;
-                dpc += now.dpc_interrupt.saturating_sub(before.dpc_interrupt);
-                if total > 0 {
-                    cpu_max_core = cpu_max_core.max(work as f32 * 100.0 / total as f32);
-                }
-            }
-            if all > 0 {
-                cpu_total = busy as f32 * 100.0 / all as f32;
-                dpc_interrupt = dpc as f32 * 100.0 / all as f32;
-            }
-        }
+        let capacity = self.capacity_since_last(started, cores.len());
+        let usage = cpu_usage(&cores, &self.last_cores);
         let core_count = cores.len();
         self.last_cores = cores;
 
-        let mut game: Option<GameLoad> = None;
-        let mut others: HashMap<&str, f32> = HashMap::new();
-        let mut families: HashMap<Group, f32> = HashMap::new();
-        let mut ticks_now = HashMap::with_capacity(processes.len());
-        for p in &processes {
-            ticks_now.insert(p.pid, p.cpu_ticks);
-            let Some(before) = self.last_processes.get(&p.pid) else {
-                continue;
-            };
-            let cpu = share(p.cpu_ticks.saturating_sub(*before));
-            if self.is_game(&p.name) {
-                let g = game.get_or_insert(GameLoad {
-                    cpu: 0.0,
-                    memory_mb: 0,
-                });
-                g.cpu += cpu;
-                g.memory_mb += (p.working_set / (1024 * 1024)) as u32;
-            } else if p.pid != 0 && p.pid != self.own_pid {
-                *others.entry(p.name.as_str()).or_default() += cpu;
-                if let Some(group) = group_of(&p.name) {
-                    *families.entry(group).or_default() += cpu;
-                }
-            }
-        }
-        // The game may have started between two samples: it is there, with no
-        // difference to measure yet.
-        if game.is_none() && processes.iter().any(|p| self.is_game(&p.name)) {
-            game = Some(GameLoad {
-                cpu: 0.0,
-                memory_mb: 0,
-            });
-        }
-        let mut top: Vec<ProcLoad> = others
-            .into_iter()
-            .filter(|(_, cpu)| *cpu >= MIN_LISTED)
-            .map(|(name, cpu)| ProcLoad {
-                name: name.to_string(),
-                cpu,
-            })
-            .collect();
-        top.sort_by(|a, b| b.cpu.total_cmp(&a.cpu));
-        top.truncate(TOP_PROCESSES);
-        let mut groups: Vec<GroupLoad> = families
-            .into_iter()
-            .map(|(group, cpu)| GroupLoad { group, cpu })
-            .collect();
-        groups.sort_by(|a, b| b.cpu.total_cmp(&a.cpu));
-        self.last_processes = ticks_now;
+        let is_game = |name: &str| self.is_game(name);
+        let who = Identity {
+            is_game: &is_game,
+            own_pid: self.own_pid,
+        };
+        let loads = process_loads(&processes, &self.last_processes, capacity, &who);
+        self.last_processes = loads.ticks;
 
         let (reported_mhz, cpu_max_mhz) = clock_speeds(core_count);
         // The real clock, when the counter answers; if not, what Windows reports.
@@ -248,16 +186,16 @@ impl PerformanceSampler for WindowsSampler {
             .map_or(reported_mhz, |percent| effective_mhz(cpu_max_mhz, percent));
         Ok(Sample {
             at_ms: 0,
-            cpu_total,
-            cpu_max_core,
-            dpc_interrupt,
+            cpu_total: usage.total,
+            cpu_max_core: usage.max_core,
+            dpc_interrupt: usage.dpc_interrupt,
             cpu_mhz,
             cpu_max_mhz,
             ram_used: memory_used_percent(),
-            game,
+            game: loads.game,
             gpu: self.nvml.as_mut().and_then(Nvml::read),
-            groups,
-            top,
+            groups: loads.groups,
+            top: loads.top,
             cost_us: started.elapsed().as_micros().min(u128::from(u32::MAX)) as u32,
         })
     }

@@ -78,7 +78,7 @@ pub enum Refusal {
 }
 
 /// Names that mean "everything of a kind": never a trace of one app.
-const BROAD: [&str; 19] = [
+pub(crate) const BROAD: [&str; 19] = [
     "microsoft",
     "windows",
     "common files",
@@ -117,7 +117,7 @@ pub fn simple(name: &str) -> String {
         .collect()
 }
 
-fn last_part(location: &str) -> &str {
+pub(crate) fn last_part(location: &str) -> &str {
     location
         .rsplit(['\\', '/'])
         .find(|p| !p.is_empty())

@@ -3,9 +3,7 @@
 //! crash dump of its program. Each rule works only in a fixed list of places, so a
 //! mistake of the finder cannot reach what is not the app's. Pure functions: no system.
 
-use crate::app_traces::{
-    last_part, names_of, simple, Candidate, Evidence, Refusal, Trace, TraceKind,
-};
+use crate::app_traces::{names_of, simple, Candidate, Evidence, Refusal, Trace, TraceKind};
 use crate::apps::InstalledApp;
 use crate::reference::path_refers_to;
 use crate::seeds::Seeds;
@@ -51,6 +49,30 @@ const SUFFIXES: [&str; 10] = [
     "rc", "staterc", ".ini", ".log", ".json", ".cfg", ".conf", ".db", ".cache", ".xml",
 ];
 
+/// What a rule found: the evidence and the sentence that says why.
+type Found = (Evidence, String);
+
+/// What a rule looks at: the app, its seeds, the candidate and where it is.
+struct Ctx<'a> {
+    app: &'a InstalledApp,
+    seeds: &'a Seeds,
+    candidate: &'a Candidate,
+    /// Everything before the last `\`, and what follows it (lowercase).
+    parent: &'a str,
+    name: &'a str,
+}
+
+/// A rule answers `None` when the candidate is not its case.
+type Rule = fn(&Ctx) -> Option<Found>;
+
+const KEY_RULES: [Rule; 3] = [classes_key, explorer_extension_key, program_key];
+const FILE_RULES: [Rule; 4] = [
+    settings_file,
+    crash_dump,
+    recent_by_extension,
+    shortcut_into_folder,
+];
+
 /// `None`: not a case for these rules, the caller applies its own. `Some`: decided.
 pub fn judge_by_evidence(
     app: &InstalledApp,
@@ -60,38 +82,50 @@ pub fn judge_by_evidence(
     location: &str,
 ) -> Option<Result<Trace, Refusal>> {
     let lower = location.to_lowercase();
-    let (evidence, why, value): (Evidence, Option<String>, Option<&str>) = match candidate.kind {
-        TraceKind::RegistryValue => {
-            let value = candidate.value.as_deref()?;
-            (
-                value_evidence(seeds, &lower, value, candidate)?,
-                None,
-                Some(value),
-            )
-        }
-        TraceKind::RegistryKey => {
-            let (e, w) = key_evidence(app, seeds, &lower, candidate)?;
-            (e, Some(w), None)
-        }
-        TraceKind::File => {
-            let (e, w) = file_evidence(app, seeds, &lower, candidate)?;
-            (e, Some(w), None)
-        }
+    let (evidence, why) = match candidate.kind {
+        TraceKind::RegistryValue => (value_evidence(seeds, &lower, candidate)?, None),
+        TraceKind::RegistryKey => decide(&KEY_RULES, app, seeds, candidate, &lower)?,
+        TraceKind::File => decide(&FILE_RULES, app, seeds, candidate, &lower)?,
         TraceKind::Folder => return None,
     };
     if seed_shared(others, app, seeds, evidence) {
         return Some(Err(Refusal::SharedWithOtherApp));
     }
-    let user_data = candidate.kind == TraceKind::File && lower.contains(r"\appdata\");
     Some(Ok(Trace {
         kind: candidate.kind,
         location: location.to_string(),
         bytes: candidate.bytes,
         why: why.unwrap_or_else(|| why_of(evidence).to_string()),
-        user_data,
-        value: value.map(String::from),
+        user_data: candidate.kind == TraceKind::File && lower.contains(r"\appdata\"),
+        value: candidate
+            .value
+            .clone()
+            .filter(|_| candidate.kind == TraceKind::RegistryValue),
         evidence,
     }))
+}
+
+/// The first rule of the list that recognises the candidate.
+fn decide(
+    rules: &[Rule],
+    app: &InstalledApp,
+    seeds: &Seeds,
+    candidate: &Candidate,
+    lower: &str,
+) -> Option<(Evidence, Option<String>)> {
+    let (parent, name) = lower.rsplit_once('\\')?;
+    if name.is_empty() {
+        return None;
+    }
+    let ctx = Ctx {
+        app,
+        seeds,
+        candidate,
+        parent,
+        name,
+    };
+    let (evidence, why) = rules.iter().find_map(|rule| rule(&ctx))?;
+    Some((evidence, Some(why)))
 }
 
 fn why_of(evidence: Evidence) -> &'static str {
@@ -123,144 +157,165 @@ fn seed_shared(others: &[InstalledApp], app: &InstalledApp, seeds: &Seeds, e: Ev
     })
 }
 
-fn value_evidence(
-    seeds: &Seeds,
-    lower_key: &str,
-    value: &str,
-    candidate: &Candidate,
-) -> Option<Evidence> {
+// ---- values -------------------------------------------------------------------
+
+/// A value of one of the fixed keys whose name or data points into the app's folder.
+fn value_evidence(seeds: &Seeds, lower_key: &str, candidate: &Candidate) -> Option<Evidence> {
+    let value = candidate.value.as_deref().filter(|v| !v.is_empty())?;
     let hive_len = ["hkcu\\software", "hklm\\software"]
         .iter()
         .find(|h| lower_key.starts_with(*h))?
         .len();
     let key = &lower_key[hive_len..];
-    if !VALUE_KEYS.iter().any(|k| key.ends_with(k)) || value.is_empty() {
+    if !VALUE_KEYS.iter().any(|k| key.ends_with(k)) {
         return None;
     }
     let folder = seeds.folder.as_deref()?;
     let data = candidate.text.as_deref().unwrap_or("");
-    (path_refers_to(value, folder) || path_refers_to(data, folder))
-        .then_some(Evidence::PathReference)
+    let refers = path_refers_to(value, folder) || path_refers_to(data, folder);
+    refers.then_some(Evidence::PathReference)
 }
 
-fn key_evidence(
-    app: &InstalledApp,
-    seeds: &Seeds,
-    lower: &str,
-    candidate: &Candidate,
-) -> Option<(Evidence, String)> {
-    let (parent, child) = lower.rsplit_once('\\')?;
-    if child.is_empty() {
+// ---- registry keys ------------------------------------------------------------
+
+/// File-type keys of the classes: the extension the app registered, or a ProgId whose
+/// command or icon is inside the app's folder. Never a generic extension.
+fn classes_key(c: &Ctx) -> Option<Found> {
+    if !matches!(
+        c.parent,
+        r"hklm\software\classes" | r"hkcu\software\classes"
+    ) {
         return None;
     }
-    // File-type keys of the classes: the extension the app registered, or a ProgId
-    // whose command or icon is inside the app's folder. Never a generic extension.
-    if parent == r"hklm\software\classes" || parent == r"hkcu\software\classes" {
-        if child.starts_with('.') {
-            if seeds.extensions.iter().any(|e| e == child) {
-                return Some((
-                    Evidence::AssociatedExtension,
-                    format!("extensión de archivo que registró la app: {child}"),
-                ));
-            }
-            return None;
-        }
-        let folder = seeds.folder.as_deref()?;
-        let text = candidate.text.as_deref()?;
-        return path_refers_to(text, folder).then(|| {
-            (
-                Evidence::Association,
-                format!("tipo de archivo cuyo comando está en la carpeta de la app: {child}"),
-            )
-        });
-    }
-    if EXTENSION_KEYS.contains(&parent) {
-        let known = seeds
-            .extensions
-            .iter()
-            .any(|e| e == child || e.trim_start_matches('.') == child);
-        return known.then(|| {
+    if c.name.starts_with('.') {
+        return c.seeds.extensions.iter().any(|e| e == c.name).then(|| {
             (
                 Evidence::AssociatedExtension,
-                format!("clave de Explorador de la extensión {child}, que registró la app"),
+                format!("extensión de archivo que registró la app: {}", c.name),
             )
         });
     }
-    if PROGRAM_KEYS.contains(&parent) {
-        let own = simple(child.trim_end_matches(".exe"));
-        let exe_stem = |e: &String| simple(e.trim_end_matches(".exe"));
-        let ours = names_of(app).contains(&own) || seeds.exes.iter().any(|e| exe_stem(e) == own);
-        return ours.then(|| {
-            (
-                Evidence::NameMatch,
-                format!(
-                    "clave del registro con el nombre del programa: {}",
-                    last_part(lower)
-                ),
-            )
-        });
-    }
-    None
+    let folder = c.seeds.folder.as_deref()?;
+    let text = c.candidate.text.as_deref()?;
+    path_refers_to(text, folder).then(|| {
+        (
+            Evidence::Association,
+            format!(
+                "tipo de archivo cuyo comando está en la carpeta de la app: {}",
+                c.name
+            ),
+        )
+    })
 }
 
-fn file_evidence(
-    app: &InstalledApp,
-    seeds: &Seeds,
-    lower: &str,
-    candidate: &Candidate,
-) -> Option<(Evidence, String)> {
-    let (parent, name) = lower.rsplit_once('\\')?;
-    if name.is_empty() {
+/// The keys of Explorer that hang from an extension the app registered.
+fn explorer_extension_key(c: &Ctx) -> Option<Found> {
+    if !EXTENSION_KEYS.contains(&c.parent) {
         return None;
     }
-    // Settings next to the others of the user: `<name>rc`, `<name>.ini`...
-    if DATA_FOLDERS.iter().any(|d| parent.ends_with(d)) && parent_under_users(parent) {
-        let names = names_of(app);
-        let named = SUFFIXES.iter().any(|s| {
-            name.strip_suffix(s)
-                .is_some_and(|stem| names.contains(&simple(stem)))
-        });
-        return named.then(|| {
-            (
-                Evidence::NamePrefix,
-                format!("archivo de ajustes con el nombre de la app: {name}"),
-            )
-        });
-    }
-    if parent.ends_with(r"\appdata\local\crashdumps") && parent_under_users(parent) {
-        return is_dump_of(name, &seeds.exes).then(|| {
-            (
-                Evidence::CrashDump,
-                format!("volcado de error del programa de la app: {name}"),
-            )
-        });
-    }
-    // Shortcuts: a recent file of a type the app registered, or any shortcut on the
-    // desktop or the start menu whose target is inside the app's folder.
-    let stem = name.strip_suffix(".lnk")?;
-    if parent.ends_with(r"\microsoft\windows\recent") && parent_under_users(parent) {
-        if let Some(ext) = seeds.extensions.iter().find(|e| stem.ends_with(e.as_str())) {
-            return Some((
-                Evidence::AssociatedExtension,
-                format!("acceso reciente a un archivo {ext}, tipo que registró la app"),
-            ));
-        }
-    }
-    let shortcut_place = [r"\desktop", r"\microsoft\windows\start menu\programs"]
+    let known = c
+        .seeds
+        .extensions
         .iter()
-        .any(|d| parent.contains(d));
-    if shortcut_place || parent.ends_with(r"\microsoft\windows\recent") {
-        let folder = seeds.folder.as_deref()?;
-        let target = candidate.text.as_deref()?;
-        return path_refers_to(target, folder).then(|| {
-            (
-                Evidence::PathReference,
-                format!("acceso directo a la carpeta de la app: {name}"),
-            )
-        });
-    }
-    None
+        .any(|e| e == c.name || e.trim_start_matches('.') == c.name);
+    known.then(|| {
+        (
+            Evidence::AssociatedExtension,
+            format!(
+                "clave de Explorador de la extensión {}, que registró la app",
+                c.name
+            ),
+        )
+    })
 }
+
+/// Keys named after one of the app's programs (its name or its `.exe`).
+fn program_key(c: &Ctx) -> Option<Found> {
+    if !PROGRAM_KEYS.contains(&c.parent) {
+        return None;
+    }
+    let own = simple(c.name.trim_end_matches(".exe"));
+    let is_exe = |e: &String| simple(e.trim_end_matches(".exe")) == own;
+    let ours = names_of(c.app).contains(&own) || c.seeds.exes.iter().any(is_exe);
+    ours.then(|| {
+        (
+            Evidence::NameMatch,
+            format!("clave del registro con el nombre del programa: {}", c.name),
+        )
+    })
+}
+
+// ---- files --------------------------------------------------------------------
+
+/// Settings next to the others of the user: `<name>rc`, `<name>.ini`...
+fn settings_file(c: &Ctx) -> Option<Found> {
+    if !DATA_FOLDERS.iter().any(|d| c.parent.ends_with(d)) || !parent_under_users(c.parent) {
+        return None;
+    }
+    let names = names_of(c.app);
+    let named = SUFFIXES.iter().any(|s| {
+        c.name
+            .strip_suffix(s)
+            .is_some_and(|stem| names.contains(&simple(stem)))
+    });
+    named.then(|| {
+        (
+            Evidence::NamePrefix,
+            format!("archivo de ajustes con el nombre de la app: {}", c.name),
+        )
+    })
+}
+
+/// `<program>.<pid>.dmp` in the crash dumps of the user.
+fn crash_dump(c: &Ctx) -> Option<Found> {
+    if !c.parent.ends_with(r"\appdata\local\crashdumps") || !parent_under_users(c.parent) {
+        return None;
+    }
+    is_dump_of(c.name, &c.seeds.exes).then(|| {
+        (
+            Evidence::CrashDump,
+            format!("volcado de error del programa de la app: {}", c.name),
+        )
+    })
+}
+
+/// A recent file of a type the app registered.
+fn recent_by_extension(c: &Ctx) -> Option<Found> {
+    let stem = c.name.strip_suffix(".lnk")?;
+    if !c.parent.ends_with(RECENT) || !parent_under_users(c.parent) {
+        return None;
+    }
+    let ext = c
+        .seeds
+        .extensions
+        .iter()
+        .find(|e| stem.ends_with(e.as_str()))?;
+    Some((
+        Evidence::AssociatedExtension,
+        format!("acceso reciente a un archivo {ext}, tipo que registró la app"),
+    ))
+}
+
+/// A shortcut (desktop, start menu, recent) whose target is inside the app's folder.
+fn shortcut_into_folder(c: &Ctx) -> Option<Found> {
+    c.name.strip_suffix(".lnk")?;
+    let in_place = [r"\desktop", r"\microsoft\windows\start menu\programs"]
+        .iter()
+        .any(|d| c.parent.contains(d));
+    if !in_place && !c.parent.ends_with(RECENT) {
+        return None;
+    }
+    let folder = c.seeds.folder.as_deref()?;
+    let target = c.candidate.text.as_deref()?;
+    path_refers_to(target, folder).then(|| {
+        (
+            Evidence::PathReference,
+            format!("acceso directo a la carpeta de la app: {}", c.name),
+        )
+    })
+}
+
+const RECENT: &str = r"\microsoft\windows\recent";
 
 /// The user's own tree (`c:\users\x\appdata\...`): not a folder somebody else made.
 fn parent_under_users(parent: &str) -> bool {

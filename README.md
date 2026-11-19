@@ -19,6 +19,7 @@ Antes de cada commit: `powershell -File tools/check.ps1` (formato, clippy sin av
 | `purifex watch [--now] [--seconds N]` | Espera a `League of Legends.exe`, graba una muestra por segundo y resume con pistas |
 | `purifex sessions [--json]` | Lista las grabaciones, la más nueva primero |
 | `purifex analyze [nombre] [--json]` | Analiza una grabación (por defecto, la última) |
+| `purifex compare [antes después] [--json]` | Compara dos partidas (por defecto, las dos últimas): qué mejoró, qué empeoró y qué quedó igual |
 | `purifex ui [--screenshot ARCHIVO.png]` | Abre la interfaz (o la guarda como imagen) |
 | `purifex help` | La ayuda |
 

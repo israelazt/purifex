@@ -45,7 +45,8 @@ impl Core {
             }
             Action::Rescan => {
                 let m = &mut self.model;
-                (m.overview, m.drivers, m.sessions, m.analysis) = (None, None, None, None);
+                (m.overview, m.drivers, m.sessions, m.analysis, m.comparison) =
+                    (None, None, None, None, None);
                 m.error = None;
                 self.expect_reading();
             }
@@ -54,6 +55,7 @@ impl Core {
             Action::SelectSession(id) => {
                 self.model.selected = Some(id);
                 self.model.analysis = None;
+                self.model.comparison = None;
                 self.model.error = None;
                 self.expect_reading();
             }
@@ -80,6 +82,20 @@ impl Core {
             }
         };
         m.overview.is_none() || m.sessions.is_none() || page_lacks
+    }
+
+    /// The chosen recording against the game before it: the next older readable
+    /// game of the list. `None` if the chosen one is not a game or has none before.
+    fn compare_with_previous(&self, id: &str) -> Option<purifex_domain::compare::ComparisonReport> {
+        let rows = self.model.sessions.as_ref()?;
+        let at = rows.iter().position(|r| r.id == id)?;
+        if !rows[at].is_game {
+            return None;
+        }
+        let previous = rows[at + 1..]
+            .iter()
+            .find(|r| r.is_game && r.problem.is_none())?;
+        self.services.compare(Some(&previous.id), Some(id)).ok()
     }
 
     /// Reads what is missing. Each failure is shown, and the rest is still read.
@@ -119,8 +135,9 @@ impl Core {
             if let Some(id) = chosen {
                 match self.services.analyze(Some(&id)) {
                     Ok(analysis) => {
-                        self.model.selected = Some(id);
+                        self.model.selected = Some(id.clone());
                         self.model.analysis = Some(analysis);
+                        self.model.comparison = self.compare_with_previous(&id);
                     }
                     Err(error) => note("partida", error),
                 }
@@ -241,6 +258,45 @@ mod tests {
             "{:?}",
             c.model().error
         );
+    }
+
+    #[test]
+    fn a_game_is_shown_against_the_game_before_it_and_the_first_one_has_none() {
+        let mut c = core_with(
+            FakeInventory::with(vec![]),
+            FakeArchive::with(&[
+                ("lol-20261118-100000", GAME),
+                (
+                    "lol-20261118-120000",
+                    "t_s,cpu_total,cpu_max_core
+1.0,1.0,1.0
+",
+                ),
+                ("lol-20261118-140000", GAME),
+            ]),
+        );
+        c.tick();
+        c.apply(Action::Go(Page::Sessions));
+        c.tick();
+        let newest = c
+            .model()
+            .comparison
+            .as_ref()
+            .expect("the newest game has one before it");
+        assert_eq!(
+            (newest.before.as_str(), newest.after.as_str()),
+            ("lol-20261118-100000", "lol-20261118-140000"),
+            "the short test in between is skipped"
+        );
+        c.apply(Action::SelectSession("lol-20261118-100000".into()));
+        c.tick();
+        assert!(
+            c.model().comparison.is_none(),
+            "nothing before the first game"
+        );
+        c.apply(Action::SelectSession("lol-20261118-120000".into()));
+        c.tick();
+        assert!(c.model().comparison.is_none(), "a test is not compared");
     }
 
     #[test]

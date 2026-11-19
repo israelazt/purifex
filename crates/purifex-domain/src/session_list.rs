@@ -22,6 +22,8 @@ pub struct SessionRow {
     pub seconds: u64,
     pub samples: usize,
     pub has_summary: bool,
+    /// Long enough and with the game running: worth comparing (see `Analysis::is_game`).
+    pub is_game: bool,
     /// The game it recorded, when its header says.
     pub game: Option<String>,
     /// Why it cannot be read, if it cannot.
@@ -88,6 +90,7 @@ mod tests {
             seconds,
             samples: seconds as usize,
             has_summary: true,
+            is_game: true,
             game: None,
             problem: None,
         }

@@ -24,15 +24,16 @@ impl<A: SessionArchive> Archive<A> {
         Ok(infos
             .into_iter()
             .map(|info| {
-                let parsed = self.read(&info.id);
-                let (seconds, samples, game, problem) = match parsed {
-                    Ok(session) => (
-                        session.samples.last().map_or(0, |s| s.at_ms / 1000),
-                        session.samples.len(),
-                        session.header.map(|h| h.game),
+                let analysis = self.read(&info.id).and_then(|s| Analysis::of(&info.id, s));
+                let (seconds, samples, game, is_game, problem) = match analysis {
+                    Ok(a) => (
+                        a.summary.seconds,
+                        a.summary.samples,
+                        a.header.as_ref().map(|h| h.game.clone()),
+                        a.is_game(),
                         None,
                     ),
-                    Err(error) => (0, 0, None, Some(error)),
+                    Err(error) => (0, 0, None, false, Some(error)),
                 };
                 SessionRow {
                     started: stamp_of(&info.id),
@@ -40,6 +41,7 @@ impl<A: SessionArchive> Archive<A> {
                     seconds,
                     samples,
                     has_summary: info.has_summary,
+                    is_game,
                     game,
                     problem,
                 }

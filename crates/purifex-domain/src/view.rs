@@ -4,6 +4,7 @@
 //! does. Neither knows the other.
 
 use crate::analysis::Analysis;
+use crate::compare::ComparisonReport;
 use crate::device_category::Category;
 use crate::drivers_view::{DriverRow, DriversView};
 use crate::overview::Overview;
@@ -34,6 +35,8 @@ pub struct Model {
     pub drivers: Option<DriversView>,
     pub sessions: Option<Vec<SessionRow>>,
     pub analysis: Option<Analysis>,
+    /// The chosen game against the game before it, when there is one.
+    pub comparison: Option<ComparisonReport>,
     /// The recording shown in the Sessions page.
     pub selected: Option<String>,
     pub filter: DriverFilter,

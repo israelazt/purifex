@@ -3,11 +3,13 @@
 //! come from the domain (`SessionRow`, `Analysis::stat_rows`).
 
 use purifex_domain::analysis::{Analysis, StatRow};
+use purifex_domain::compare::ComparisonReport;
 use purifex_domain::draw::Rect;
 use purifex_domain::session_list::{duration_text, SessionRow};
 use purifex_domain::view::{Action, Model};
 
 use crate::canvas::Canvas;
+use crate::compare_panel;
 use crate::page;
 use crate::theme::{self, Tone};
 use crate::widgets::{icon_box, panel};
@@ -120,7 +122,7 @@ fn number(row: &StatRow, value: f32) -> String {
 }
 
 /// The detail of the chosen recording; returns its height.
-fn detail(c: &mut Canvas, a: &Analysis, rect: Rect) -> f32 {
+fn detail(c: &mut Canvas, a: &Analysis, comparison: Option<&ComparisonReport>, rect: Rect) -> f32 {
     // The leads, measured first so the panel is as tall as what it holds.
     let title_style = theme::sans(14.0, theme::TEXT).bold();
     let text_style = theme::mono(12.0, theme::TEXT_2);
@@ -206,9 +208,15 @@ fn detail(c: &mut Canvas, a: &Analysis, rect: Rect) -> f32 {
 
     // The table of measures.
     let rows = a.stat_rows();
+    let mut below = top.bottom() + 16.0;
+    if let Some(report) = comparison {
+        let h = compare_panel::height(c, report, rect.w);
+        compare_panel::draw(c, report, Rect::new(rect.x, below, rect.w, h));
+        below += h + 16.0;
+    }
     let table = Rect::new(
         rect.x,
-        top.bottom() + 16.0,
+        below,
         rect.w,
         44.0 + rows.len() as f32 * 40.0 + 44.0,
     );
@@ -313,7 +321,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
         0.0,
     );
     let used = match &m.analysis {
-        Some(a) => detail(c, a, detail_rect),
+        Some(a) => detail(c, a, m.comparison.as_ref(), detail_rect),
         None => {
             let rect = Rect::new(detail_rect.x, y, detail_rect.w, 70.0);
             panel(c, rect);
@@ -353,6 +361,7 @@ mod tests {
             seconds: 1566,
             samples: 1567,
             has_summary: false,
+            is_game: problem.is_none(),
             game: None,
             problem: problem.map(String::from),
         }

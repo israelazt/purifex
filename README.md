@@ -9,7 +9,7 @@ cargo build --release
 target\release\purifex.exe help
 ```
 
-Antes de cada commit: `powershell -File tools/check.ps1` (formato, clippy sin avisos y tests, guardas incluidas).
+Antes de cada commit: `powershell -File tools/check.ps1` (formato, clippy sin avisos y tests, guardas incluidas). `tools/ship.ps1 -Message "..."` hace el commit y el push solo si todo está en verde. Para contribuir, lee `CONTRIBUTING.md`.
 
 ## Órdenes
 
@@ -29,6 +29,7 @@ Las grabaciones quedan en `%LOCALAPPDATA%\Purifex\sessions\` (un CSV por partida
 ## Más
 
 - `ARCHITECTURE.md`: las capas y las reglas.
+- `CONTRIBUTING.md`: qué debe pasar antes de un cambio y las reglas de diseño (KISS, DRY, SOLID).
 - `docs/FASE1_PLAN.md`: el plan de la fase actual.
 - `docs/DESIGN.md`: el diseño de la interfaz (referencia en `design/screen.png`, iconos Lucide).
 

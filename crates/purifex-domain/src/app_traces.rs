@@ -206,42 +206,82 @@ pub fn judge_with(
     if let Some(decided) = judge_by_evidence(app, others, seeds, candidate, location) {
         return decided;
     }
+    // A value is the app's only by evidence: it has no name of its own to go by.
     if candidate.kind == TraceKind::RegistryValue {
         return Err(Refusal::NotTheApps);
     }
+    judge_by_name(app, others, candidate, location)
+}
+
+/// The classic rule: a place with the app's name (or the folder it registered), that is
+/// not Windows', not too broad and not something another installed app needs.
+fn judge_by_name(
+    app: &InstalledApp,
+    others: &[InstalledApp],
+    candidate: &Candidate,
+    location: &str,
+) -> Result<Trace, Refusal> {
     let lower = location.to_lowercase();
-    if SYSTEM_PREFIXES
-        .iter()
-        .any(|p| lower == *p || lower.starts_with(&format!("{p}\\")))
-    {
-        return Err(Refusal::SystemPlace);
-    }
+    refuse_system_place(&lower)?;
     let own = simple(last_part(location));
-    if BROAD.contains(&last_part(&lower)) || own.is_empty() || lower.matches('\\').count() < 2 {
-        return Err(Refusal::TooBroad);
+    refuse_too_broad(&lower, &own)?;
+    refuse_shared(app, others, &lower, &own)?;
+    if !candidate.registered_install && !names_of(app).contains(&own) {
+        return Err(Refusal::NotTheApps);
     }
-    // Something another installed app needs: its folder is this one or inside it,
-    // or this folder is the publisher's shared one and the publisher has other apps.
+    Ok(trace_by_name(candidate, location, &lower))
+}
+
+fn refuse_system_place(lower: &str) -> Result<(), Refusal> {
+    let system = SYSTEM_PREFIXES
+        .iter()
+        .any(|p| lower == *p || lower.starts_with(&format!("{p}\\")));
+    if system {
+        Err(Refusal::SystemPlace)
+    } else {
+        Ok(())
+    }
+}
+
+fn refuse_too_broad(lower: &str, own: &str) -> Result<(), Refusal> {
+    if BROAD.contains(&last_part(lower)) || own.is_empty() || lower.matches('\\').count() < 2 {
+        Err(Refusal::TooBroad)
+    } else {
+        Ok(())
+    }
+}
+
+/// Something another installed app needs: its folder is this one or inside it, or this
+/// folder is the publisher's shared one and the publisher has other apps.
+fn refuse_shared(
+    app: &InstalledApp,
+    others: &[InstalledApp],
+    lower: &str,
+    own: &str,
+) -> Result<(), Refusal> {
     let publisher_folder =
         app.publisher.as_deref().map(simple).is_some_and(|p| {
-            p.len() >= 3 && (p == own || p.starts_with(&own) || own.starts_with(&p))
+            p.len() >= 3 && (p == own || p.starts_with(own) || own.starts_with(&p))
         });
-    for other in others.iter().filter(|o| o.id != app.id) {
+    let needed = others.iter().filter(|o| o.id != app.id).any(|other| {
         let inside = other.install_location.as_deref().is_some_and(|l| {
             let l = l.trim_end_matches('\\').to_lowercase();
             !l.is_empty() && (l == lower || l.starts_with(&format!("{lower}\\")))
         });
-        if inside || (publisher_folder && same_publisher(app, other)) {
-            return Err(Refusal::SharedWithOtherApp);
-        }
+        inside || (publisher_folder && same_publisher(app, other))
+    });
+    if needed {
+        Err(Refusal::SharedWithOtherApp)
+    } else {
+        Ok(())
     }
-    let names = names_of(app);
+}
+
+/// The trace of a place proposed by name or as the registered install folder. The
+/// folder the app installed itself in is the program, not the user's data, even when
+/// it lives under AppData (`AppData\Local\Programs`).
+fn trace_by_name(candidate: &Candidate, location: &str, lower: &str) -> Trace {
     let registered = candidate.registered_install;
-    if !registered && !names.contains(&own) {
-        return Err(Refusal::NotTheApps);
-    }
-    // The folder the app installed itself in is the program, not the user's data,
-    // even when it lives under AppData (`AppData\Local\Programs`).
     let user_data = !registered
         && ["\\appdata\\", "\\documents\\", "\\saved games\\"]
             .iter()
@@ -256,7 +296,7 @@ pub fn judge_with(
     } else {
         format!("lleva el nombre de la app: {}", last_part(location))
     };
-    Ok(Trace {
+    Trace {
         kind: candidate.kind,
         location: location.to_string(),
         bytes: candidate.bytes,
@@ -268,7 +308,7 @@ pub fn judge_with(
             Evidence::NameMatch
         },
         ..Default::default()
-    })
+    }
 }
 
 /// The traces to propose: every candidate that passes `judge`, the biggest first,

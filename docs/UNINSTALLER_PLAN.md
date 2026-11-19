@@ -36,7 +36,7 @@ Reglas duras (código, no opinión): **nunca** se toca `C:\Windows`, `System32`,
 ## Fases
 
 1. **Dominio** (sin sistema): `InstalledApp`, `Trace`, `Evidence`, reglas de qué es borrable y qué está protegido, vista previa. Pruebas con casos tramposos (editor compartido, ruta con `..`, enlaces simbólicos).
-2. **Lectura**: puerto `AppInventory` (registro de desinstalación, MSIX); página «Apps» con lista, tamaño y editor, solo lectura.
+2. **Lectura**: puerto `AppInventory` (registro de desinstalación **y** paquetes MSIX); página «Apps» con lista, tamaño y editor, solo lectura.
 3. **Rastros en seco**: `purifex apps traces NOMBRE` busca y muestra, sin borrar.
 4. **Desinstalar con el oficial** (con confirmación) y registrar en el historial.
 5. **Limpieza con cuarentena y deshacer**, primero en máquina virtual con apps de prueba.
@@ -44,7 +44,8 @@ Reglas duras (código, no opinión): **nunca** se toca `C:\Windows`, `System32`,
 
 Las pruebas con borrado real se hacen en una VM o con una app de prueba creada para ello, nunca con apps reales del PC principal.
 
-## Preguntas abiertas
+## Decisiones (2026-11-18)
 
-- ¿Quieres que «Desinstalar y limpiar» incluya por defecto los datos del usuario (partidas, configuración), o solo con tu marca expresa? (Recomiendo lo segundo.)
-- ¿Se incluyen apps de la Tienda (MSIX) desde el principio, o primero solo las de escritorio?
+- **Todo, sin rastro:** «Desinstalar y limpiar» incluye por defecto los datos del usuario de esa app (configuración, partidas, cachés). Contrapeso: la vista previa los lista aparte, marcados «datos tuyos», y se confirma todo junto; y nada se borra al instante: va a cuarentena 7 días, así que hasta entonces se puede recuperar.
+- **Cobertura total:** apps de escritorio y de la Tienda (MSIX) desde el principio, y también servicios, tareas, entradas de inicio, firewall, menú contextual y asociaciones de archivos.
+- Siguen en pie las reglas duras (nunca `Windows`, `System32`, claves de Microsoft ni nada compartido con otra app): «ningún rastro» significa ningún rastro **de esa app**.

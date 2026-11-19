@@ -37,6 +37,16 @@ pub fn u64_le(bytes: &[u8]) -> Option<u64> {
     Some(u64::from_le_bytes(bytes.get(..8)?.try_into().ok()?))
 }
 
+/// A date of the automation world (days since 1899-12-30, as Windows Update gives
+/// the date of a driver) as a calendar day.
+pub fn date_from_ole(days: f64) -> Option<purifex_domain::date::Date> {
+    use purifex_domain::date::Date;
+    if !days.is_finite() || days < 1.0 {
+        return None;
+    }
+    Date::from_days(Date::new(1899, 12, 30)?.days() + days.floor() as i64)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,5 +81,18 @@ mod tests {
     fn eight_bytes_make_a_number() {
         assert_eq!(u64_le(&1u64.to_le_bytes()), Some(1));
         assert_eq!(u64_le(&[1, 2, 3]), None);
+    }
+
+    #[test]
+    fn a_date_of_automation_is_read_as_a_day() {
+        use purifex_domain::date::Date;
+        assert_eq!(date_from_ole(45_292.0), Date::new(2024, 1, 1));
+        assert_eq!(
+            date_from_ole(45_292.75),
+            Date::new(2024, 1, 1),
+            "the hour is dropped"
+        );
+        assert_eq!(date_from_ole(0.0), None);
+        assert_eq!(date_from_ole(f64::NAN), None);
     }
 }

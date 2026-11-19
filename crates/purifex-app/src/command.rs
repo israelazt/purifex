@@ -25,6 +25,10 @@ pub enum Command {
     Fixes {
         json: bool,
     },
+    /// What Windows Update offers (goes out to the network).
+    Updates {
+        json: bool,
+    },
     FixApply {
         id: String,
         dry_run: bool,
@@ -89,6 +93,7 @@ Uso:
                                   Analiza una grabación (por defecto, la última)
   purifex compare [ANTES DESPUÉS] [--json]
                                   Compara dos partidas (por defecto, las dos últimas)
+  purifex updates [--json]        Drivers que ofrece Windows Update (solo lista; no instala)
   purifex fixes [--json]          Arreglos que se proponen, con la medición que los justifica
   purifex fix apply ID [--dry-run] [--yes]
                                   Aplica un arreglo (sin --yes solo dice qué haría)
@@ -118,6 +123,7 @@ impl Command {
             Some("sessions") => return Self::parse_sessions(args),
             Some("analyze") => return Self::parse_analyze(args),
             Some("compare") => return Self::parse_compare(args),
+            Some("updates") => return Self::parse_flags(args, |json| Self::Updates { json }),
             Some("fixes") => return Self::parse_flags(args, |json| Self::Fixes { json }),
             Some("history") => return Self::parse_flags(args, |json| Self::History { json }),
             Some("fix") => return Self::parse_fix(args),
@@ -339,6 +345,7 @@ impl Command {
                 | Self::Sessions { json: true }
                 | Self::Analyze { json: true, .. }
                 | Self::Compare { json: true, .. }
+                | Self::Updates { json: true }
                 | Self::Fixes { json: true }
                 | Self::FixApply { json: true, .. }
                 | Self::FixUndo { json: true, .. }
@@ -368,6 +375,7 @@ impl Command {
                 .compare(before.as_deref(), after.as_deref())
                 .map(|r| Outcome::Comparison(Box::new(r)))
                 .map_err(|e| format!("No se pudo comparar: {e}")),
+            Self::Updates { .. } => crate::updates_wait::run(services, progress),
             Self::Fixes { .. } => services
                 .fixes()
                 .map(Outcome::Fixes)

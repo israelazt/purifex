@@ -17,6 +17,13 @@ pub trait SystemInventory {
     fn devices(&self) -> Result<Vec<Device>, String>;
 }
 
+/// What Windows Update offers for the drivers of this computer. Asking goes out to
+/// the network and can take a minute, so it is only done when the user asks, and
+/// off the thread of the interface.
+pub trait DriverOffers: Send + Sync {
+    fn search(&self) -> Result<Vec<crate::driver_offers::Offer>, String>;
+}
+
 /// The clock: today's day, and a monotonic time to measure how long things take.
 pub trait Clock {
     fn today(&self) -> Date;

@@ -2,8 +2,11 @@
 //! server) ask for things through it, without knowing which ports are behind.
 //! [`App`] is the real implementation, built from the services of this crate.
 
+use std::time::Duration;
+
 use purifex_domain::analysis::Analysis;
 use purifex_domain::compare::ComparisonReport;
+use purifex_domain::driver_offers::{match_offers, DeviceOffer};
 use purifex_domain::drivers_view::DriversView;
 use purifex_domain::fix::{FixReport, HistoryEntry, Proposal};
 use purifex_domain::overview::Overview;
@@ -15,6 +18,7 @@ use purifex_domain::session_list::SessionRow;
 
 use crate::archive::Archive;
 use crate::fixer::Fixer;
+use crate::offering::Offering;
 use crate::recorder::{Recorder, Recording, WatchOptions};
 use crate::scanner::Scanner;
 
@@ -49,6 +53,10 @@ pub trait Services {
     fn drivers(&self) -> Result<DriversView, String>;
     /// The general state: a fresh scan and the last recording.
     fn overview(&self) -> Result<Overview, String>;
+    /// Starts asking Windows Update for newer drivers, in the background.
+    fn start_offers(&mut self) -> Result<(), String>;
+    /// Waits up to `wait` for that search. `None` = still going.
+    fn poll_offers(&mut self, wait: Duration) -> Option<Result<Vec<DeviceOffer>, String>>;
 }
 
 /// The services of the application over real (or fake) ports.
@@ -57,6 +65,7 @@ pub struct App<I, C, S, C2, F, A> {
     recorder: Recorder<S, C2, F>,
     archive: Archive<A>,
     fixer: Fixer,
+    offering: Offering,
 }
 
 impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
@@ -66,7 +75,14 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
             recorder,
             archive,
             fixer: Fixer::disabled(),
+            offering: Offering::default(),
         }
+    }
+
+    /// Where driver offers are searched (none until given).
+    pub fn with_offers(mut self, offering: Offering) -> Self {
+        self.offering = offering;
+        self
     }
 
     /// The fixes this application can make (none until given).
@@ -139,5 +155,22 @@ where
     fn overview(&self) -> Result<Overview, String> {
         let scan = self.scanner.scan(Scope::Hardware)?;
         Ok(Overview::build(&scan, self.archive.latest().as_ref()))
+    }
+
+    fn start_offers(&mut self) -> Result<(), String> {
+        self.offering.start()
+    }
+
+    fn poll_offers(&mut self, wait: Duration) -> Option<Result<Vec<DeviceOffer>, String>> {
+        let found = self.offering.poll(wait)?;
+        Some(found.and_then(|offers| {
+            let devices: Vec<_> = self
+                .scanner
+                .devices()?
+                .into_iter()
+                .filter(|d| d.is_physical())
+                .collect();
+            Ok(match_offers(&devices, &offers))
+        }))
     }
 }

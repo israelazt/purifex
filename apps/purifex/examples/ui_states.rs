@@ -104,6 +104,57 @@ mod states {
                     model.confirm = Some(Confirm::Undo(3));
                 }
             }
+            "offers" => {
+                use purifex_domain::device::{Device, InstalledDriver};
+                use purifex_domain::driver_offers::{match_offers, Offer, Offers};
+                use purifex_domain::drivers_view::DriversView;
+                use purifex_domain::report::{ScanReport, Scope};
+                use purifex_domain::version::DriverVersion;
+                let dev = |name: &str, hw: &str, class: &str| Device {
+                    instance_id: format!(r"PCI\{hw}"),
+                    name: name.into(),
+                    class: class.into(),
+                    hardware_ids: vec![format!(r"PCI\{hw}")],
+                    driver: Some(InstalledDriver {
+                        provider: Some("Fabricante".into()),
+                        version: DriverVersion::parse("1.0.0.0"),
+                        ..InstalledDriver::default()
+                    }),
+                    ..Device::default()
+                };
+                let devices = vec![
+                    dev("NVIDIA GeForce GTX 1660 Ti", "VEN_10DE&DEV_2182", "Display"),
+                    dev(
+                        "Realtek High Definition Audio",
+                        "VEN_10EC&DEV_0887",
+                        "MEDIA",
+                    ),
+                    dev("Controlador USB", "VEN_8086&DEV_1", "USB"),
+                ];
+                let offer = |hw: &str, v: &str| Offer {
+                    hardware_id: format!(r"PCI\{hw}"),
+                    title: format!("Fabricante - {v}"),
+                    provider: "Fabricante".into(),
+                    version: DriverVersion::parse(v),
+                    date: None,
+                };
+                let found = match_offers(
+                    &devices,
+                    &[
+                        offer("VEN_10DE&DEV_2182", "32.0.16.9000"),
+                        offer("VEN_10EC&DEV_0887", "6.0.9.7000"),
+                    ],
+                );
+                let today = purifex_domain::date::Date::new(2026, 11, 18).unwrap();
+                model.page = Page::Drivers;
+                model.drivers = Some(DriversView::build(&ScanReport::build(
+                    devices,
+                    Scope::Hardware,
+                    today,
+                    5,
+                )));
+                model.offers = Offers::Found(found);
+            }
             _ => {}
         }
         let mut handler = Fixed {

@@ -57,3 +57,4 @@ Instalación solo con confirmación, **punto de restauración** y copia del driv
 ## Avance
 
 - Fase 1 hecha: `crates/purifex-domain/src/driver_candidate.rs` (`Candidate`, `Source`, `Checks`, `Verdict`, `Risk`, `judge`, `risk_of`), 9 pruebas.
+- Fase 2 hecha: `domain::driver_offers` (cruce de ofertas con dispositivos), puerto `DriverOffers`, adaptador `WindowsUpdateOffers` (Windows Update Agent, solo lista), búsqueda en segundo plano (`app::Offering`), orden `purifex updates` y panel + etiqueta por fila en la página Drivers. Solo se consulta cuando el usuario pulsa el botón. Probado en este PC: 17 s, Windows ofrece 1 componente de software (Voice Clarity) que no corresponde a un dispositivo físico, así que no se muestra.

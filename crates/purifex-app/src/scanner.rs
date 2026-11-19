@@ -13,6 +13,11 @@ impl<I: SystemInventory, C: Clock> Scanner<I, C> {
         Self { inventory, clock }
     }
 
+    /// The devices present, as the system lists them.
+    pub fn devices(&self) -> Result<Vec<purifex_domain::device::Device>, String> {
+        self.inventory.devices()
+    }
+
     /// Reads the devices and builds the report, timing the reading.
     pub fn scan(&self, scope: Scope) -> Result<ScanReport, String> {
         let started = self.clock.monotonic();

@@ -26,6 +26,8 @@ mod session_archive;
 mod session_file;
 #[cfg(windows)]
 mod window;
+#[cfg(windows)]
+mod windows_update;
 
 #[cfg(windows)]
 pub use clock::SystemClock;
@@ -47,3 +49,5 @@ pub use session_archive::LocalSessionArchive;
 pub use session_file::LocalSessionFile;
 #[cfg(windows)]
 pub use window::run as run_window;
+#[cfg(windows)]
+pub use windows_update::WindowsUpdateOffers;

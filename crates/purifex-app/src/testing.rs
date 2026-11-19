@@ -13,6 +13,19 @@ use purifex_domain::ports::{
 };
 use purifex_domain::sample::{GameLoad, Sample};
 
+/// Offers that arrive after a while (or an error), as Windows Update would give them.
+pub struct FakeOffers(
+    pub u64,
+    pub Result<Vec<purifex_domain::driver_offers::Offer>, String>,
+);
+
+impl purifex_domain::ports::DriverOffers for FakeOffers {
+    fn search(&self) -> Result<Vec<purifex_domain::driver_offers::Offer>, String> {
+        std::thread::sleep(Duration::from_millis(self.0));
+        self.1.clone()
+    }
+}
+
 pub struct FakeInventory(Result<Vec<Device>, String>);
 
 impl FakeInventory {

@@ -14,10 +14,10 @@ fn say(line: &str) {
 
 #[cfg(windows)]
 fn main() {
-    use purifex_app::{App, Archive, Command, Fixer, Recorder, Scanner};
+    use purifex_app::{App, Archive, Command, Fixer, Offering, Recorder, Scanner};
     use purifex_platform::{
         install_stderr_log, JsonlHistory, LocalSessionArchive, LocalSessionFile, SetupApiInventory,
-        SystemClock, SystemFixes, WindowsSampler,
+        SystemClock, SystemFixes, WindowsSampler, WindowsUpdateOffers,
     };
 
     install_stderr_log();
@@ -35,7 +35,10 @@ fn main() {
     let recorder = Recorder::new(sampler, SystemClock::new(), LocalSessionFile::default());
     let archive = Archive::new(LocalSessionArchive::new());
     let fixer = Fixer::new(Box::new(SystemFixes::new()), Box::new(JsonlHistory::new()));
-    let mut app = App::new(scanner, recorder, archive).with_fixer(fixer);
+    let offering = Offering::new(std::sync::Arc::new(WindowsUpdateOffers));
+    let mut app = App::new(scanner, recorder, archive)
+        .with_fixer(fixer)
+        .with_offers(offering);
     if let Command::Ui(options) = command {
         if let Err(error) = shell::run(Box::new(app), options) {
             purifex_domain::log_error!("{error}");

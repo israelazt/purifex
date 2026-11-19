@@ -6,6 +6,7 @@
 use crate::analysis::Analysis;
 use crate::compare::ComparisonReport;
 use crate::device_category::Category;
+use crate::driver_offers::Offers;
 use crate::drivers_view::{DriverRow, DriversView};
 use crate::fix::{FixReport, HistoryEntry, Proposal};
 use crate::overview::Overview;
@@ -59,6 +60,8 @@ pub struct Model {
     pub selected: Option<String>,
     pub filter: DriverFilter,
     pub query: String,
+    /// What Windows Update offers (only asked when the user asks).
+    pub offers: Offers,
     /// Something is being read: the picture says so before the wait.
     pub busy: bool,
     pub error: Option<String>,
@@ -69,6 +72,8 @@ pub enum Action {
     Go(Page),
     /// Read everything again.
     Rescan,
+    /// Ask Windows Update for newer drivers.
+    SearchUpdates,
     SetFilter(DriverFilter),
     SetQuery(String),
     SelectSession(String),

@@ -8,6 +8,7 @@
 pub mod anim;
 pub mod canvas;
 mod compare_panel;
+mod drivers_filters;
 pub mod drivers_page;
 pub mod fixes_page;
 mod overview_cards;
@@ -18,6 +19,7 @@ pub mod sessions_page;
 pub mod shell;
 pub mod theme;
 pub mod ui;
+mod updates_panel;
 pub mod widgets;
 
 pub use ui::{Ui, UiOutput};

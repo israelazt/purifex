@@ -8,17 +8,20 @@ pub mod archive;
 pub mod command;
 pub mod core;
 pub mod fixer;
+pub mod offering;
 pub mod outcome;
 pub mod recorder;
 pub mod scanner;
 pub mod services;
 #[cfg(test)]
 mod testing;
+mod updates_wait;
 
 pub use archive::Archive;
 pub use command::{Command, Output, Screenshot, UiOptions};
 pub use core::Core;
 pub use fixer::Fixer;
+pub use offering::Offering;
 pub use outcome::Outcome;
 pub use recorder::{Recorder, WatchOptions};
 pub use scanner::Scanner;

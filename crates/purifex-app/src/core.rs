@@ -3,9 +3,15 @@
 //! is missing. Reading takes a moment, so an action only marks that something is
 //! pending and says "busy": the interface draws that, and then `tick` reads.
 
+use std::time::Duration;
+
+use purifex_domain::driver_offers::Offers;
 use purifex_domain::view::{Action, Confirm, Model, Page};
 
 use crate::services::Services;
+
+/// How long a tick waits for the search of offers before giving the window back.
+const OFFERS_WAIT: Duration = Duration::from_millis(50);
 
 pub struct Core {
     services: Box<dyn Services>,
@@ -53,6 +59,13 @@ impl Core {
                 m.error = None;
                 self.expect_reading();
             }
+            Action::SearchUpdates => match self.services.start_offers() {
+                Ok(()) => {
+                    self.model.offers = Offers::Searching;
+                    self.pending = true;
+                }
+                Err(error) => self.model.offers = Offers::Failed(error),
+            },
             Action::SetFilter(filter) => self.model.filter = filter,
             Action::SetQuery(query) => self.model.query = query,
             Action::AskFix(id) => self.model.confirm = Some(Confirm::Apply(id)),
@@ -97,8 +110,10 @@ impl Core {
 
     /// Marks as busy if the current page lacks something.
     fn expect_reading(&mut self) {
-        self.pending = self.missing();
-        self.model.busy = self.pending;
+        let missing = self.missing();
+        // A search of offers still going must be picked up, whatever page is shown.
+        self.pending = missing || self.model.offers == Offers::Searching;
+        self.model.busy = missing;
     }
 
     /// Whether the page being shown (and the sidebar) lack data.
@@ -137,6 +152,7 @@ impl Core {
         if !self.pending {
             return;
         }
+        self.poll_offers();
         let mut errors = Vec::new();
         let mut note = |what: &str, error: String| errors.push(format!("{what}: {error}"));
         if self.model.overview.is_none() {
@@ -194,8 +210,27 @@ impl Core {
         if !errors.is_empty() {
             self.model.error = Some(errors.join(" · "));
         }
-        self.pending = false;
+        self.pending = self.model.offers == Offers::Searching;
         self.model.busy = false;
+    }
+
+    /// Picks up the search of offers if it has finished; if not, waits a moment
+    /// (the window answers its messages between ticks).
+    fn poll_offers(&mut self) {
+        if self.model.offers != Offers::Searching {
+            return;
+        }
+        let wait = if self.missing() {
+            Duration::ZERO
+        } else {
+            OFFERS_WAIT
+        };
+        if let Some(found) = self.services.poll_offers(wait) {
+            self.model.offers = match found {
+                Ok(offers) => Offers::Found(offers),
+                Err(error) => Offers::Failed(error),
+            };
+        }
     }
 }
 
@@ -521,5 +556,99 @@ mod tests {
             c.needs_tick(),
             "the overview is still missing and is tried again"
         );
+    }
+
+    use crate::testing::FakeOffers;
+    use purifex_domain::driver_offers::Offer;
+    use purifex_domain::version::DriverVersion;
+    use std::sync::Arc;
+
+    fn core_with_offers(source: FakeOffers) -> Core {
+        let mut gpu = gpu();
+        gpu.hardware_ids = vec![r"PCI\VEN_10DE&DEV_2182".into()];
+        gpu.driver = Some(purifex_domain::device::InstalledDriver {
+            version: DriverVersion::parse("1.0.0.0"),
+            ..Default::default()
+        });
+        gpu.instance_id = r"PCI\VEN_10DE&DEV_2182".into();
+        Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_offers(crate::Offering::new(Arc::new(source))),
+        ))
+    }
+
+    fn newer_offer() -> Offer {
+        Offer {
+            hardware_id: r"PCI\VEN_10DE&DEV_2182".into(),
+            title: "NVIDIA - Display - 2.0.0.0".into(),
+            provider: "NVIDIA".into(),
+            version: DriverVersion::parse("2.0.0.0"),
+            date: None,
+        }
+    }
+
+    fn tick_until_done(c: &mut Core) {
+        for _ in 0..200 {
+            c.tick();
+            if !c.needs_tick() {
+                return;
+            }
+        }
+        panic!("the search never ended");
+    }
+
+    #[test]
+    fn nothing_is_asked_of_windows_update_until_the_user_asks() {
+        let mut c = core_with_offers(FakeOffers(0, Ok(vec![newer_offer()])));
+        c.tick();
+        c.apply(Action::Go(Page::Drivers));
+        c.tick();
+        assert_eq!(c.model().offers, Offers::NotAsked);
+        assert!(!c.needs_tick());
+    }
+
+    #[test]
+    fn asking_searches_in_the_background_and_the_offers_arrive_matched_to_their_device() {
+        let mut c = core_with_offers(FakeOffers(80, Ok(vec![newer_offer()])));
+        c.tick();
+        c.apply(Action::Go(Page::Drivers));
+        c.tick();
+        c.apply(Action::SearchUpdates);
+        assert_eq!(c.model().offers, Offers::Searching);
+        assert!(
+            c.needs_tick() && !c.model().busy,
+            "the page is usable meanwhile"
+        );
+        // Going to another page does not lose the search.
+        c.apply(Action::Go(Page::Overview));
+        assert!(c.needs_tick());
+        tick_until_done(&mut c);
+        let Offers::Found(found) = &c.model().offers else {
+            panic!("{:?}", c.model().offers)
+        };
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].version, DriverVersion::parse("2.0.0.0"));
+    }
+
+    #[test]
+    fn a_failed_search_says_why_and_a_missing_source_does_too() {
+        let mut c = core_with_offers(FakeOffers(0, Err("sin conexión".into())));
+        c.tick();
+        c.apply(Action::SearchUpdates);
+        tick_until_done(&mut c);
+        assert_eq!(c.model().offers, Offers::Failed("sin conexión".into()));
+        let mut bare = core();
+        bare.tick();
+        bare.apply(Action::SearchUpdates);
+        assert!(matches!(&bare.model().offers, Offers::Failed(e) if e.contains("no sabe buscar")));
+        assert!(!bare.needs_tick());
     }
 }

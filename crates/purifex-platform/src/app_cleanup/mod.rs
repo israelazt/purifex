@@ -5,6 +5,9 @@
 mod finder;
 mod launcher;
 mod quarantine;
+// Used by the quarantine from the next step on.
+#[allow(dead_code)]
+mod registry_write;
 
 pub use finder::WindowsTraceFinder;
 pub use launcher::RegisteredUninstaller;

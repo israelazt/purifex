@@ -238,7 +238,6 @@ fn height_of(c: &Canvas, v: &DialogView) -> f32 {
 }
 
 /// Draws the dialog at `t` (0 gone, 1 settled) over a window of `width` x `height`.
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn draw(c: &mut Canvas, v: &DialogView, t: f32, width: f32, height: f32) {
     // The page goes dim.
     c.rest();
@@ -253,6 +252,16 @@ pub fn draw(c: &mut Canvas, v: &DialogView, t: f32, width: f32, height: f32) {
     let rect = Rect::new((width - v.width) / 2.0, (height - h) / 2.0, v.width, h);
     c.fill(rect.inset(-6.0), 16.0, Color::rgb(0, 0, 0).with_alpha(0.35));
     panel(c, rect);
+    let y = heading_and_body(c, v, rect);
+    if !v.rows.is_empty() {
+        list(c, v, rect, y);
+    }
+    buttons(c, v, rect);
+    c.rest();
+}
+
+/// The icon, the title and the paragraph of the dialog; returns where the paragraph ends.
+fn heading_and_body(c: &mut Canvas, v: &DialogView, rect: Rect) -> f32 {
     icon_box(c, rect.x + 24.0, rect.y + 24.0, 40.0, v.icon, v.tone);
     c.text(
         rect.x + 78.0,
@@ -260,63 +269,55 @@ pub fn draw(c: &mut Canvas, v: &DialogView, t: f32, width: f32, height: f32) {
         &v.title,
         theme::sans(18.0, theme::TEXT).bold(),
     );
-    let mut y = rect.y + 24.0 + 40.0 + 14.0;
-    y += c.paragraph(
+    let y = rect.y + 24.0 + 40.0 + 14.0;
+    y + c.paragraph(
         rect.x + 28.0,
         y,
         v.width - 56.0,
         &v.body,
         theme::mono(12.5, theme::TEXT_2),
         Some(4),
-    );
-    if !v.rows.is_empty() {
-        y += 16.0;
-        c.line(rect.x, y - 8.0, rect.right(), y - 8.0, theme::LINE);
-        for r in &v.rows {
-            row(c, r, Rect::new(rect.x + 12.0, y, rect.w - 24.0, ROW_H));
-            y += ROW_H;
-        }
-        if v.more > 0 {
-            let note = format!(
-                "y {} más: solo se quitan con «Eliminar todo rastro»",
-                v.more
-            );
-            c.text(
-                rect.x + 28.0,
-                y + 4.0,
-                &note,
-                theme::mono(11.5, theme::TEXT_3),
-            );
-        }
+    )
+}
+
+/// The checkable rows (and the note of how many more there are), from `y` down.
+fn list(c: &mut Canvas, v: &DialogView, rect: Rect, mut y: f32) {
+    y += 16.0;
+    c.line(rect.x, y - 8.0, rect.right(), y - 8.0, theme::LINE);
+    for r in &v.rows {
+        row(c, r, Rect::new(rect.x + 12.0, y, rect.w - 24.0, ROW_H));
+        y += ROW_H;
     }
-    // The buttons, at the bottom right; the aside one at the left.
+    if v.more > 0 {
+        let note = format!(
+            "y {} más: solo se quitan con «Eliminar todo rastro»",
+            v.more
+        );
+        c.text(
+            rect.x + 28.0,
+            y + 4.0,
+            &note,
+            theme::mono(11.5, theme::TEXT_3),
+        );
+    }
+}
+
+/// The buttons at the bottom right, and the aside one at the left.
+fn buttons(c: &mut Canvas, v: &DialogView, rect: Rect) {
     let by = rect.bottom() - 24.0 - 44.0;
     let mut x = rect.right() - 24.0;
     for b in v.buttons.iter().rev() {
         let w = button_width(c, &b.label);
         x -= w;
-        button(
-            c,
-            Rect::new(x, by, w, 44.0),
-            &b.label,
-            b.icon,
-            b.primary,
-            b.action.clone(),
-        );
+        let place = Rect::new(x, by, w, 44.0);
+        button(c, place, &b.label, b.icon, b.primary, b.action.clone());
         x -= 12.0;
     }
     if let Some(b) = &v.aside {
         let w = button_width(c, &b.label);
-        button(
-            c,
-            Rect::new(rect.x + 24.0, by, w, 44.0),
-            &b.label,
-            b.icon,
-            false,
-            b.action.clone(),
-        );
+        let place = Rect::new(rect.x + 24.0, by, w, 44.0);
+        button(c, place, &b.label, b.icon, false, b.action.clone());
     }
-    c.rest();
 }
 
 #[cfg(test)]

@@ -48,9 +48,17 @@ fn verdict(change: Change) -> (&'static str, Tone, &'static str) {
     }
 }
 
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn draw(c: &mut Canvas, report: &ComparisonReport, rect: Rect) {
     panel(c, rect);
+    header(c, report, rect);
+    verdict_counts(c, report, rect);
+    let cursor = rect.y + HEAD_H + SUMMARY_H;
+    let cursor = warnings(c, report, rect, cursor);
+    table(c, report, rect, cursor);
+}
+
+/// The title, and which games are being compared.
+fn header(c: &mut Canvas, report: &ComparisonReport, rect: Rect) {
     c.icon("history", rect.x + 18.0, rect.y + 20.0, 16.0, theme::TEXT);
     c.text(
         rect.x + 42.0,
@@ -75,8 +83,10 @@ pub fn draw(c: &mut Canvas, report: &ComparisonReport, rect: Rect) {
         rect.y + HEAD_H,
         theme::LINE_SOFT,
     );
+}
 
-    // The count of each verdict.
+/// How many measures got better, worse or stayed the same.
+fn verdict_counts(c: &mut Canvas, report: &ComparisonReport, rect: Rect) {
     let k = &report.comparison;
     let mut x = rect.x + 18.0;
     let y = rect.y + HEAD_H + 15.0;
@@ -87,8 +97,10 @@ pub fn draw(c: &mut Canvas, report: &ComparisonReport, rect: Rect) {
     ] {
         x += tag(c, x, y, &format!("{n} {label}"), tone, None) + 10.0;
     }
-    let mut cursor = rect.y + HEAD_H + SUMMARY_H;
-    // Why it may not be fair.
+}
+
+/// Why the comparison may not be fair, from `cursor` down; returns where the table starts.
+fn warnings(c: &mut Canvas, report: &ComparisonReport, rect: Rect, mut cursor: f32) -> f32 {
     let wrapped = warning_lines(c, report, rect.w);
     for lines in &wrapped {
         c.icon(
@@ -111,13 +123,21 @@ pub fn draw(c: &mut Canvas, report: &ComparisonReport, rect: Rect) {
     if !wrapped.is_empty() {
         cursor += 8.0;
     }
+    cursor
+}
 
-    // The table.
-    let columns = [
+/// The left edge of the «antes», «después» and «cambio» columns.
+fn columns(rect: Rect) -> [f32; 3] {
+    [
         rect.right() - 18.0 - COLUMN_W * 4.0 - 8.0,
         rect.right() - 18.0 - COLUMN_W * 3.0 - 8.0,
         rect.right() - 18.0 - COLUMN_W * 2.0 - 8.0,
-    ];
+    ]
+}
+
+/// The head of the table and one row per measure, from `cursor` down.
+fn table(c: &mut Canvas, report: &ComparisonReport, rect: Rect, cursor: f32) {
+    let columns = columns(rect);
     let label = theme::eyebrow(theme::TEXT_3);
     let head = Rect::new(rect.x, cursor, rect.w, ROW_H);
     c.text_in(rect.x + 18.0, head, "MEDIDA", label);
@@ -137,47 +157,52 @@ pub fn draw(c: &mut Canvas, report: &ComparisonReport, rect: Rect) {
         head.bottom(),
         theme::LINE,
     );
-    for (i, row) in k.rows.iter().enumerate() {
+    for (i, row) in report.comparison.rows.iter().enumerate() {
         let bar = Rect::new(rect.x, head.bottom() + i as f32 * ROW_H, rect.w, ROW_H);
-        c.line(
-            bar.x,
-            bar.bottom() - 0.5,
-            bar.right(),
-            bar.bottom() - 0.5,
-            theme::LINE_SOFT,
-        );
-        c.text_cut(
-            rect.x + 18.0,
-            bar.y + (ROW_H - 16.0) / 2.0,
-            row.label,
-            theme::mono(12.0, theme::TEXT),
-            columns[0] - rect.x - 30.0,
-        );
-        let plain = theme::mono(12.0, theme::TEXT_2);
-        c.text_right(columns[0] + COLUMN_W, bar, &value(row, row.before), plain);
-        c.text_right(
-            columns[1] + COLUMN_W,
-            bar,
-            &value(row, row.after),
-            theme::mono(12.0, theme::TEXT).bold(),
-        );
-        let (label, tone, icon) = verdict(row.change);
-        let delta = format!("{:+.*} {}", row.decimals, row.delta, row.unit);
-        c.text_right(
-            columns[2] + COLUMN_W,
-            bar,
-            &delta,
-            theme::mono(12.0, tone.color()),
-        );
-        tag(
-            c,
-            rect.right() - 18.0 - COLUMN_W + 14.0,
-            bar.y + 8.0,
-            label,
-            tone,
-            Some(icon),
-        );
+        metric_row(c, row, bar, rect, &columns);
     }
+}
+
+/// One measure: its name, the value before and after, the change and the verdict.
+fn metric_row(c: &mut Canvas, row: &MetricChange, bar: Rect, rect: Rect, columns: &[f32; 3]) {
+    c.line(
+        bar.x,
+        bar.bottom() - 0.5,
+        bar.right(),
+        bar.bottom() - 0.5,
+        theme::LINE_SOFT,
+    );
+    c.text_cut(
+        rect.x + 18.0,
+        bar.y + (ROW_H - 16.0) / 2.0,
+        row.label,
+        theme::mono(12.0, theme::TEXT),
+        columns[0] - rect.x - 30.0,
+    );
+    let plain = theme::mono(12.0, theme::TEXT_2);
+    c.text_right(columns[0] + COLUMN_W, bar, &value(row, row.before), plain);
+    c.text_right(
+        columns[1] + COLUMN_W,
+        bar,
+        &value(row, row.after),
+        theme::mono(12.0, theme::TEXT).bold(),
+    );
+    let (label, tone, icon) = verdict(row.change);
+    let delta = format!("{:+.*} {}", row.decimals, row.delta, row.unit);
+    c.text_right(
+        columns[2] + COLUMN_W,
+        bar,
+        &delta,
+        theme::mono(12.0, tone.color()),
+    );
+    tag(
+        c,
+        rect.right() - 18.0 - COLUMN_W + 14.0,
+        bar.y + 8.0,
+        label,
+        tone,
+        Some(icon),
+    );
 }
 
 #[cfg(test)]

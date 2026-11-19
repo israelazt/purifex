@@ -354,6 +354,7 @@ pub mod testing {
     /// Text of a fixed width per character, so layouts are predictable.
     pub struct FakeText;
 
+
     impl TextMetrics for FakeText {
         fn measure(&self, text: &str, style: &TextStyle) -> Size {
             let per_char = style.size * if style.font == Font::Mono { 0.6 } else { 0.55 };

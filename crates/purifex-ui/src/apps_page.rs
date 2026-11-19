@@ -98,7 +98,6 @@ fn cleanup_panel(c: &mut Canvas, m: &Model, name: &str, area: Rect, y: f32) -> f
     rect.h + 16.0
 }
 
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
 fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
     let hover = c.hover(bar);
     if hover > 0.01 {
@@ -112,12 +111,37 @@ fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
         theme::LINE_SOFT,
     );
     icon_box(c, bar.x + 16.0, bar.y + 10.0, 40.0, "package", Tone::Gray);
+    app_labels(c, app, bar);
+    c.text(
+        bar.right() - 330.0,
+        bar.y + 21.0,
+        &size_text(app.size_kb),
+        theme::mono(12.0, theme::TEXT_2),
+    );
+    if app.protection().is_some() {
+        let shield = Some("shield-check");
+        tag(
+            c,
+            bar.right() - 220.0,
+            bar.y + 19.0,
+            "No tocar",
+            Tone::Gray,
+            shield,
+        );
+    } else {
+        uninstall_tag(c, app, bar);
+    }
+}
+
+/// The name of the app and, below it, its publisher and version.
+fn app_labels(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
+    let room = bar.w - 470.0;
     c.text_cut(
         bar.x + 70.0,
         bar.y + 10.0,
         &app.name,
         theme::sans(13.5, theme::TEXT).bold(),
-        bar.w - 470.0,
+        room,
     );
     let detail = format!(
         "{}  {}",
@@ -129,43 +153,26 @@ fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
         bar.y + 32.0,
         detail.trim(),
         theme::mono(11.5, theme::TEXT_3),
-        bar.w - 470.0,
+        room,
     );
-    c.text(
-        bar.right() - 330.0,
-        bar.y + 21.0,
-        &size_text(app.size_kb),
-        theme::mono(12.0, theme::TEXT_2),
-    );
-    match app.protection() {
-        Some(_) => {
-            tag(
-                c,
-                bar.right() - 220.0,
-                bar.y + 19.0,
-                "No tocar",
-                Tone::Gray,
-                Some("shield-check"),
-            );
-        }
-        None => {
-            let rect = Rect::new(bar.right() - 220.0, bar.y + 19.0, 120.0, 22.0);
-            let h = c.hover(rect);
-            let width = tag(c, rect.x, rect.y, "Desinstalar", Tone::Red, Some("trash-2"));
-            if h > 0.01 {
-                c.stroke(
-                    Rect::new(rect.x, rect.y, width, 22.0),
-                    4.0,
-                    1.0,
-                    Tone::Red.color().with_alpha(0.9 * h),
-                );
-            }
-            c.hit(
-                Rect::new(rect.x, rect.y, width, 22.0),
-                Action::AskUninstall(app.id.clone()),
-            );
-        }
+}
+
+/// The red «Desinstalar» tag of an app that may be uninstalled: outlined while the
+/// pointer is over it, and a place to click.
+fn uninstall_tag(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
+    let rect = Rect::new(bar.right() - 220.0, bar.y + 19.0, 120.0, 22.0);
+    let hover = c.hover(rect);
+    let width = tag(c, rect.x, rect.y, "Desinstalar", Tone::Red, Some("trash-2"));
+    let tag_rect = Rect::new(rect.x, rect.y, width, 22.0);
+    if hover > 0.01 {
+        c.stroke(
+            tag_rect,
+            4.0,
+            1.0,
+            Tone::Red.color().with_alpha(0.9 * hover),
+        );
     }
+    c.hit(tag_rect, Action::AskUninstall(app.id.clone()));
 }
 
 fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {

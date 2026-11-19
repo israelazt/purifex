@@ -10,8 +10,10 @@ use std::path::{Path, PathBuf};
 use purifex_domain::app_traces::{names_of, simple, Candidate, TraceKind};
 use purifex_domain::apps::InstalledApp;
 use purifex_domain::ports::TraceFinder;
+use purifex_domain::seeds::seeds_of;
 use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
+use super::find_files::{find_files, UserPlaces};
 use crate::registry::{Key, View};
 
 const REPARSE_POINT: u32 = 0x400;
@@ -78,7 +80,7 @@ pub fn folder_size(path: &Path) -> u64 {
     total
 }
 
-fn candidate_at(path: &Path, registered: bool) -> Option<Candidate> {
+pub(super) fn candidate_at(path: &Path, registered: bool) -> Option<Candidate> {
     let meta = fs::symlink_metadata(path).ok()?;
     if meta.file_attributes() & REPARSE_POINT != 0 {
         return None; // a link or junction: what it points to is not ours to move
@@ -118,6 +120,8 @@ impl TraceFinder for WindowsTraceFinder {
         {
             found.extend(candidate_at(Path::new(location), true));
         }
+        // What is recognised by reference to the app's folder or programs needs no name.
+        found.extend(find_files(&UserPlaces::real(), &names, &seeds_of(app)));
         if names.is_empty() {
             return Ok(found);
         }

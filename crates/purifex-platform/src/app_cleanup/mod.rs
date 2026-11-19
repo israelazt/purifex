@@ -2,8 +2,10 @@
 //! places that might hold them, starting the app's own uninstaller, and a
 //! quarantine that can give back whatever was removed.
 
+mod find_files;
 mod finder;
 mod launcher;
+mod lnk;
 mod quarantine;
 mod registry_write;
 mod seed_probe;

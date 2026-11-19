@@ -14,10 +14,10 @@ fn say(line: &str) {
 
 #[cfg(windows)]
 fn main() {
-    use purifex_app::{App, Archive, Command, Fixer, Offering, Recorder, Scanner};
+    use purifex_app::{App, Archive, Candidates, Command, Fixer, Offering, Recorder, Scanner};
     use purifex_platform::{
-        install_stderr_log, JsonlHistory, LocalSessionArchive, LocalSessionFile, SetupApiInventory,
-        SystemClock, SystemFixes, WindowsSampler, WindowsUpdateOffers,
+        install_stderr_log, JsonlCandidates, JsonlHistory, LocalSessionArchive, LocalSessionFile,
+        SetupApiInventory, SystemClock, SystemFixes, WindowsSampler, WindowsUpdateOffers,
     };
 
     install_stderr_log();
@@ -38,7 +38,16 @@ fn main() {
     let offering = Offering::new(std::sync::Arc::new(WindowsUpdateOffers));
     let mut app = App::new(scanner, recorder, archive)
         .with_fixer(fixer)
-        .with_offers(offering);
+        .with_offers(offering)
+        .with_candidates(Candidates::new(Box::new(JsonlCandidates::new())));
+    if matches!(command, Command::Mcp) {
+        let stdin = std::io::stdin();
+        if let Err(error) = purifex_app::mcp::serve(&mut app, stdin.lock(), std::io::stdout()) {
+            purifex_domain::log_error!("mcp: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if let Command::Ui(options) = command {
         if let Err(error) = shell::run(Box::new(app), options) {
             purifex_domain::log_error!("{error}");

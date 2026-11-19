@@ -8,7 +8,7 @@ use purifex_domain::fix::{history_to_text, proposals_to_text, FixReport, History
 use purifex_domain::report::ScanReport;
 use purifex_domain::session_list::{rows_to_text, SessionRow};
 
-use crate::command::HELP;
+use crate::help::HELP;
 use crate::recorder::Recording;
 
 #[derive(Debug, Clone, PartialEq)]

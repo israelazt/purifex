@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use purifex_domain::analysis::Analysis;
 use purifex_domain::compare::ComparisonReport;
+use purifex_domain::driver_candidate::{Candidate, Submission};
 use purifex_domain::driver_offers::OfferReport;
 use purifex_domain::driver_tiers::report;
 use purifex_domain::drivers_view::DriversView;
@@ -18,6 +19,7 @@ use purifex_domain::report::{ScanReport, Scope};
 use purifex_domain::session_list::SessionRow;
 
 use crate::archive::Archive;
+use crate::candidates::Candidates;
 use crate::fixer::Fixer;
 use crate::offering::Offering;
 use crate::recorder::{Recorder, Recording, WatchOptions};
@@ -58,6 +60,18 @@ pub trait Services {
     fn start_offers(&mut self) -> Result<(), String>;
     /// Waits up to `wait` for that search. `None` = still going.
     fn poll_offers(&mut self, wait: Duration) -> Option<Result<OfferReport, String>>;
+    /// Searches Windows Update and waits for it (the MCP server has no window to keep alive).
+    fn unresolved(&mut self) -> Result<OfferReport, String>;
+    /// Judges and keeps a proposal for a device (nothing is installed or opened).
+    fn submit_candidate(
+        &mut self,
+        device: &str,
+        url: &str,
+        version: &str,
+        title: &str,
+    ) -> Result<Submission, String>;
+    /// The proposals kept so far.
+    fn candidates(&self) -> Result<Vec<Candidate>, String>;
 }
 
 /// The services of the application over real (or fake) ports.
@@ -67,6 +81,7 @@ pub struct App<I, C, S, C2, F, A> {
     archive: Archive<A>,
     fixer: Fixer,
     offering: Offering,
+    candidates: Candidates,
 }
 
 impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
@@ -77,7 +92,14 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
             archive,
             fixer: Fixer::disabled(),
             offering: Offering::default(),
+            candidates: Candidates::default(),
         }
+    }
+
+    /// Where the proposals for drivers are kept (none until given).
+    pub fn with_candidates(mut self, candidates: Candidates) -> Self {
+        self.candidates = candidates;
+        self
     }
 
     /// Where driver offers are searched (none until given).
@@ -173,5 +195,35 @@ where
                 .collect();
             Ok(report(&devices, &offers, self.scanner.today()))
         }))
+    }
+
+    fn unresolved(&mut self) -> Result<OfferReport, String> {
+        self.offering.start()?;
+        loop {
+            if let Some(found) = self.poll_offers(Duration::from_millis(500)) {
+                return found;
+            }
+        }
+    }
+
+    fn submit_candidate(
+        &mut self,
+        device: &str,
+        url: &str,
+        version: &str,
+        title: &str,
+    ) -> Result<Submission, String> {
+        let devices: Vec<_> = self
+            .scanner
+            .devices()?
+            .into_iter()
+            .filter(|d| d.is_physical())
+            .collect();
+        self.candidates
+            .submit(&devices, device, url, version, title)
+    }
+
+    fn candidates(&self) -> Result<Vec<Candidate>, String> {
+        self.candidates.list()
     }
 }

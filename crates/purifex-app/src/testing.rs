@@ -26,6 +26,20 @@ impl purifex_domain::ports::DriverOffers for FakeOffers {
     }
 }
 
+/// Candidates kept in memory (shared, so a test can look at them).
+#[derive(Clone, Default)]
+pub struct FakeCandidates(pub Rc<RefCell<Vec<purifex_domain::driver_candidate::Candidate>>>);
+
+impl purifex_domain::ports::CandidateStore for FakeCandidates {
+    fn all(&self) -> Result<Vec<purifex_domain::driver_candidate::Candidate>, String> {
+        Ok(self.0.borrow().clone())
+    }
+    fn add(&mut self, c: &purifex_domain::driver_candidate::Candidate) -> Result<(), String> {
+        self.0.borrow_mut().push(c.clone());
+        Ok(())
+    }
+}
+
 pub struct FakeInventory(Result<Vec<Device>, String>);
 
 impl FakeInventory {

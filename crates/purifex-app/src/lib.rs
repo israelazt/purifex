@@ -5,9 +5,12 @@
 #![forbid(unsafe_code)]
 
 pub mod archive;
+pub mod candidates;
 pub mod command;
 pub mod core;
 pub mod fixer;
+mod help;
+pub mod mcp;
 pub mod offering;
 pub mod outcome;
 pub mod recorder;
@@ -18,6 +21,7 @@ mod testing;
 mod updates_wait;
 
 pub use archive::Archive;
+pub use candidates::Candidates;
 pub use command::{Command, Output, Screenshot, UiOptions};
 pub use core::Core;
 pub use fixer::Fixer;

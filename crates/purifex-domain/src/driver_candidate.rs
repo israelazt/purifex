@@ -4,13 +4,13 @@
 //! could check (the address, the version, the hardware ids, and later the hash and
 //! the signature), never of how convincing the proposal is.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::device::Device;
 use crate::version::DriverVersion;
 
 /// Where a candidate comes from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Source {
     /// Windows Update / the Microsoft catalog, found by hardware id.
@@ -23,7 +23,7 @@ pub enum Source {
 }
 
 /// A proposal for one device.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Candidate {
     /// `Device::instance_id` of the device it is for.
     pub device: String,
@@ -31,6 +31,43 @@ pub struct Candidate {
     /// Where it is downloaded from, or the page where it is offered.
     pub url: String,
     pub version: DriverVersion,
+    /// What the proposer calls it (text from outside: shown, never obeyed).
+    #[serde(default)]
+    pub title: String,
+}
+
+impl Candidate {
+    /// A title that is safe to show: no control characters, one line, at most 120 characters.
+    pub fn clean_title(text: &str) -> String {
+        let one_line: String = text
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect();
+        one_line
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .take(120)
+            .collect()
+    }
+
+    pub fn to_line(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    pub fn from_line(line: &str) -> Result<Self, String> {
+        serde_json::from_str(line).map_err(|e| e.to_string())
+    }
+}
+
+/// What came of a proposal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Submission {
+    pub candidate: Candidate,
+    pub verdict: Verdict,
+    /// Kept for the window to show (only a proposal that was not rejected is).
+    pub stored: bool,
 }
 
 /// What the code has checked about a candidate so far. `None` = not checked yet
@@ -227,6 +264,7 @@ mod tests {
             source,
             url: url.into(),
             version: DriverVersion::parse(version).unwrap(),
+            title: String::new(),
         }
     }
 
@@ -412,6 +450,23 @@ mod tests {
                 Reason::BadSignature
             ]
         );
+    }
+
+    #[test]
+    fn a_title_from_outside_is_cleaned_and_a_candidate_survives_the_file() {
+        let escape = char::from(27u8);
+        let dirty = format!("Realtek\n{escape}[31m BT\t driver  ");
+        assert_eq!(Candidate::clean_title(&dirty), "Realtek [31m BT driver");
+        assert_eq!(
+            Candidate::clean_title(&"x".repeat(500)).chars().count(),
+            120
+        );
+        let c = Candidate {
+            title: "T".into(),
+            ..candidate(Source::Suggested, "https://www.realtek.com/x", "6.0.9")
+        };
+        assert_eq!(Candidate::from_line(&c.to_line()).unwrap(), c);
+        assert!(Candidate::from_line("{no").is_err());
     }
 
     #[test]

@@ -24,6 +24,13 @@ pub trait DriverOffers: Send + Sync {
     fn search(&self) -> Result<Vec<crate::driver_offers::Offer>, String>;
 }
 
+/// The driver candidates that were proposed, kept between runs (the MCP server
+/// writes them, the window reads them). Lines are only added.
+pub trait CandidateStore {
+    fn all(&self) -> Result<Vec<crate::driver_candidate::Candidate>, String>;
+    fn add(&mut self, candidate: &crate::driver_candidate::Candidate) -> Result<(), String>;
+}
+
 /// The clock: today's day, and a monotonic time to measure how long things take.
 pub trait Clock {
     fn today(&self) -> Date;

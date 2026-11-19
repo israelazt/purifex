@@ -4,7 +4,7 @@
 
 use std::fmt;
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Up to four numbers, `major.minor.build.revision`. Missing ones are zero.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -39,6 +39,13 @@ impl fmt::Display for DriverVersion {
 impl Serialize for DriverVersion {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for DriverVersion {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Self::parse(&text).ok_or_else(|| serde::de::Error::custom("not a driver version"))
     }
 }
 
@@ -79,6 +86,15 @@ mod tests {
         ] {
             assert_eq!(DriverVersion::parse(bad), None, "{bad:?}");
         }
+    }
+
+    #[test]
+    fn it_reads_back_what_it_wrote_and_refuses_text_that_is_not_a_version() {
+        let v = DriverVersion::new([1, 2, 3, 4]);
+        let back: DriverVersion =
+            serde_json::from_str(&serde_json::to_string(&v).unwrap()).unwrap();
+        assert_eq!(back, v);
+        assert!(serde_json::from_str::<DriverVersion>("\"hola\"").is_err());
     }
 
     #[test]

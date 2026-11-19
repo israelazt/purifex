@@ -39,7 +39,7 @@ pub fn expired(entries: &[CleanupEntry], today: Date) -> Vec<&CleanupEntry> {
 }
 
 /// What the quarantine holds now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 pub struct QuarantineInfo {
     /// Traces that can still be put back.
     pub items: usize,

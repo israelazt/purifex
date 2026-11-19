@@ -1,0 +1,124 @@
+//! The window of traces left by an uninstalled app: what it says, and the rows it lists,
+//! grouped (files and folders, registry) with what proves each one. The list that is shown
+//! is the domain's (`CleanReport::listed`), the same one the marks refer to.
+
+use purifex_domain::app_traces::Trace;
+use purifex_domain::apps::size_text;
+use purifex_domain::cleanup_log::CleanReport;
+use purifex_domain::trace_text::Counts;
+use purifex_domain::view::{Action, Model};
+
+use crate::dialog::{Btn, DialogView, Row};
+use crate::theme::Tone;
+
+pub(crate) fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
+    let rows = trace_rows(m, report);
+    let checked = rows.iter().filter(|r| r.checked).count();
+    let name = report.app.clone();
+    let all_checked = checked == rows.len();
+    DialogView {
+        width: 900.0,
+        icon: "trash-2",
+        tone: Tone::Amber,
+        title: format!("Restos de {name}"),
+        body: traces_body(report),
+        more: report.proposed.len().saturating_sub(rows.len()),
+        rows,
+        aside: Some(Btn {
+            label: if all_checked {
+                "Quitar marcas".into()
+            } else {
+                "Marcar todo".into()
+            },
+            icon: "list-checks",
+            primary: false,
+            action: Some(Action::SelectTraces(!all_checked)),
+        }),
+        buttons: vec![
+            Btn {
+                label: "Cerrar".into(),
+                icon: "x",
+                primary: false,
+                action: Some(Action::CloseTraces),
+            },
+            Btn {
+                label: format!("Eliminar marcados ({checked})"),
+                icon: "trash-2",
+                primary: false,
+                action: (checked > 0).then(|| Action::AskClean(name.clone())),
+            },
+            Btn {
+                label: "Eliminar todo rastro".into(),
+                icon: "trash-2",
+                primary: true,
+                action: Some(Action::AskCleanAll(name)),
+            },
+        ],
+        cancel: Action::CloseTraces,
+    }
+}
+
+/// What the window says above the list; when the search was cut short, that too.
+fn traces_body(report: &CleanReport) -> String {
+    let mut body = "Esto es lo que quedó después de desinstalar. Marca lo que quieras quitar, o elimina todo de una vez sin elegir.".to_string();
+    if report.incomplete {
+        body.push_str(" La búsqueda se cortó por tiempo y puede faltar algo: pulsa «Buscar otra vez» para completarla.");
+    }
+    body
+}
+
+/// The rows the window lists, grouped: the first row of each group carries its heading.
+fn trace_rows(m: &Model, report: &CleanReport) -> Vec<Row> {
+    let mut previous_registry = None;
+    report
+        .listed()
+        .into_iter()
+        .map(|t| {
+            let registry = t.is_registry();
+            let heading =
+                (previous_registry != Some(registry)).then(|| group_heading(report, registry));
+            previous_registry = Some(registry);
+            Row {
+                heading,
+                label: t.location.clone(),
+                detail: row_detail(t),
+                size: if t.bytes > 0 {
+                    size_text(Some(t.bytes / 1024))
+                } else {
+                    String::new()
+                },
+                user_data: t.user_data,
+                checked: !m.unchecked.contains(&t.key()),
+                toggle: Action::ToggleTrace(t.key()),
+            }
+        })
+        .collect()
+}
+
+/// «Archivos y carpetas (7) · 196 MB» or «Registro (10)»: how many there are of the group
+/// in the whole report, not only in the list.
+fn group_heading(report: &CleanReport, registry: bool) -> String {
+    let group = report
+        .proposed
+        .iter()
+        .filter(|t| t.is_registry() == registry);
+    let counts = Counts::of(group);
+    if registry {
+        format!("Registro ({})", counts.registry)
+    } else {
+        format!(
+            "Archivos y carpetas ({}) · {}",
+            counts.files,
+            size_text(Some(counts.bytes.div_ceil(1024)))
+        )
+    }
+}
+
+/// What proves the trace is the app's, and for a registry value which value it is.
+fn row_detail(t: &Trace) -> String {
+    let proof = t.evidence.label();
+    match &t.value {
+        Some(value) => format!("{proof} · valor: {value}"),
+        None => proof.to_string(),
+    }
+}

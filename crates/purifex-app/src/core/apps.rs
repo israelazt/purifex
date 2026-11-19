@@ -79,6 +79,18 @@ impl Core {
         }
     }
 
+    /// Deletes for good what the quarantine holds, after the person confirmed.
+    pub(super) fn quarantine_emptied(&mut self) {
+        match self.services.empty_quarantine(true) {
+            Ok(report) => {
+                self.model.message = Some(report.to_text());
+                self.model.quarantine = None;
+                self.expect_reading();
+            }
+            Err(error) => self.model.error = Some(error),
+        }
+    }
+
     /// While an uninstaller started here runs: reads the list now and then, and when the
     /// app is gone, remembers it and asks for its traces. Returns whether the model changed.
     pub(super) fn check_watch(&mut self) -> bool {

@@ -23,6 +23,7 @@ mod scrollbar;
 pub mod sessions_page;
 pub mod shell;
 pub mod theme;
+mod traces_dialog;
 pub mod ui;
 mod updates_panel;
 pub mod widgets;

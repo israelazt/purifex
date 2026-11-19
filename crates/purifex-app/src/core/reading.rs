@@ -2,6 +2,8 @@
 //! a failure is collected (with what was being read) and the rest is still read.
 
 use purifex_domain::driver_offers::Offers;
+use purifex_domain::log_warn;
+use purifex_domain::quarantine::{QuarantineInfo, QUARANTINE_DAYS};
 use purifex_domain::trace_text::Counts;
 use purifex_domain::view::Page;
 
@@ -66,6 +68,32 @@ impl Core {
         if let Some(name) = self.model.finding.take() {
             self.find_traces_of(&name, errors);
         }
+        self.read_quarantine();
+    }
+
+    /// What the quarantine holds, after letting go of what has been there for seven days
+    /// (once per run; the person is told). A quarantine that cannot be read is not worth an
+    /// error on the page: it shows as empty and the reason goes to the log.
+    fn read_quarantine(&mut self) {
+        if self.model.quarantine.is_some() {
+            return;
+        }
+        if !std::mem::replace(&mut self.expired_checked, true) {
+            match self.services.expire_quarantine() {
+                Ok(report) if report.purged > 0 => {
+                    self.model.message = Some(format!(
+                        "Se soltaron de la cuarentena los restos que llevaban {QUARANTINE_DAYS} días: {}",
+                        report.to_text()
+                    ));
+                }
+                Ok(_) => {}
+                Err(error) => log_warn!("the quarantine could not be tidied: {error}"),
+            }
+        }
+        self.model.quarantine = Some(self.services.quarantine().unwrap_or_else(|error| {
+            log_warn!("the quarantine could not be read: {error}");
+            QuarantineInfo::default()
+        }));
     }
 
     /// Looks for the traces of an app. When some are found the window with the list

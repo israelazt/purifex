@@ -4,15 +4,13 @@
 //! What each dialog says is built here from the model; what its buttons do is an
 //! `Action` like any other.
 
-use purifex_domain::app_traces::Trace;
 use purifex_domain::apps::size_text;
-use purifex_domain::cleanup_log::CleanReport;
 use purifex_domain::draw::{Color, Rect};
-use purifex_domain::trace_text::Counts;
 use purifex_domain::view::{Action, Confirm, Model};
 
 use crate::canvas::Canvas;
 use crate::theme::{self, Tone};
+use crate::traces_dialog::traces_view;
 use crate::widgets::{button, button_width, icon_box, panel, tag};
 
 /// How long a dialog takes to appear or go away, in ms.
@@ -108,6 +106,12 @@ pub fn view(m: &Model) -> Option<DialogView> {
             "Eliminar todo",
             "trash-2",
         )),
+        (Some(Confirm::EmptyQuarantine), _) => Some(confirm_view(
+            "¿Vaciar la cuarentena?".to_string(),
+            &empty_quarantine_body(m),
+            "Vaciar para siempre",
+            "trash-2",
+        )),
         (Some(Confirm::Uninstall(id)), _) => {
             let name = m
                 .apps
@@ -127,116 +131,19 @@ pub fn view(m: &Model) -> Option<DialogView> {
     }
 }
 
-fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
-    let rows = trace_rows(m, report);
-    let checked = rows.iter().filter(|r| r.checked).count();
-    let name = report.app.clone();
-    let all_checked = checked == rows.len();
-    DialogView {
-        width: 900.0,
-        icon: "trash-2",
-        tone: Tone::Amber,
-        title: format!("Restos de {name}"),
-        body: traces_body(report),
-        more: report.proposed.len().saturating_sub(rows.len()),
-        rows,
-        aside: Some(Btn {
-            label: if all_checked {
-                "Quitar marcas".into()
-            } else {
-                "Marcar todo".into()
-            },
-            icon: "list-checks",
-            primary: false,
-            action: Some(Action::SelectTraces(!all_checked)),
-        }),
-        buttons: vec![
-            Btn {
-                label: "Cerrar".into(),
-                icon: "x",
-                primary: false,
-                action: Some(Action::CloseTraces),
-            },
-            Btn {
-                label: format!("Eliminar marcados ({checked})"),
-                icon: "trash-2",
-                primary: false,
-                action: (checked > 0).then(|| Action::AskClean(name.clone())),
-            },
-            Btn {
-                label: "Eliminar todo rastro".into(),
-                icon: "trash-2",
-                primary: true,
-                action: Some(Action::AskCleanAll(name)),
-            },
-        ],
-        cancel: Action::CloseTraces,
-    }
-}
-
-/// What the window says above the list; when the search was cut short, that too.
-fn traces_body(report: &CleanReport) -> String {
-    let mut body = "Esto es lo que quedó después de desinstalar. Marca lo que quieras quitar, o elimina todo de una vez sin elegir.".to_string();
-    if report.incomplete {
-        body.push_str(" La búsqueda se cortó por tiempo y puede faltar algo: pulsa «Buscar otra vez» para completarla.");
-    }
-    body
-}
-
-/// The rows the window lists, grouped: the first row of each group carries its heading.
-fn trace_rows(m: &Model, report: &CleanReport) -> Vec<Row> {
-    let mut previous_registry = None;
-    report
-        .listed()
-        .into_iter()
-        .map(|t| {
-            let registry = t.is_registry();
-            let heading =
-                (previous_registry != Some(registry)).then(|| group_heading(report, registry));
-            previous_registry = Some(registry);
-            Row {
-                heading,
-                label: t.location.clone(),
-                detail: row_detail(t),
-                size: if t.bytes > 0 {
-                    size_text(Some(t.bytes / 1024))
-                } else {
-                    String::new()
-                },
-                user_data: t.user_data,
-                checked: !m.unchecked.contains(&t.key()),
-                toggle: Action::ToggleTrace(t.key()),
-            }
-        })
-        .collect()
-}
-
-/// «Archivos y carpetas (7) · 196 MB» or «Registro (10)»: how many there are of the group
-/// in the whole report, not only in the list.
-fn group_heading(report: &CleanReport, registry: bool) -> String {
-    let group = report
-        .proposed
-        .iter()
-        .filter(|t| t.is_registry() == registry);
-    let counts = Counts::of(group);
-    if registry {
-        format!("Registro ({})", counts.registry)
-    } else {
-        format!(
-            "Archivos y carpetas ({}) · {}",
-            counts.files,
-            size_text(Some(counts.bytes.div_ceil(1024)))
-        )
-    }
-}
-
-/// What proves the trace is the app's, and for a registry value which value it is.
-fn row_detail(t: &Trace) -> String {
-    let proof = t.evidence.label();
-    match &t.value {
-        Some(value) => format!("{proof} · valor: {value}"),
-        None => proof.to_string(),
-    }
+/// What emptying the quarantine means: what goes, and that it cannot be put back.
+fn empty_quarantine_body(m: &Model) -> String {
+    let held = match &m.quarantine {
+        Some(q) if q.items > 0 => format!(
+            "{} restos ({})",
+            q.items,
+            size_text(Some(q.bytes.div_ceil(1024)))
+        ),
+        _ => "lo que guarda".to_string(),
+    };
+    format!(
+        "Se borran para siempre {held} que quitaste de tu PC. Después ya no podrás devolverlos con «purifex apps restore»."
+    )
 }
 
 fn checkbox(c: &mut Canvas, x: f32, y: f32, checked: bool) {
@@ -540,6 +447,34 @@ mod tests {
             height_of(&c, &two_kinds) - height_of(&c, &one_kind),
             HEADING_H,
             "same three rows, one more heading"
+        );
+    }
+
+    #[test]
+    fn emptying_the_quarantine_says_what_goes_and_that_it_cannot_be_put_back() {
+        let mut m = Model {
+            confirm: Some(Confirm::EmptyQuarantine),
+            quarantine: Some(purifex_domain::quarantine::QuarantineInfo {
+                items: 4,
+                bytes: 2 * 1024 * 1024,
+                oldest: None,
+                expired: 0,
+            }),
+            ..Model::default()
+        };
+        let v = view(&m).unwrap();
+        assert!(v.title.contains("Vaciar la cuarentena"));
+        assert!(
+            v.body.contains("4 restos (2 MB)") && v.body.contains("para siempre"),
+            "{}",
+            v.body
+        );
+        assert_eq!(labels(&v), ["Cancelar", "Vaciar para siempre"]);
+        assert_eq!(v.cancel, Action::CancelConfirm);
+        m.quarantine = None;
+        assert!(
+            view(&m).unwrap().body.contains("lo que guarda"),
+            "without the numbers it still says it"
         );
     }
 

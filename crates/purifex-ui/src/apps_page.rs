@@ -120,6 +120,48 @@ fn cleanup_buttons(
     }
 }
 
+/// What the quarantine holds and the button to empty it. Nothing is drawn when it holds
+/// nothing: there is nothing to say.
+fn quarantine_panel(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
+    let Some(info) = m.quarantine.filter(|q| q.items > 0) else {
+        return 0.0;
+    };
+    let rect = Rect::new(area.x, y, area.w, 72.0);
+    panel(c, rect);
+    c.icon(
+        "hard-drive",
+        rect.x + 18.0,
+        rect.y + 18.0,
+        18.0,
+        theme::TEXT_2,
+    );
+    c.text(
+        rect.x + 46.0,
+        rect.y + 14.0,
+        "Cuarentena",
+        theme::sans(14.0, theme::TEXT).bold(),
+    );
+    c.paragraph(
+        rect.x + 46.0,
+        rect.y + 38.0,
+        rect.w - 300.0,
+        &info.to_text(),
+        theme::mono(12.0, theme::TEXT_2),
+        Some(2),
+    );
+    let label = "Vaciar cuarentena";
+    let width = button_width(c, label);
+    button(
+        c,
+        Rect::new(rect.right() - 16.0 - width, rect.y + 14.0, width, 44.0),
+        label,
+        "trash-2",
+        false,
+        Some(Action::AskEmptyQuarantine),
+    );
+    rect.h + 16.0
+}
+
 fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
     let hover = c.hover(bar);
     if hover > 0.01 {
@@ -306,6 +348,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
     if let Some(name) = &m.uninstalled {
         y += cleanup_panel(c, m, name, area, y);
     }
+    y += quarantine_panel(c, m, area, y);
     y += search_box(
         c,
         m,
@@ -411,6 +454,37 @@ mod tests {
         assert!(
             !actions.contains(&Action::Confirm),
             "its buttons are the dialog's"
+        );
+    }
+
+    fn with_quarantine(items: usize) -> Model {
+        let mut m = model();
+        m.quarantine = Some(purifex_domain::quarantine::QuarantineInfo {
+            items,
+            bytes: 3 * 1024 * 1024,
+            oldest: None,
+            expired: 0,
+        });
+        m
+    }
+
+    #[test]
+    fn what_the_quarantine_holds_is_said_with_a_button_to_empty_it_and_nothing_when_it_is_empty() {
+        let (texts, actions) = render(&with_quarantine(2));
+        let all = texts.join(" ");
+        assert!(texts.contains(&"Cuarentena".to_string()));
+        assert!(
+            all.contains("guarda 2 restos (3 MB)") && all.contains("a los 7 días"),
+            "{all}"
+        );
+        assert!(actions.contains(&Action::AskEmptyQuarantine));
+        let (texts, actions) = render(&with_quarantine(0));
+        assert!(!texts.contains(&"Cuarentena".to_string()));
+        assert!(!actions.contains(&Action::AskEmptyQuarantine));
+        let (_, unread) = render(&model());
+        assert!(
+            !unread.contains(&Action::AskEmptyQuarantine),
+            "not read yet: nothing"
         );
     }
 

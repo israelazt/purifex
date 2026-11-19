@@ -24,7 +24,7 @@ impl Core {
         let m = &mut self.model;
         (m.overview, m.drivers, m.sessions, m.analysis, m.comparison) =
             (None, None, None, None, None);
-        (m.candidates, m.apps, m.traces) = (None, None, None);
+        (m.candidates, m.apps, m.traces, m.quarantine) = (None, None, None, None);
         (m.fixes, m.history, m.confirm, m.notice) = (None, None, None, None);
         m.error = None;
         self.expect_reading();

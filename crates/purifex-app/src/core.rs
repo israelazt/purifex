@@ -33,6 +33,8 @@ pub struct Core {
     /// The app whose uninstaller was started here, when it was last looked for in the
     /// list, and when it was started: when it disappears the uninstall has finished.
     watching: Option<(purifex_domain::apps::InstalledApp, Instant, Instant)>,
+    /// What had been in the quarantine for seven days was already let go this time.
+    expired_checked: bool,
 }
 
 impl Core {
@@ -47,6 +49,7 @@ impl Core {
             pending: true,
             previous_apps: None,
             watching: None,
+            expired_checked: false,
         }
     }
 
@@ -76,6 +79,7 @@ impl Core {
             Action::SelectTraces(all) => self.select_traces(all),
             Action::OpenTraces => self.open_traces(),
             Action::CloseTraces => self.close_traces(),
+            Action::AskEmptyQuarantine => self.ask(Confirm::EmptyQuarantine),
             Action::FindTraces(name) => self.find_traces(name),
             Action::RefreshApps => self.refresh_apps(),
             Action::SetFilter(filter) => self.model.filter = filter,
@@ -98,6 +102,7 @@ impl Core {
             Confirm::Uninstall(id) => return self.uninstalled(&id),
             Confirm::Clean(name) => return self.cleaned(&name, false),
             Confirm::CleanAll(name) => return self.cleaned(&name, true),
+            Confirm::EmptyQuarantine => return self.quarantine_emptied(),
         };
         match result {
             Ok(report) => {
@@ -127,7 +132,7 @@ impl Core {
         let page_lacks = match m.page {
             Page::Overview => false,
             Page::Fixes => m.fixes.is_none() || m.history.is_none(),
-            Page::Apps => m.apps.is_none() || m.finding.is_some(),
+            Page::Apps => m.apps.is_none() || m.finding.is_some() || m.quarantine.is_none(),
             Page::Drivers => m.drivers.is_none() || m.candidates.is_none(),
             Page::Sessions => {
                 m.analysis.is_none()
@@ -613,6 +618,55 @@ mod tests {
         assert!(!bare.needs_tick());
     }
 
+    /// A removal of `days` days ago that is still in the quarantine.
+    fn removal(seq: u64, days: i64) -> purifex_domain::cleanup_log::CleanupEntry {
+        purifex_domain::cleanup_log::CleanupEntry {
+            seq,
+            app: "Discord".into(),
+            on: purifex_domain::date::Date::from_days(FakeClock::DAY.days() - days),
+            kept: format!("q/{seq}"),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_apps_page_reads_the_quarantine_and_lets_go_of_what_expired_once_telling_the_person() {
+        let AppsFixture { mut core, log, .. } =
+            apps_page_holding(vec![removal(1, 10), removal(2, 2)]);
+        assert_eq!(log.borrow().purged, [1], "seven days old: let go");
+        assert_eq!(core.model().quarantine.map(|q| q.items), Some(1));
+        let said = core.model().message.as_deref().unwrap();
+        assert!(said.contains("Se soltaron de la cuarentena"), "{said}");
+        // Reading again (a rescan) does not tidy again in the same run.
+        log.borrow_mut().entries.push(removal(3, 30));
+        core.apply(Action::Rescan);
+        core.tick();
+        assert_eq!(log.borrow().purged, [1]);
+        assert_eq!(core.model().quarantine.map(|q| q.items), Some(2));
+    }
+
+    #[test]
+    fn emptying_the_quarantine_asks_first_and_then_deletes_for_good() {
+        let AppsFixture { mut core, log, .. } =
+            apps_page_holding(vec![removal(1, 1), removal(2, 3)]);
+        core.apply(Action::AskEmptyQuarantine);
+        assert_eq!(core.model().confirm, Some(Confirm::EmptyQuarantine));
+        assert!(log.borrow().purged.is_empty(), "asking deletes nothing");
+        core.apply(Action::CancelConfirm);
+        assert!(log.borrow().purged.is_empty());
+        core.apply(Action::AskEmptyQuarantine);
+        core.apply(Action::Confirm);
+        assert_eq!(log.borrow().purged, [1, 2]);
+        let said = core.model().message.as_deref().unwrap();
+        assert!(said.contains("Se borraron para siempre 2 restos"), "{said}");
+        core.tick();
+        assert_eq!(
+            core.model().quarantine.map(|q| q.items),
+            Some(0),
+            "read again, now empty"
+        );
+    }
+
     /// A core whose services keep the given proposals and open pages through `opener`.
     fn core_with_candidates(
         store: crate::testing::FakeCandidates,
@@ -730,6 +784,11 @@ mod tests {
     }
 
     fn apps_page() -> AppsFixture {
+        apps_page_holding(vec![])
+    }
+
+    /// The apps page of a computer whose quarantine already holds these removals.
+    fn apps_page_holding(held: Vec<purifex_domain::cleanup_log::CleanupEntry>) -> AppsFixture {
         use crate::testing::{CleanLog, FakeApps, FakeCleaning, FakeFinder};
         use crate::Cleaning;
         use purifex_domain::app_traces::Candidate;
@@ -737,7 +796,10 @@ mod tests {
         use std::rc::Rc;
         let installed = FakeApps::default();
         installed.0.borrow_mut().push(fake_app("Discord"));
-        let log = Rc::new(RefCell::new(CleanLog::default()));
+        let log = Rc::new(RefCell::new(CleanLog {
+            entries: held,
+            ..CleanLog::default()
+        }));
         let found = vec![Candidate {
             location: r"C:\Users\u\AppData\Roaming\Discord".into(),
             bytes: 10,
@@ -754,11 +816,14 @@ mod tests {
                 Archive::new(FakeArchive::with(&[])),
             )
             .with_apps(Box::new(installed.clone()))
-            .with_cleaning(Cleaning::new(
-                Box::new(FakeFinder(found)),
-                Box::new(FakeCleaning(log.clone())),
-                Box::new(FakeCleaning(log.clone())),
-            )),
+            .with_cleaning(
+                Cleaning::new(
+                    Box::new(FakeFinder(found)),
+                    Box::new(FakeCleaning(log.clone())),
+                    Box::new(FakeCleaning(log.clone())),
+                )
+                .with_clock(Box::new(FakeClock::ticking(0))),
+            ),
         ));
         core.tick();
         core.apply(Action::Go(Page::Apps));

@@ -13,6 +13,7 @@ use crate::driver_offers::Offers;
 use crate::drivers_view::{DriverRow, DriversView};
 use crate::fix::{FixReport, HistoryEntry, Proposal};
 use crate::overview::Overview;
+use crate::quarantine::QuarantineInfo;
 use crate::session_list::SessionRow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -46,6 +47,8 @@ pub enum Confirm {
     Clean(String),
     /// Remove every trace of the app with this name, with no selecting.
     CleanAll(String),
+    /// Delete for good what the quarantine holds.
+    EmptyQuarantine,
 }
 
 /// Which devices the drivers table lists.
@@ -90,6 +93,8 @@ pub struct Model {
     pub traces: Option<CleanReport>,
     /// The name of an app whose traces are being looked for.
     pub finding: Option<String>,
+    /// What the quarantine holds (read on the apps page).
+    pub quarantine: Option<QuarantineInfo>,
     /// The window with the list of traces is open.
     pub traces_open: bool,
     /// Traces of the list the user unchecked (all start checked), by `Trace::key`.
@@ -129,6 +134,8 @@ pub enum Action {
     OpenTraces,
     /// Closes the window of traces without removing anything.
     CloseTraces,
+    /// Asks to empty the quarantine: the user is asked to confirm, it cannot be undone.
+    AskEmptyQuarantine,
     SetFilter(DriverFilter),
     SetQuery(String),
     SelectSession(String),

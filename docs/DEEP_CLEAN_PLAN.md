@@ -199,3 +199,12 @@ Cada tarea termina con **pruebas, `tools/check.ps1`, clippy de Linux, commit, pu
 - **Aviso de tiempo agotado:** `Found.incomplete` y `CleanReport.incomplete` llevan hasta la ventana que la búsqueda de accesos directos se cortó por tiempo; el diálogo y el panel lo dicen y sugieren «Buscar otra vez».
 - **5.4:** `cargo run --example ui_states -- kdenlive salida.png` dibuja el diálogo con ambos grupos (restos de un caso real de Kdenlive).
 
+### Fase 7 hecha (2026-11-19)
+
+- **7.1 Vaciar:** `purifex apps purge [--yes]` (sin `--yes` solo dice cuánto borraría) y, en la página de Apps, el botón «Vaciar cuarentena» con su diálogo de confirmación. El almacén solo borra la carpeta propia de una eliminación dentro de la cuarentena: rechaza una copia que esté fuera o que se escape con `..`, y quita el atributo de solo lectura una vez si Windows se niega. Cada borrado es una línea `Purged` del registro (`cleanup.jsonl`); lo vaciado ya no se puede devolver (`restore` lo dice).
+- **7.2 Caducidad:** cada eliminación lleva el día (`CleanupEntry.on`, con un reloj en `Cleaning`); al abrir la página de Apps (una vez por ejecución) y con `purifex apps quarantine` se sueltan las que llevan 7 días, y se le dice a la persona. Una línea anterior a que se guardara el día no caduca sola (solo al vaciar a mano).
+- **7.3 Espacio:** el panel «Cuarentena» y `purifex apps quarantine [--json]` dicen cuántos restos guarda, cuánto ocupan, desde cuándo y cuántos caducan. Medido en este PC: 2 restos, 4 MB (de pruebas anteriores, sin fecha: no caducan solos).
+- El campo `restores` del registro pasa a llamarse `settles` (con alias, los registros antiguos se leen igual).
+
+**Falta de este plan:** la Fase 6 (permisos de administrador) y la comparación final con Revo (criterio B).
+

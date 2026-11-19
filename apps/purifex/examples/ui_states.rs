@@ -176,6 +176,18 @@ mod states {
                 model.traces_open = false;
                 model.confirm = Some(Confirm::Uninstall("HKLM64:Discord".into()));
             }
+            Some("quarantine" | "empty") => {
+                model.traces_open = false;
+                model.quarantine = Some(purifex_domain::quarantine::QuarantineInfo {
+                    items: 14,
+                    bytes: 205_569_471,
+                    oldest: purifex_domain::date::Date::new(2026, 11, 14),
+                    expired: 0,
+                });
+                if extra == Some("empty") {
+                    model.confirm = Some(Confirm::EmptyQuarantine);
+                }
+            }
             Some("unchecked") => {
                 model.unchecked = vec![r"C:\Users\yo\AppData\Local\Programs\Inkscape".into()];
             }

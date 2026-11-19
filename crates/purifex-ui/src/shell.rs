@@ -137,12 +137,16 @@ struct NavItem<'a> {
 
 fn nav_item(c: &mut Canvas, rect: Rect, item: &NavItem, active: bool) {
     let soon = item.page.is_none();
-    let hovered = item.page.is_some() && c.hovered(rect);
+    let hover = if item.page.is_some() {
+        c.hover(rect)
+    } else {
+        0.0
+    };
     if active {
         c.fill(rect, 8.0, theme::ACCENT.with_alpha(0.08));
         c.stroke(rect, 8.0, 1.0, theme::ACCENT.with_alpha(0.45));
-    } else if hovered {
-        c.fill(rect, 8.0, theme::TEXT.with_alpha(0.03));
+    } else if hover > 0.01 {
+        c.fill(rect, 8.0, theme::TEXT.with_alpha(0.03 * hover));
     }
     let dim = if soon { 0.5 } else { 1.0 };
     let icon_color = if active {
@@ -154,10 +158,7 @@ fn nav_item(c: &mut Canvas, rect: Rect, item: &NavItem, active: bool) {
     let style = if active {
         theme::mono(13.0, theme::TEXT).bold()
     } else {
-        theme::mono(
-            13.0,
-            if hovered { theme::TEXT } else { theme::TEXT_2 }.with_alpha(dim),
-        )
+        theme::mono(13.0, theme::TEXT_2.mix(theme::TEXT, hover).with_alpha(dim))
     };
     c.text_in(rect.x + 42.0, rect, item.label, style);
     if soon {
@@ -308,10 +309,12 @@ pub fn sidebar(c: &mut Canvas, m: &Model, height: f32) {
             &text,
             None,
         );
+        // The bar fills the first time the figure is known.
+        let shown = c.value("health", health.unwrap_or(0.0), 800);
         progress(
             c,
             Rect::new(foot.x + 14.0, foot.y + 66.0, foot.w - 28.0, 4.0),
-            health.unwrap_or(0.0),
+            shown,
         );
     }
 }

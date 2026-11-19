@@ -18,12 +18,12 @@ const ROW_H: f32 = 60.0;
 const LIST_W: f32 = 340.0;
 
 fn session_row(c: &mut Canvas, row: &SessionRow, bar: Rect, selected: bool) {
-    let hovered = c.hovered(bar);
+    let hover = c.hover(bar);
     if selected {
         c.fill(bar, 0.0, theme::ACCENT.with_alpha(0.06));
         c.fill(Rect::new(bar.x, bar.y, 2.0, bar.h), 0.0, theme::ACCENT);
-    } else if hovered {
-        c.fill(bar, 0.0, theme::TEXT.with_alpha(0.02));
+    } else if hover > 0.01 {
+        c.fill(bar, 0.0, theme::TEXT.with_alpha(0.02 * hover));
     }
     c.line(
         bar.x,

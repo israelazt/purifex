@@ -21,6 +21,18 @@ impl Color {
         Self { r, g, b, a }
     }
 
+    /// The color between `self` (`t` = 0) and `other` (`t` = 1), channel by channel.
+    pub fn mix(self, other: Self, t: f32) -> Self {
+        let t = t.clamp(0.0, 1.0);
+        let lerp = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * t).round() as u8;
+        Self {
+            r: lerp(self.r, other.r),
+            g: lerp(self.g, other.g),
+            b: lerp(self.b, other.b),
+            a: lerp(self.a, other.a),
+        }
+    }
+
     /// The same color with another opacity, 0.0 (clear) to 1.0 (solid).
     pub fn with_alpha(self, opacity: f32) -> Self {
         Self {
@@ -218,6 +230,16 @@ mod tests {
         assert_eq!((c.r, c.g, c.b, c.a), (0, 242, 170, 128));
         assert_eq!(Color::rgb(1, 2, 3).with_alpha(9.0).a, 255);
         assert_eq!(Color::rgb(1, 2, 3).with_alpha(-1.0).a, 0);
+    }
+
+    #[test]
+    fn mixing_goes_from_one_color_to_the_other_and_never_past_them() {
+        let (a, b) = (Color::rgb(0, 0, 0), Color::rgba(200, 100, 50, 100));
+        assert_eq!(a.mix(b, 0.0), a);
+        assert_eq!(a.mix(b, 1.0), b);
+        assert_eq!(a.mix(b, 0.5), Color::rgba(100, 50, 25, 178));
+        assert_eq!(a.mix(b, 9.0), b);
+        assert_eq!(a.mix(b, -9.0), a);
     }
 
     #[test]

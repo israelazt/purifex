@@ -53,8 +53,11 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
             card_w,
             card_h,
         );
+        // Each card appears a moment after the one before.
+        c.reveal(60 * (i as u64 + 1));
         draw_card(c, card, o);
     }
+    c.reveal(0);
     y += 4usize.div_ceil(columns) as f32 * (card_h + gap) + 4.0;
     y += leads(c, Rect::new(area.x, y, area.w, 0.0).with_width(area.w), o);
     // The console and the principles.

@@ -3,6 +3,8 @@
 
 #[cfg(windows)]
 mod probe {
+    use std::time::Duration;
+
     use purifex_domain::draw::{Color, DrawList, Font, Op, Rect, TextStyle};
     use purifex_domain::ports::TextMetrics;
     use purifex_domain::ui_event::{Reaction, UiEvent, UiHandler};
@@ -10,7 +12,7 @@ mod probe {
     struct Probe;
 
     impl UiHandler for Probe {
-        fn frame(&mut self, _w: f32, _h: f32, text: &dyn TextMetrics) -> DrawList {
+        fn frame(&mut self, _w: f32, _h: f32, text: &dyn TextMetrics, _now: Duration) -> DrawList {
             let mut list = DrawList::new(Color::rgb(7, 8, 11));
             let mint = Color::rgb(0, 242, 170);
             let white = Color::rgb(242, 242, 242);
@@ -110,6 +112,10 @@ mod probe {
             });
             list
         }
+        fn animating(&self) -> bool {
+            false
+        }
+        fn set_reduced_motion(&mut self, _: bool) {}
         fn event(&mut self, _e: UiEvent) -> Reaction {
             Reaction::default()
         }

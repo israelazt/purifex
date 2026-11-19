@@ -4,6 +4,7 @@
 use purifex_domain::draw::Rect;
 use purifex_domain::overview::Overview;
 
+use crate::anim::COUNT_MS;
 use crate::canvas::Canvas;
 use crate::theme::{self, Tone};
 use crate::widgets::{dot, icon_box, kpi_card, tag};
@@ -74,7 +75,9 @@ pub(crate) fn card_dpc(c: &mut Canvas, card: Rect, o: &Overview) {
     );
     match &o.session {
         Some(s) => {
-            let x = big_number(c, card, &format!("{:.1}", s.dpc_p95), "%");
+            // The figure counts up to its value the first time it appears.
+            let shown = c.value("dpc", s.dpc_p95, COUNT_MS);
+            let x = big_number(c, card, &format!("{shown:.1}"), "%");
             let (label, tone) = if s.dpc_p95 >= 5.0 {
                 ("Alto", Tone::Amber)
             } else {
@@ -101,7 +104,8 @@ pub(crate) fn card_devices(c: &mut Canvas, card: Rect, o: &Overview) {
         "microchip",
         Tone::Blue,
     );
-    big_number(c, card, &o.devices.hardware.to_string(), "dispositivos");
+    let shown = c.value("devices", o.devices.hardware as f32, COUNT_MS);
+    big_number(c, card, &format!("{shown:.0}"), "dispositivos");
     // The three counts, flowing onto a second line if they do not fit.
     let d = &o.devices;
     let stats = [

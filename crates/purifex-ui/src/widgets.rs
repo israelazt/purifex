@@ -98,27 +98,14 @@ pub fn button(
     primary: bool,
     action: Option<Action>,
 ) {
-    let hovered = action.is_some() && c.hovered(rect);
+    let hover = if action.is_some() { c.hover(rect) } else { 0.0 };
     if primary {
         let glow = rect.inset(-3.0);
         c.stroke(glow, 11.0, 3.0, theme::ACCENT.with_alpha(0.12));
-        c.fill(
-            rect,
-            8.0,
-            if hovered {
-                theme::ACCENT_2.with_alpha(1.0)
-            } else {
-                theme::ACCENT
-            },
-        );
+        c.fill(rect, 8.0, theme::ACCENT.mix(theme::ACCENT_2, hover));
     } else {
         c.fill(rect, 8.0, theme::PANEL);
-        c.stroke(
-            rect,
-            8.0,
-            1.0,
-            if hovered { theme::TEXT_3 } else { theme::LINE },
-        );
+        c.stroke(rect, 8.0, 1.0, theme::LINE.mix(theme::TEXT_3, hover));
     }
     let color = if primary {
         theme::ON_ACCENT

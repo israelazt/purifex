@@ -137,7 +137,7 @@ fn chip(c: &mut Canvas, x: f32, y: f32, chip: &Chip) -> f32 {
     let width =
         28.0 + lead + c.width(label, &style) + 10.0 + c.width(&count_text, &count_style) + 12.0;
     let rect = Rect::new(x, y, width, 38.0);
-    let hovered = c.hovered(rect);
+    let hover = c.hover(rect);
     if active {
         c.fill(rect, 6.0, theme::ACCENT_2);
     } else if red {
@@ -145,12 +145,7 @@ fn chip(c: &mut Canvas, x: f32, y: f32, chip: &Chip) -> f32 {
         c.stroke(rect, 6.0, 1.0, Tone::Red.border());
     } else {
         c.fill(rect, 6.0, theme::PANEL);
-        c.stroke(
-            rect,
-            6.0,
-            1.0,
-            if hovered { theme::TEXT_3 } else { theme::LINE },
-        );
+        c.stroke(rect, 6.0, 1.0, theme::LINE.mix(theme::TEXT_3, hover));
     }
     let mut cursor = x + 14.0;
     if red {
@@ -264,6 +259,8 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
         return height;
     }
     for (i, row) in rows.iter().enumerate() {
+        // The first rows come in one after the other; the rest are just there.
+        c.reveal(if i < 12 { 18 * i as u64 } else { 0 });
         draw_row(
             c,
             row,
@@ -273,6 +270,7 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
             class_w,
         );
     }
+    c.reveal(0);
     height
 }
 
@@ -285,8 +283,9 @@ fn draw_row(
     class_w: f32,
 ) {
     let [device_x, class_x, version_x, state_x] = columns;
-    if c.hovered(bar) {
-        c.fill(bar, 0.0, theme::TEXT.with_alpha(0.02));
+    let hover = c.hover(bar);
+    if hover > 0.01 {
+        c.fill(bar, 0.0, theme::TEXT.with_alpha(0.02 * hover));
     }
     c.line(
         bar.x,

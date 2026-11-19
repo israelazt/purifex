@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod anim;
 pub mod canvas;
 mod compare_panel;
 pub mod drivers_page;

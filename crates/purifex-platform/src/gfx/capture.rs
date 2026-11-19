@@ -3,6 +3,7 @@
 //! compared with the reference) from a script.
 
 use std::path::Path;
+use std::time::Duration;
 
 use purifex_domain::ui_event::UiHandler;
 use windows::core::{Interface, PCWSTR};
@@ -40,7 +41,10 @@ pub fn render_png(
             .CreateBitmap(w, h, &GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnDemand)
             .map_err(|e| e.to_string())?;
         let mut renderer = Renderer::for_bitmap(&bitmap, 96.0 * scale)?;
-        let list = handler.frame(width, height, renderer.text());
+        // Two pictures: the first starts the animations, the second is long after they
+        // ended, so a screenshot shows the page as it settles.
+        handler.frame(width, height, renderer.text(), Duration::ZERO);
+        let list = handler.frame(width, height, renderer.text(), Duration::from_secs(60));
         if renderer.draw(&list)? == Drawn::Recreate {
             return Err("se perdió el dispositivo gráfico".into());
         }

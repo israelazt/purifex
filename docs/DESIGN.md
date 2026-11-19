@@ -71,7 +71,21 @@ Cada color de estado tiene un fondo tenue (`rgba(color, .12)`) y un borde (`rgba
 Lucide `1.75.0` (ISC), cuadrícula de 24, trazo de 2, extremos y uniones redondeados. 52 iconos (`crates/purifex-domain/src/icons/`), cada uno con su SVG original; el lector (`svg_path.rs`) convierte arcos, círculos y rectángulos a curvas cúbicas. Un test comprueba que los 52 se leen y caben en su cuadrícula. La licencia está en `crates/purifex-ui/assets/LICENSE-lucide.txt`.
 
 ### Accesibilidad
-Contraste del texto sobre fondo ≥ 4.5:1 (texto principal y secundario); el buscador con foco se enciende en menta y muestra el cursor; los estados no dependen solo del color (llevan icono y texto); no hay animaciones.
+Contraste del texto sobre fondo ≥ 4.5:1 (texto principal y secundario); el buscador con foco se enciende en menta y muestra el cursor; los estados no dependen solo del color (llevan icono y texto); el movimiento respeta el ajuste de Windows «Mostrar animaciones» (si está apagado, todo aparece en su sitio al instante).
+
+### Movimiento
+Sutil y medido (`crates/purifex-ui/src/anim.rs`). Todo es función del tiempo, así que se prueba pidiendo la imagen en un instante.
+
+| Qué | Cómo |
+|---|---|
+| Página que entra (al cambiar de página o llegar sus datos) | aparece y sube 10 unidades en 260 ms, con curva de salida suave |
+| Tarjetas de indicadores | cascada de 60 ms entre una y otra |
+| Primeras 12 filas de la tabla | cascada de 18 ms |
+| Cifras (DPC, dispositivos) | cuentan hasta su valor en 600 ms; barra de salud se llena en 800 ms |
+| Hover de menú, botones, chips y filas | transición de 140 ms |
+| Rueda del ratón | desplazamiento suavizado (constante de 70 ms) |
+
+Barra lateral y superior no se animan. **Coste:** un temporizador de 16 ms solo existe mientras algo se mueve (`UiHandler::animating`); medido, ~37 % de un núcleo durante los ~2 s de entrada y **0 %** en reposo.
 
 ## Cómo está construido
 
@@ -87,6 +101,6 @@ purifex          shell/: conecta Core, Ui y la ventana. Sin lógica
 
 Bucle: mensaje del sistema → `UiEvent` → `Ui::event` → `Action` → `Core::apply` → `Ui::frame(Model)` → lista de dibujo → Direct2D. La ventana espera en `GetMessage`: **sin eventos no hay CPU**. Una acción que necesita leer (reescanear) marca «leyendo», la ventana pinta eso y solo entonces `Core::tick` lee, así que la pantalla nunca queda congelada sin explicación.
 
-**Medido** (2026-11-18, ventana abierta y quieta): 1 proceso, 48 MB, 0 % de CPU; `scan` sin ventana, 9 MB de pico. Cerrar la ventana termina el programa.
+**Medido** (2026-11-18, ventana abierta y quieta, animaciones terminadas): 1 proceso, 48 MB, 0 % de CPU; `scan` sin ventana, 9 MB de pico. Cerrar la ventana termina el programa.
 
 `purifex ui --screenshot archivo.png [--page overview|drivers|sessions] [--size 1440x900] [--scale 2]` dibuja la misma pantalla sin abrir la ventana: es como se compara con la referencia desde un script.

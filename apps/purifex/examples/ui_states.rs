@@ -5,6 +5,8 @@
 
 #[cfg(windows)]
 mod states {
+    use std::time::Duration;
+
     use purifex_domain::draw::DrawList;
     use purifex_domain::fix::{
         FixReport, HistoryEntry, HistoryState, Proposal, SettingValue, LOL_CLOSE_CLIENT,
@@ -20,9 +22,13 @@ mod states {
     }
 
     impl UiHandler for Fixed {
-        fn frame(&mut self, w: f32, h: f32, text: &dyn TextMetrics) -> DrawList {
-            self.ui.frame(&self.model, w, h, text)
+        fn frame(&mut self, w: f32, h: f32, text: &dyn TextMetrics, now: Duration) -> DrawList {
+            self.ui.frame(&self.model, w, h, text, now)
         }
+        fn animating(&self) -> bool {
+            false
+        }
+        fn set_reduced_motion(&mut self, _: bool) {}
         fn event(&mut self, _: UiEvent) -> Reaction {
             Reaction::default()
         }

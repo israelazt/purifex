@@ -2,6 +2,7 @@
 //! (`Ui`) and the system's window. No decision is made here.
 
 use std::path::Path;
+use std::time::Duration;
 
 use purifex_app::{Core, Screenshot, Services, UiOptions};
 use purifex_domain::draw::DrawList;
@@ -17,8 +18,22 @@ struct Handler {
 }
 
 impl UiHandler for Handler {
-    fn frame(&mut self, width: f32, height: f32, text: &dyn TextMetrics) -> DrawList {
-        self.ui.frame(self.core.model(), width, height, text)
+    fn frame(
+        &mut self,
+        width: f32,
+        height: f32,
+        text: &dyn TextMetrics,
+        now: Duration,
+    ) -> DrawList {
+        self.ui.frame(self.core.model(), width, height, text, now)
+    }
+
+    fn animating(&self) -> bool {
+        self.ui.animating()
+    }
+
+    fn set_reduced_motion(&mut self, reduced: bool) {
+        self.ui.set_reduced_motion(reduced);
     }
 
     fn event(&mut self, event: UiEvent) -> Reaction {

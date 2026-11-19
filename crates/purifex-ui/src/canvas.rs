@@ -6,6 +6,7 @@ use purifex_domain::draw::{Color, DrawList, Op, Rect, TextStyle};
 use purifex_domain::ports::TextMetrics;
 use purifex_domain::view::Action;
 
+use crate::anim::{key_of, Anims};
 use crate::theme;
 
 /// A place that does something when clicked.
@@ -26,6 +27,14 @@ pub struct Canvas<'a> {
     search_box: Option<Rect>,
     /// The search box has the keyboard (the page draws it lit, with its caret).
     pub search_focus: bool,
+    /// The motion that goes on across pictures (hover, numbers, entrances).
+    anims: Anims,
+    /// How see-through what is drawn now is, and how far below its place (while a
+    /// block of the page is appearing).
+    alpha: f32,
+    dy: f32,
+    /// When the page began to appear.
+    entered_ms: u64,
 }
 
 impl<'a> Canvas<'a> {
@@ -38,7 +47,72 @@ impl<'a> Canvas<'a> {
             clips: Vec::new(),
             search_box: None,
             search_focus: false,
+            anims: Anims::default(),
+            alpha: 1.0,
+            dy: 0.0,
+            entered_ms: 0,
         }
+    }
+
+    /// With the motion of the interface, as it goes on across pictures.
+    pub fn with_anims(mut self, anims: Anims, entered_ms: u64) -> Self {
+        self.anims = anims;
+        self.entered_ms = entered_ms;
+        self
+    }
+
+    /// The motion, back to whoever keeps it between pictures.
+    pub fn take_anims(&mut self) -> Anims {
+        std::mem::take(&mut self.anims)
+    }
+
+    /// A color with the opacity of the block being drawn.
+    fn tint(&self, color: Color) -> Color {
+        if self.alpha >= 1.0 {
+            color
+        } else {
+            color.with_alpha(f32::from(color.a) / 255.0 * self.alpha)
+        }
+    }
+
+    fn lowered(&self, rect: Rect) -> Rect {
+        if self.dy == 0.0 {
+            rect
+        } else {
+            rect.shifted(self.dy)
+        }
+    }
+
+    /// From here on what is drawn belongs to a block that began to appear `delay_ms`
+    /// after the page did: it fades in and rises a little. `0` is the page itself.
+    pub fn reveal(&mut self, delay_ms: u64) {
+        (self.alpha, self.dy) = self.anims.reveal(self.entered_ms, delay_ms);
+    }
+
+    /// What is drawn from here on is not part of an appearing block: opaque and in place.
+    pub fn rest(&mut self) {
+        (self.alpha, self.dy) = (1.0, 0.0);
+    }
+
+    /// How much `rect` is hovered, 0 to 1, moving smoothly (see `Anims::hover`).
+    pub fn hover(&mut self, rect: Rect) -> f32 {
+        let inside = self.hovered(rect);
+        self.anims.hover(key_of(rect), inside)
+    }
+
+    /// A number on its way to `target` (see `Anims::value`).
+    pub fn value(&mut self, name: &'static str, target: f32, duration_ms: u64) -> f32 {
+        self.anims.value(name, target, duration_ms)
+    }
+
+    /// Marks that something still moves.
+    pub fn keep_going(&mut self) {
+        self.anims.keep_going();
+    }
+
+    /// Whether the motion of this picture is not over.
+    pub fn moving(&self) -> bool {
+        self.anims.active()
     }
 
     /// The page tells where its search box is, so a click there gives it the keys.
@@ -56,29 +130,29 @@ impl<'a> Canvas<'a> {
 
     pub fn fill(&mut self, rect: Rect, radius: f32, color: Color) {
         self.list.push(Op::Fill {
-            rect,
+            rect: self.lowered(rect),
             radius,
-            color,
+            color: self.tint(color),
         });
     }
 
     pub fn stroke(&mut self, rect: Rect, radius: f32, width: f32, color: Color) {
         self.list.push(Op::Stroke {
-            rect,
+            rect: self.lowered(rect),
             radius,
             width,
-            color,
+            color: self.tint(color),
         });
     }
 
     pub fn line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: Color) {
         self.list.push(Op::Line {
             x1,
-            y1,
+            y1: y1 + self.dy,
             x2,
-            y2,
+            y2: y2 + self.dy,
             width: 1.0,
-            color,
+            color: self.tint(color),
         });
     }
 
@@ -86,10 +160,17 @@ impl<'a> Canvas<'a> {
         self.list.push(Op::Icon {
             name,
             x,
-            y,
+            y: y + self.dy,
             size,
-            color,
+            color: self.tint(color),
         });
+    }
+
+    fn tinted(&self, style: TextStyle) -> TextStyle {
+        TextStyle {
+            color: self.tint(style.color),
+            ..style
+        }
     }
 
     pub fn clip(&mut self, rect: Rect) {
@@ -118,9 +199,9 @@ impl<'a> Canvas<'a> {
         let width = self.width(text, &style);
         self.list.push(Op::Text {
             x,
-            y,
+            y: y + self.dy,
             text: text.to_string(),
-            style,
+            style: self.tinted(style),
             max_width: None,
         });
         width
@@ -130,9 +211,9 @@ impl<'a> Canvas<'a> {
     pub fn text_cut(&mut self, x: f32, y: f32, text: &str, style: TextStyle, max_width: f32) {
         self.list.push(Op::Text {
             x,
-            y,
+            y: y + self.dy,
             text: text.to_string(),
-            style,
+            style: self.tinted(style),
             max_width: Some(max_width.max(1.0)),
         });
     }
@@ -200,9 +281,9 @@ impl<'a> Canvas<'a> {
         for (i, line) in lines.iter().enumerate() {
             self.list.push(Op::Text {
                 x,
-                y: y + step * i as f32,
+                y: y + step * i as f32 + self.dy,
                 text: line.clone(),
-                style,
+                style: self.tinted(style),
                 max_width: Some(width + 1.0),
             });
         }
@@ -212,7 +293,7 @@ impl<'a> Canvas<'a> {
     /// Registers a place that does `action` when clicked.
     pub fn hit(&mut self, rect: Rect, action: Action) {
         self.hits.push(Hit {
-            rect,
+            rect: self.lowered(rect),
             clip: self.clips.last().copied(),
             action,
         });

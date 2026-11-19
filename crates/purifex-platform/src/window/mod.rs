@@ -63,46 +63,20 @@ unsafe extern "system" fn procedure<H: UiHandler>(
 }
 
 /// Opens the window (`width` x `height` units) and runs until it is closed.
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn run<H: UiHandler>(
     title: &str,
     width: f32,
     height: f32,
     handler: &mut H,
 ) -> Result<(), String> {
-    // SAFETY: the whole of window creation and the message loop, with live
-    // arguments; the state outlives the window and is freed after the loop.
+    // SAFETY: the system calls of creating a window and running its message loop,
+    // each with live arguments (see the functions); the state outlives the window and
+    // is freed after the loop, or here if the window could not be created.
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let instance = GetModuleHandleW(None).map_err(|e| e.to_string())?;
-        let class = w!("PurifexWindow");
-        let description = WNDCLASSEXW {
-            cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
-            style: CS_HREDRAW | CS_VREDRAW,
-            lpfnWndProc: Some(procedure::<H>),
-            hInstance: instance.into(),
-            hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
-            lpszClassName: class,
-            ..Default::default()
-        };
-        if RegisterClassExW(&description) == 0 {
-            return Err("no se pudo registrar la ventana".into());
-        }
+        register_class::<H>(instance)?;
         let dpi = GetDpiForSystem();
-        let scale = dpi as f32 / 96.0;
-        let mut frame = RECT {
-            left: 0,
-            top: 0,
-            right: (width * scale) as i32,
-            bottom: (height * scale) as i32,
-        };
-        let _ = AdjustWindowRectExForDpi(
-            &mut frame,
-            WS_OVERLAPPEDWINDOW,
-            false,
-            Default::default(),
-            dpi,
-        );
         let state = Box::into_raw(Box::new(State {
             handler: handler as *mut H,
             renderer: None,
@@ -111,21 +85,109 @@ pub fn run<H: UiHandler>(
             opened: Instant::now(),
             timer: false,
         }));
-        // "Show animations in Windows" turned off: the interface does not move.
-        let mut animations = windows::core::BOOL(1);
-        let asked = SystemParametersInfoW(
+        if animations_are_off() {
+            (*state).handler().set_reduced_motion(true);
+        }
+        let frame = outer_frame(width, height, dpi);
+        let hwnd = match create_window(title, instance, frame, state) {
+            Ok(hwnd) => hwnd,
+            Err(error) => {
+                drop(Box::from_raw(state));
+                return Err(error);
+            }
+        };
+        (*state).dpi = GetDpiForWindow(hwnd).max(96);
+        style_caption(hwnd);
+        icon::set(hwnd);
+        let _ = ShowWindow(hwnd, SW_SHOW);
+        // The first picture goes before anything is read; then a tick, if the
+        // program has something to read.
+        let _ = UpdateWindow(hwnd);
+        let _ = PostMessageW(Some(hwnd), WM_APP, WPARAM(0), LPARAM(0));
+        run_message_loop();
+        drop(Box::from_raw(state));
+    }
+    Ok(())
+}
+
+/// Registers the class of the window, whose procedure is `procedure::<H>`.
+///
+/// # Safety
+/// `instance` is the handle of this module.
+unsafe fn register_class<H: UiHandler>(
+    instance: windows::Win32::Foundation::HMODULE,
+) -> Result<(), String> {
+    let description = WNDCLASSEXW {
+        cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+        style: CS_HREDRAW | CS_VREDRAW,
+        lpfnWndProc: Some(procedure::<H>),
+        hInstance: instance.into(),
+        // SAFETY: a stock cursor, no instance needed.
+        hCursor: unsafe { LoadCursorW(None, IDC_ARROW) }.unwrap_or_default(),
+        lpszClassName: w!("PurifexWindow"),
+        ..Default::default()
+    };
+    // SAFETY: `description` is fully initialised and outlives the call.
+    if unsafe { RegisterClassExW(&description) } == 0 {
+        return Err("no se pudo registrar la ventana".into());
+    }
+    Ok(())
+}
+
+/// "Show animations in Windows" turned off: the interface must not move.
+fn animations_are_off() -> bool {
+    let mut animations = windows::core::BOOL(1);
+    // SAFETY: the output is a `BOOL`, as `SPI_GETCLIENTAREAANIMATION` writes.
+    let asked = unsafe {
+        SystemParametersInfoW(
             SPI_GETCLIENTAREAANIMATION,
             0,
             Some(&mut animations as *mut _ as *mut c_void),
             SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
-        );
-        if asked.is_ok() && !animations.as_bool() {
-            (*state).handler().set_reduced_motion(true);
-        }
-        let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
-        let hwnd = CreateWindowExW(
+        )
+    };
+    asked.is_ok() && !animations.as_bool()
+}
+
+/// The size of the whole window (borders and caption included) that holds a client area
+/// of `width` x `height` units at `dpi`.
+fn outer_frame(width: f32, height: f32, dpi: u32) -> RECT {
+    let scale = dpi as f32 / 96.0;
+    let mut frame = RECT {
+        left: 0,
+        top: 0,
+        right: (width * scale) as i32,
+        bottom: (height * scale) as i32,
+    };
+    // SAFETY: `frame` is a live rectangle.
+    let _ = unsafe {
+        AdjustWindowRectExForDpi(
+            &mut frame,
+            WS_OVERLAPPEDWINDOW,
+            false,
             Default::default(),
-            class,
+            dpi,
+        )
+    };
+    frame
+}
+
+/// Creates the window; `state` is handed to the procedure on `WM_NCCREATE`.
+///
+/// # Safety
+/// `state` points to a live `State<H>` that outlives the window.
+unsafe fn create_window<H: UiHandler>(
+    title: &str,
+    instance: windows::Win32::Foundation::HMODULE,
+    frame: RECT,
+    state: *mut State<H>,
+) -> Result<HWND, String> {
+    let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: the class was registered; `wide` is NUL-terminated and outlives the call.
+    unsafe {
+        CreateWindowExW(
+            Default::default(),
+            w!("PurifexWindow"),
             PCWSTR(wide.as_ptr()),
             WS_OVERLAPPEDWINDOW,
             CW_USEDEFAULT,
@@ -137,12 +199,16 @@ pub fn run<H: UiHandler>(
             Some(instance.into()),
             Some(state as *const c_void),
         )
-        .map_err(|e| format!("no se pudo crear la ventana: {e}"))?;
-        (*state).dpi = GetDpiForWindow(hwnd).max(96);
+    }
+    .map_err(|e| format!("no se pudo crear la ventana: {e}"))
+}
 
-        // A dark caption and border, as the page: a hint to Windows 11 that older
-        // versions ignore.
-        let dark: i32 = 1;
+/// A dark caption and border, as the page: a hint to Windows 11 that older versions
+/// ignore.
+fn style_caption(hwnd: HWND) {
+    let dark: i32 = 1;
+    // SAFETY: each value is a live 4-byte integer, the size the attributes take.
+    unsafe {
         let _ = DwmSetWindowAttribute(
             hwnd,
             DWMWA_USE_IMMERSIVE_DARK_MODE,
@@ -156,19 +222,17 @@ pub fn run<H: UiHandler>(
         ] {
             let _ = DwmSetWindowAttribute(hwnd, attribute, &value as *const _ as *const c_void, 4);
         }
+    }
+}
 
-        icon::set(hwnd);
-        let _ = ShowWindow(hwnd, SW_SHOW);
-        // The first picture goes before anything is read; then a tick, if the
-        // program has something to read.
-        let _ = UpdateWindow(hwnd);
-        let _ = PostMessageW(Some(hwnd), WM_APP, WPARAM(0), LPARAM(0));
-        let mut message = MSG::default();
+/// Waits for messages and hands each to the window's procedure, until the window closes.
+fn run_message_loop() {
+    let mut message = MSG::default();
+    // SAFETY: `message` is a live `MSG`; the calls only read it and the window's state.
+    unsafe {
         while GetMessageW(&mut message, None, 0, 0).as_bool() {
             let _ = TranslateMessage(&message);
             DispatchMessageW(&message);
         }
-        drop(Box::from_raw(state));
     }
-    Ok(())
 }

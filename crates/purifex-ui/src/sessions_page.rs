@@ -10,6 +10,7 @@ use purifex_domain::view::{Action, Model};
 
 use crate::canvas::Canvas;
 use crate::compare_panel;
+use crate::lead_list;
 use crate::page;
 use crate::theme::{self, Tone};
 use crate::widgets::{icon_box, panel};
@@ -122,31 +123,46 @@ fn number(row: &StatRow, value: f32) -> String {
 }
 
 /// The detail of the chosen recording; returns its height.
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
 fn detail(c: &mut Canvas, a: &Analysis, comparison: Option<&ComparisonReport>, rect: Rect) -> f32 {
-    // The leads, measured first so the panel is as tall as what it holds.
-    let title_style = theme::sans(14.0, theme::TEXT).bold();
-    let text_style = theme::mono(12.0, theme::TEXT_2);
-    let wrap_w = rect.w - 36.0 - 30.0;
-    let leads: Vec<(String, Vec<String>)> = a
-        .findings
-        .iter()
-        .map(|f| {
-            (
-                f.title.clone(),
-                c.wrap(&f.evidence, &text_style, wrap_w, None),
-            )
-        })
-        .collect();
-    let mut head_h = 56.0 + 16.0;
-    if leads.is_empty() {
-        head_h += 34.0;
+    let top = leads_panel(c, a, rect);
+    let mut below = top.bottom() + 16.0;
+    if let Some(report) = comparison {
+        let h = compare_panel::height(c, report, rect.w);
+        compare_panel::draw(c, report, Rect::new(rect.x, below, rect.w, h));
+        below += h + 16.0;
     }
-    for (_, lines) in &leads {
-        head_h += 26.0 + lines.len() as f32 * (c.line_height(&text_style) + 2.0) + 22.0;
-    }
-    let top = Rect::new(rect.x, rect.y, rect.w, head_h);
+    let table = measures_table(c, a, rect, below);
+    table.bottom() - rect.y
+}
+
+/// The panel of the recording: its id, who played, and the leads it suggests. Returns the
+/// rectangle it took (measured first, so it is as tall as what it holds).
+fn leads_panel(c: &mut Canvas, a: &Analysis, rect: Rect) -> Rect {
+    let leads = lead_list::wrap(c, &a.findings, rect.w - 36.0 - 30.0);
+    let top = Rect::new(
+        rect.x,
+        rect.y,
+        rect.w,
+        lead_list::height(c, &leads, 56.0 + 16.0),
+    );
     panel(c, top);
+    recording_head(c, a, top);
+    let y = top.y + 72.0;
+    if leads.is_empty() {
+        c.icon("circle-check", top.x + 18.0, y, 16.0, theme::TEXT_3);
+        c.text(
+            top.x + 42.0,
+            y,
+            "Nada destacable en esta partida.",
+            theme::mono(12.5, theme::TEXT_3),
+        );
+    }
+    lead_list::draw(c, top, y, &leads);
+    top
+}
+
+/// The id of the recording, who played it and for how long.
+fn recording_head(c: &mut Canvas, a: &Analysis, top: Rect) {
     c.icon(
         "chart-no-axes-combined",
         top.x + 18.0,
@@ -160,17 +176,10 @@ fn detail(c: &mut Canvas, a: &Analysis, comparison: Option<&ComparisonReport>, r
         &a.id.to_uppercase(),
         theme::mono(12.0, theme::TEXT).tracked(1.0),
     );
+    let seconds = duration_text(a.summary.seconds);
     let who = match &a.header {
-        Some(h) => format!(
-            "{} · {} núcleos · {}",
-            h.game,
-            h.cores,
-            duration_text(a.summary.seconds)
-        ),
-        None => format!(
-            "sin cabecera (grabación antigua) · {}",
-            duration_text(a.summary.seconds)
-        ),
+        Some(h) => format!("{} · {} núcleos · {seconds}", h.game, h.cores),
+        None => format!("sin cabecera (grabación antigua) · {seconds}"),
     };
     let who_style = theme::mono(11.5, theme::TEXT_3);
     c.text(
@@ -186,41 +195,12 @@ fn detail(c: &mut Canvas, a: &Analysis, comparison: Option<&ComparisonReport>, r
         top.y + 56.0,
         theme::LINE_SOFT,
     );
-    let mut y = top.y + 72.0;
-    if leads.is_empty() {
-        c.icon("circle-check", top.x + 18.0, y, 16.0, theme::TEXT_3);
-        c.text(
-            top.x + 42.0,
-            y,
-            "Nada destacable en esta partida.",
-            theme::mono(12.5, theme::TEXT_3),
-        );
-    }
-    for (title, lines) in leads {
-        c.icon("triangle-alert", top.x + 18.0, y + 1.0, 18.0, theme::AMBER);
-        c.text(top.x + 48.0, y, &title, title_style);
-        y += 26.0;
-        for line in lines {
-            c.text(top.x + 48.0, y, &line, text_style);
-            y += c.line_height(&text_style) + 2.0;
-        }
-        y += 22.0;
-    }
+}
 
-    // The table of measures.
+/// The table of measures (average, 95th percentile, maximum) and what measuring cost.
+fn measures_table(c: &mut Canvas, a: &Analysis, rect: Rect, y: f32) -> Rect {
     let rows = a.stat_rows();
-    let mut below = top.bottom() + 16.0;
-    if let Some(report) = comparison {
-        let h = compare_panel::height(c, report, rect.w);
-        compare_panel::draw(c, report, Rect::new(rect.x, below, rect.w, h));
-        below += h + 16.0;
-    }
-    let table = Rect::new(
-        rect.x,
-        below,
-        rect.w,
-        44.0 + rows.len() as f32 * 40.0 + 44.0,
-    );
+    let table = Rect::new(rect.x, y, rect.w, 44.0 + rows.len() as f32 * 40.0 + 44.0);
     panel(c, table);
     let columns = [
         table.right() - 16.0 - 100.0 * 3.0,
@@ -242,35 +222,45 @@ fn detail(c: &mut Canvas, a: &Analysis, comparison: Option<&ComparisonReport>, r
     );
     for (i, row) in rows.iter().enumerate() {
         let bar = Rect::new(table.x, table.y + 44.0 + i as f32 * 40.0, table.w, 40.0);
-        c.line(
-            bar.x,
-            bar.bottom() - 0.5,
-            bar.right(),
-            bar.bottom() - 0.5,
-            theme::LINE_SOFT,
-        );
-        c.text_in(
-            bar.x + 16.0,
-            bar,
-            &row.label,
-            theme::mono(12.5, theme::TEXT),
-        );
-        for (x, value) in columns
-            .iter()
-            .zip([row.stat.avg, row.stat.p95, row.stat.max])
-        {
-            c.text_right(
-                x + 100.0,
-                bar,
-                &number(row, value),
-                theme::mono(12.5, theme::TEXT).bold(),
-            );
-        }
+        measure_row(c, row, bar, &columns);
     }
-    let foot = table.bottom() - 44.0;
+    measuring_cost(c, a, table);
+    table
+}
+
+fn measure_row(c: &mut Canvas, row: &StatRow, bar: Rect, columns: &[f32; 3]) {
+    c.line(
+        bar.x,
+        bar.bottom() - 0.5,
+        bar.right(),
+        bar.bottom() - 0.5,
+        theme::LINE_SOFT,
+    );
+    c.text_in(
+        bar.x + 16.0,
+        bar,
+        &row.label,
+        theme::mono(12.5, theme::TEXT),
+    );
+    for (x, value) in columns
+        .iter()
+        .zip([row.stat.avg, row.stat.p95, row.stat.max])
+    {
+        c.text_right(
+            x + 100.0,
+            bar,
+            &number(row, value),
+            theme::mono(12.5, theme::TEXT).bold(),
+        );
+    }
+}
+
+/// The foot of the table: how long one sample took to measure.
+fn measuring_cost(c: &mut Canvas, a: &Analysis, table: Rect) {
+    let foot = Rect::new(table.x, table.bottom() - 44.0, table.w, 44.0);
     c.text_in(
         table.x + 16.0,
-        Rect::new(table.x, foot, table.w, 44.0),
+        foot,
         "Medir costó",
         theme::mono(11.0, theme::TEXT_3),
     );
@@ -278,14 +268,12 @@ fn detail(c: &mut Canvas, a: &Analysis, comparison: Option<&ComparisonReport>, r
         "{:.1} ms por muestra",
         a.summary.sample_cost_us.avg / 1000.0
     );
-    let cost_style = theme::mono(11.0, theme::ACCENT).bold();
     c.text_right(
         table.right() - 16.0,
-        Rect::new(table.x, foot, table.w, 44.0),
+        foot,
         &cost,
-        cost_style,
+        theme::mono(11.0, theme::ACCENT).bold(),
     );
-    table.bottom() - rect.y
 }
 
 /// Draws the page in `area` and returns the height it used.

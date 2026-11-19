@@ -5,35 +5,32 @@ use purifex_domain::draw::Rect;
 use purifex_domain::overview::{ConsoleLine, Overview};
 
 use crate::canvas::Canvas;
+use crate::lead_list;
 use crate::theme::{self, Tone};
 use crate::widgets::{dot, panel};
 
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
+/// The panel of the leads of the last game; returns the height it used.
 pub(crate) fn leads(c: &mut Canvas, area: Rect, o: &Overview) -> f32 {
-    let findings = o.session.as_ref().map(|s| s.findings.as_slice());
-    let style_title = theme::sans(14.0, theme::TEXT).bold();
-    let style_text = theme::mono(12.0, theme::TEXT_2);
     // Measure first, so the panel is as tall as what it holds.
-    let wrap_w = area.w - 36.0 - 30.0;
-    let mut height = 56.0 + 8.0;
-    let rows: Vec<(String, Vec<String>)> = findings
-        .unwrap_or_default()
-        .iter()
-        .map(|f| {
-            (
-                f.title.clone(),
-                c.wrap(&f.evidence, &style_text, wrap_w, None),
-            )
-        })
-        .collect();
-    if rows.is_empty() {
-        height += 34.0;
-    }
-    for (_, lines) in &rows {
-        height += 20.0 + 6.0 + lines.len() as f32 * (c.line_height(&style_text) + 2.0) + 22.0;
-    }
+    let findings = o
+        .session
+        .as_ref()
+        .map_or(&[][..], |s| s.findings.as_slice());
+    let wrapped = lead_list::wrap(c, findings, area.w - 36.0 - 30.0);
+    let height = lead_list::height(c, &wrapped, 56.0 + 8.0);
     let rect = Rect::new(area.x, area.y, area.w, height);
     panel(c, rect);
+    leads_head(c, rect, o);
+    let y = rect.y + 70.0;
+    if wrapped.is_empty() {
+        no_leads(c, rect, y, o.session.is_some());
+    }
+    lead_list::draw(c, rect, y, &wrapped);
+    height + 20.0
+}
+
+/// The title of the panel and the id of the game it speaks of.
+fn leads_head(c: &mut Canvas, rect: Rect, o: &Overview) {
     c.icon(
         "list-checks",
         rect.x + 18.0,
@@ -64,27 +61,17 @@ pub(crate) fn leads(c: &mut Canvas, area: Rect, o: &Overview) -> f32 {
         rect.y + 56.0,
         theme::LINE_SOFT,
     );
-    let mut y = rect.y + 70.0;
-    if rows.is_empty() {
-        let text = if o.session.is_some() {
-            "Nada destacable en la última partida."
-        } else {
-            "Sin partidas grabadas: aún no hay pistas."
-        };
-        c.icon("circle-check", rect.x + 18.0, y, 16.0, theme::TEXT_3);
-        c.text(rect.x + 42.0, y, text, theme::mono(12.5, theme::TEXT_3));
-    }
-    for (title, lines) in rows {
-        c.icon("triangle-alert", rect.x + 18.0, y + 1.0, 18.0, theme::AMBER);
-        c.text(rect.x + 48.0, y, &title, style_title);
-        y += 26.0;
-        for line in lines {
-            c.text(rect.x + 48.0, y, &line, style_text);
-            y += c.line_height(&style_text) + 2.0;
-        }
-        y += 22.0;
-    }
-    height + 20.0
+}
+
+/// What the panel says when there is nothing to point at.
+fn no_leads(c: &mut Canvas, rect: Rect, y: f32, has_game: bool) {
+    let text = if has_game {
+        "Nada destacable en la última partida."
+    } else {
+        "Sin partidas grabadas: aún no hay pistas."
+    };
+    c.icon("circle-check", rect.x + 18.0, y, 16.0, theme::TEXT_3);
+    c.text(rect.x + 42.0, y, text, theme::mono(12.5, theme::TEXT_3));
 }
 
 pub(crate) fn tag_color(tag: &str) -> Tone {

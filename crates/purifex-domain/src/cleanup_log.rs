@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::app_traces::Trace;
+use crate::view::{REGISTRY_ROOM, TRACES_LISTED};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -48,7 +49,7 @@ pub fn next_seq(entries: &[CleanupEntry]) -> u64 {
 }
 
 /// What `clean` did, or would do.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct CleanReport {
     pub app: String,
     /// Only said what it would remove: nothing was touched.
@@ -57,14 +58,33 @@ pub struct CleanReport {
     /// What was proposed (for a preview) and what could not be removed, with why.
     pub proposed: Vec<Trace>,
     pub failed: Vec<(Trace, String)>,
+    /// The search ran out of time (reading shortcuts on a slow disk) and may have missed
+    /// some traces: it should be looked for again.
+    pub incomplete: bool,
 }
 
 impl CleanReport {
+    /// The traces the window lists, in the order it lists them: files and folders first,
+    /// then the registry, each biggest first. At most `TRACES_LISTED`; when both kinds exist
+    /// the registry keeps some room. What does not fit is only removed by taking all.
+    pub fn listed(&self) -> Vec<&Trace> {
+        let (registry, files): (Vec<&Trace>, Vec<&Trace>) =
+            self.proposed.iter().partition(|t| t.is_registry());
+        let files_room = TRACES_LISTED - registry.len().min(REGISTRY_ROOM);
+        let shown_files = files.len().min(files_room);
+        let shown_registry = registry.len().min(TRACES_LISTED - shown_files);
+        files
+            .into_iter()
+            .take(shown_files)
+            .chain(registry.into_iter().take(shown_registry))
+            .collect()
+    }
+
     pub fn to_text(&self) -> String {
         use std::fmt::Write;
         let mut out = String::new();
         if self.preview {
-            out.push_str(&crate::app_traces::traces_to_text_for(
+            out.push_str(&crate::trace_text::traces_to_text_for(
                 &self.app,
                 &self.proposed,
             ));
@@ -93,7 +113,7 @@ Para quitarlos (a cuarentena, con deshacer): purifex apps clean \"{}\" --yes",
             let _ = writeln!(
                 out,
                 "Quitado: {}",
-                crate::app_traces::Counts::of(&removed).to_text()
+                crate::trace_text::Counts::of(&removed).to_text()
             );
             out.push_str("Se pueden devolver con `purifex apps restore N`.");
         }
@@ -110,7 +130,7 @@ Para quitarlos (a cuarentena, con deshacer): purifex apps clean \"{}\" --yes",
         } else {
             self.removed.iter().map(|e| e.trace.clone()).collect()
         };
-        let counts = crate::app_traces::Counts::of(&traces);
+        let counts = crate::trace_text::Counts::of(&traces);
         if let Some(object) = json.as_object_mut() {
             object.insert(
                 "counts".into(),
@@ -192,6 +212,76 @@ pub fn cleanup_to_text(entries: &[CleanupEntry]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn report_of(files: usize, registry: usize) -> CleanReport {
+        let file = |i: usize| Trace {
+            location: format!(r"C:\x\file{i}"),
+            bytes: 100 - i as u64,
+            ..Default::default()
+        };
+        let key = |i: usize| Trace {
+            kind: TraceKind::RegistryKey,
+            location: format!(r"HKCU\Software\key{i}"),
+            ..Default::default()
+        };
+        CleanReport {
+            // Mixed on purpose: the order of `proposed` is by size, not by kind.
+            proposed: (0..registry).map(key).chain((0..files).map(file)).collect(),
+            ..Default::default()
+        }
+    }
+
+    fn kinds(report: &CleanReport) -> (usize, usize) {
+        let listed = report.listed();
+        let registry = listed.iter().filter(|t| t.is_registry()).count();
+        (listed.len() - registry, registry)
+    }
+
+    #[test]
+    fn the_list_has_files_first_then_registry_and_keeps_room_for_both() {
+        assert_eq!(
+            kinds(&report_of(7, 10)),
+            (5, 4),
+            "room kept for the registry"
+        );
+        assert_eq!(
+            kinds(&report_of(20, 2)),
+            (7, 2),
+            "few registry entries: all of them"
+        );
+        assert_eq!(kinds(&report_of(2, 20)), (2, 7), "few files: all of them");
+        assert_eq!(kinds(&report_of(20, 0)), (TRACES_LISTED, 0));
+        assert_eq!(kinds(&report_of(0, 20)), (0, TRACES_LISTED));
+        assert_eq!(kinds(&report_of(3, 3)), (3, 3));
+        assert!(report_of(0, 0).listed().is_empty());
+        let report = report_of(7, 10);
+        let listed = report.listed();
+        assert!(
+            !listed[0].is_registry() && listed[8].is_registry(),
+            "files first"
+        );
+        assert_eq!(
+            listed[0].location, r"C:\x\file0",
+            "each group keeps its order"
+        );
+    }
+
+    #[test]
+    fn a_registry_value_is_told_from_its_neighbours_by_its_key_and_name() {
+        let value = |name: &str| Trace {
+            kind: TraceKind::RegistryValue,
+            location: r"HKCU\Software\Cache".into(),
+            value: Some(name.into()),
+            ..Default::default()
+        };
+        assert_ne!(value("a").key(), value("b").key());
+        let folder = Trace {
+            location: r"C:\x".into(),
+            ..Default::default()
+        };
+        assert_eq!(folder.key(), r"C:\x", "a file or a folder is its place");
+        assert!(value("a").is_registry() && !folder.is_registry());
+    }
+
     fn mixed_report(preview: bool) -> CleanReport {
         use crate::app_traces::Evidence;
         let folder = Trace {
@@ -231,6 +321,7 @@ mod tests {
             removed: if preview { vec![] } else { entries(&all) },
             proposed: if preview { all.to_vec() } else { vec![] },
             failed: vec![],
+            ..Default::default()
         }
     }
 

@@ -56,9 +56,7 @@ type Removals = (Vec<CleanupEntry>, Vec<(Trace, String)>);
 fn select(proposed: Vec<Trace>, only: Option<&[String]>) -> Vec<Trace> {
     proposed
         .into_iter()
-        .filter(|t| {
-            only.is_none_or(|keep| keep.iter().any(|k| k.eq_ignore_ascii_case(&t.location)))
-        })
+        .filter(|t| only.is_none_or(|keep| keep.iter().any(|k| k.eq_ignore_ascii_case(&t.key()))))
         .collect()
 }
 
@@ -197,9 +195,9 @@ impl Cleaning {
             return Ok(CleanReport {
                 app: app.name,
                 preview: true,
-                removed: vec![],
                 proposed,
-                failed: vec![],
+                incomplete: found.incomplete,
+                ..Default::default()
             });
         }
         if installed {
@@ -209,10 +207,10 @@ impl Cleaning {
         let (removed, failed) = self.remove_all(&app.name, &chosen)?;
         Ok(CleanReport {
             app: app.name,
-            preview: false,
             removed,
-            proposed: vec![],
             failed,
+            incomplete: found.incomplete,
+            ..Default::default()
         })
     }
 
@@ -463,6 +461,7 @@ mod tests {
             Ok(purifex_domain::ports::Found {
                 seeds: self.1.clone(),
                 candidates: self.0.clone(),
+                incomplete: false,
             })
         }
     }
@@ -532,5 +531,31 @@ mod tests {
         assert!(c.restore(seq).unwrap_err().contains("ya se devolvió"));
         assert!(c.restore(99).unwrap_err().contains("no hay ninguna"));
         assert_eq!(c.history().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn one_value_of_a_key_can_be_removed_without_its_neighbour() {
+        let folder_seed = r"C:\Program Files\Discord";
+        let value = |name: &str| Candidate {
+            kind: TraceKind::RegistryValue,
+            location:
+                r"HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache"
+                    .into(),
+            value: Some(format!(r"{folder_seed}\{name}.exe.FriendlyAppName")),
+            ..Default::default()
+        };
+        let seeds = purifex_domain::seeds::Seeds::new(Some(folder_seed), &[], &[]);
+        let log = Rc::new(RefCell::new(CleanLog::default()));
+        let mut c = Cleaning::new(
+            Box::new(SeedingFinder(vec![value("a"), value("b")], seeds)),
+            Box::new(FakeCleaning(log.clone())),
+            Box::new(FakeCleaning(log)),
+        );
+        let preview = c.clean(&[], &[], "Discord", false, None).unwrap();
+        assert_eq!(preview.proposed.len(), 2, "{:?}", preview.proposed);
+        let only = [preview.proposed[0].key()];
+        let done = c.clean(&[], &[], "Discord", true, Some(&only)).unwrap();
+        assert_eq!(done.removed.len(), 1, "only the chosen value goes");
+        assert_eq!(done.removed[0].trace.key(), only[0]);
     }
 }

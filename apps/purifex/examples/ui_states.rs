@@ -103,6 +103,7 @@ mod states {
         match state {
             "blocked" | "confirm" | "history" | "undo" => fixes_state(ready, state),
             "apps" => apps_state(ready, extra),
+            "kdenlive" => kdenlive_state(ready),
             "offers" => offers_state(ready),
             _ => ready,
         }
@@ -183,6 +184,108 @@ mod states {
         model
     }
 
+    /// The apps page after uninstalling Kdenlive: the traces of a real search (files, a
+    /// crash dump, registry keys and values), grouped as the window lists them.
+    fn kdenlive_state(mut model: Model) -> Model {
+        let traces = kdenlive_traces();
+        let counts = purifex_domain::trace_text::Counts::of(&traces.proposed).to_text();
+        model.page = Page::Apps;
+        model.uninstalled = Some("Kdenlive".into());
+        model.message = Some(format!(
+            "Kdenlive ya se desinstaló. Estos son los restos que dejó. {counts}"
+        ));
+        model.traces = Some(traces);
+        model.traces_open = true;
+        model
+    }
+
+    fn kdenlive_traces() -> purifex_domain::cleanup_log::CleanReport {
+        let mut proposed = kdenlive_files();
+        proposed.extend(kdenlive_registry());
+        purifex_domain::cleanup_log::CleanReport {
+            app: "Kdenlive".into(),
+            preview: true,
+            proposed,
+            ..Default::default()
+        }
+    }
+
+    /// The files of the user that Kdenlive left (user data).
+    fn kdenlive_files() -> Vec<purifex_domain::app_traces::Trace> {
+        use purifex_domain::app_traces::{Evidence, Trace};
+        let file = |location: String, bytes: u64, evidence: Evidence| Trace {
+            location,
+            bytes,
+            evidence,
+            user_data: true,
+            ..Default::default()
+        };
+        let local = r"C:\Users\yo\AppData\Local";
+        let recent = r"C:\Users\yo\AppData\Roaming\Microsoft\Windows\Recent";
+        vec![
+            file(
+                format!(r"{local}\CrashDumps\kdenlive.exe.33876.dmp"),
+                102_844_745,
+                Evidence::CrashDump,
+            ),
+            file(
+                format!(r"{local}\CrashDumps\kdenlive.exe(1).33876.dmp"),
+                102_674_430,
+                Evidence::CrashDump,
+            ),
+            file(format!(r"{local}\kdenliverc"), 47_438, Evidence::NamePrefix),
+            file(
+                format!(r"{recent}\Vídeo.kdenlive.lnk"),
+                1_200,
+                Evidence::AssociatedExtension,
+            ),
+            file(
+                format!(r"{local}\stalefiles\kdenlive"),
+                0,
+                Evidence::NameMatch,
+            ),
+        ]
+    }
+
+    /// The registry keys and values that Kdenlive left.
+    fn kdenlive_registry() -> Vec<purifex_domain::app_traces::Trace> {
+        use purifex_domain::app_traces::{Evidence, Trace, TraceKind};
+        let key = |location: String, evidence: Evidence| Trace {
+            kind: TraceKind::RegistryKey,
+            location,
+            evidence,
+            ..Default::default()
+        };
+        let mui = r"HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache";
+        let value = |name: &str| Trace {
+            kind: TraceKind::RegistryValue,
+            location: mui.into(),
+            value: Some(name.into()),
+            evidence: Evidence::PathReference,
+            ..Default::default()
+        };
+        let current = r"HKCU\Software\Microsoft\Windows\CurrentVersion";
+        let extension = Evidence::AssociatedExtension;
+        vec![
+            key(r"HKLM\SOFTWARE\Classes\.kdenlive".into(), extension),
+            key(
+                r"HKLM\SOFTWARE\Classes\Kdenlive".into(),
+                Evidence::Association,
+            ),
+            value(r"C:\Program Files\Kdenlive\bin\kdenlive.exe.FriendlyAppName"),
+            value(r"C:\Program Files\Kdenlive\uninstall.exe.ApplicationCompany"),
+            key(
+                format!(r"{current}\Notifications\Settings\kdenlive"),
+                Evidence::NameMatch,
+            ),
+            key(format!(r"{current}\Explorer\FileExts\.kdenlive"), extension),
+            key(
+                format!(r"{current}\Explorer\RecentDocs\.kdenlive"),
+                extension,
+            ),
+        ]
+    }
+
     /// The two traces that Inkscape left, as the preview lists them.
     fn inkscape_traces() -> purifex_domain::cleanup_log::CleanReport {
         use purifex_domain::app_traces::{Trace, TraceKind};
@@ -213,6 +316,7 @@ mod states {
                 ),
             ],
             failed: vec![],
+            ..Default::default()
         }
     }
 

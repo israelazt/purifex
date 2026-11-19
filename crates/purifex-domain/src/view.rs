@@ -29,6 +29,10 @@ pub enum Page {
 /// them all): the window has to fit in the smallest the program can be.
 pub const TRACES_LISTED: usize = 9;
 
+/// Of those, the room kept for the registry when files and registry entries both exist,
+/// so the list shows something of each.
+pub const REGISTRY_ROOM: usize = 4;
+
 /// What the user is being asked to confirm before something is changed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Confirm {
@@ -88,7 +92,7 @@ pub struct Model {
     pub finding: Option<String>,
     /// The window with the list of traces is open.
     pub traces_open: bool,
-    /// Places of the list the user unchecked (all start checked).
+    /// Traces of the list the user unchecked (all start checked), by `Trace::key`.
     pub unchecked: Vec<String>,
     /// What an apps action did, in a sentence.
     pub message: Option<String>,

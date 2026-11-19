@@ -207,7 +207,11 @@ impl TraceFinder for WindowsTraceFinder {
             keys_named(&names),
         ]
         .concat();
-        Ok(Found { seeds, candidates })
+        Ok(Found {
+            seeds,
+            candidates,
+            incomplete: !complete,
+        })
     }
 }
 

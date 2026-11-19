@@ -2,6 +2,7 @@
 //! a failure is collected (with what was being read) and the rest is still read.
 
 use purifex_domain::driver_offers::Offers;
+use purifex_domain::trace_text::Counts;
 use purifex_domain::view::Page;
 
 use super::Core;
@@ -76,9 +77,14 @@ impl Core {
         };
         self.model.traces_open = !report.proposed.is_empty();
         self.model.unchecked = Vec::new();
-        if report.proposed.is_empty() {
-            self.model.message = Some(format!("{name}: no se encontraron restos."));
-        }
+        let counts = Counts::of(&report.proposed).to_text();
+        self.model.message = Some(
+            match (report.proposed.is_empty(), self.model.message.take()) {
+                (true, _) => format!("{name}: no se encontraron restos."),
+                (false, Some(said)) => format!("{said} {counts}"),
+                (false, None) => format!("{name}: {counts}"),
+            },
+        );
         self.model.traces = Some(report);
     }
 

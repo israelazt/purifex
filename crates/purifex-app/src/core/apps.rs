@@ -53,11 +53,10 @@ impl Core {
             None
         } else {
             self.model.traces.as_ref().map(|r| {
-                r.proposed
-                    .iter()
-                    .take(purifex_domain::view::TRACES_LISTED)
-                    .filter(|t| !self.model.unchecked.contains(&t.location))
-                    .map(|t| t.location.clone())
+                r.listed()
+                    .into_iter()
+                    .map(|t| t.key())
+                    .filter(|key| !self.model.unchecked.contains(key))
                     .collect()
             })
         };

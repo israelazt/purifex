@@ -62,7 +62,7 @@ impl Core {
     /// Checks all the traces (`true`) or none of them.
     pub(super) fn select_traces(&mut self, all: bool) {
         self.model.unchecked = match (&self.model.traces, all) {
-            (Some(report), false) => report.proposed.iter().map(|t| t.location.clone()).collect(),
+            (Some(report), false) => report.listed().into_iter().map(|t| t.key()).collect(),
             _ => Vec::new(),
         };
     }

@@ -56,6 +56,7 @@ pub trait TraceFinder {
         Ok(Found {
             seeds: crate::seeds::seeds_of(app),
             candidates: self.candidates(app)?,
+            incomplete: false,
         })
     }
 }
@@ -65,6 +66,8 @@ pub trait TraceFinder {
 pub struct Found {
     pub seeds: crate::seeds::Seeds,
     pub candidates: Vec<crate::app_traces::Candidate>,
+    /// The search ran out of time and may have missed some candidates.
+    pub incomplete: bool,
 }
 
 /// Looks at an app that is still installed and says what its traces will be

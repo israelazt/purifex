@@ -6,6 +6,7 @@
 use purifex_domain::apps::{size_text, InstalledApp};
 use purifex_domain::cleanup_log::CleanReport;
 use purifex_domain::draw::Rect;
+use purifex_domain::trace_text::Counts;
 use purifex_domain::view::{Action, Model};
 
 use crate::canvas::Canvas;
@@ -69,8 +70,12 @@ fn traces_summary(m: &Model, report: Option<&CleanReport>) -> String {
         None => "Cuando el desinstalador termine, Purifex busca lo que dejó. No se borra nada al buscar.".to_string(),
         Some(r) if r.proposed.is_empty() => "No se encontraron restos.".to_string(),
         Some(r) => {
-            let bytes: u64 = r.proposed.iter().map(|t| t.bytes).sum();
-            format!("Se encontraron {} restos ({}).", r.proposed.len(), size_text(Some(bytes / 1024)))
+            let found = format!("Se encontraron: {}.", Counts::of(&r.proposed).to_text());
+            if r.incomplete {
+                format!("{found} La búsqueda se cortó por tiempo: pulsa «Buscar otra vez».")
+            } else {
+                found
+            }
         }
     }
 }
@@ -374,6 +379,7 @@ mod tests {
                 })
                 .collect(),
             failed: vec![],
+            ..Default::default()
         }
     }
 
@@ -421,7 +427,9 @@ mod tests {
         );
         m.traces = Some(report(3));
         let (texts, actions) = render(&m);
-        assert!(texts.join(" ").contains("Se encontraron 3 restos"));
+        assert!(texts
+            .join(" ")
+            .contains("Archivos y carpetas: 3 · Registro: 0"));
         assert!(actions.contains(&Action::OpenTraces));
         m.traces = Some(report(0));
         let (texts, actions) = render(&m);

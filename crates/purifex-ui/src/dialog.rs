@@ -4,9 +4,12 @@
 //! What each dialog says is built here from the model; what its buttons do is an
 //! `Action` like any other.
 
+use purifex_domain::app_traces::Trace;
 use purifex_domain::apps::size_text;
+use purifex_domain::cleanup_log::CleanReport;
 use purifex_domain::draw::{Color, Rect};
-use purifex_domain::view::{Action, Confirm, Model, TRACES_LISTED};
+use purifex_domain::trace_text::Counts;
+use purifex_domain::view::{Action, Confirm, Model};
 
 use crate::canvas::Canvas;
 use crate::theme::{self, Tone};
@@ -17,10 +20,14 @@ pub const DIALOG_MS: u64 = 190;
 /// How far below its place a dialog starts, in units.
 const SLIDE: f32 = 18.0;
 const ROW_H: f32 = 40.0;
+/// The height of the heading of a group of rows.
+const HEADING_H: f32 = 30.0;
 
 /// One line of a list with a checkbox.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
+    /// The heading of the group this row opens (drawn above it), if it starts one.
+    pub heading: Option<String>,
     pub label: String,
     pub detail: String,
     pub size: String,
@@ -120,24 +127,8 @@ pub fn view(m: &Model) -> Option<DialogView> {
     }
 }
 
-fn traces_view(m: &Model, report: &purifex_domain::cleanup_log::CleanReport) -> DialogView {
-    let rows: Vec<Row> = report
-        .proposed
-        .iter()
-        .take(TRACES_LISTED)
-        .map(|t| Row {
-            label: t.location.clone(),
-            detail: t.why.clone(),
-            size: if t.bytes > 0 {
-                size_text(Some(t.bytes / 1024))
-            } else {
-                String::new()
-            },
-            user_data: t.user_data,
-            checked: !m.unchecked.contains(&t.location),
-            toggle: Action::ToggleTrace(t.location.clone()),
-        })
-        .collect();
+fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
+    let rows = trace_rows(m, report);
     let checked = rows.iter().filter(|r| r.checked).count();
     let name = report.app.clone();
     let all_checked = checked == rows.len();
@@ -146,26 +137,105 @@ fn traces_view(m: &Model, report: &purifex_domain::cleanup_log::CleanReport) -> 
         icon: "trash-2",
         tone: Tone::Amber,
         title: format!("Restos de {name}"),
-        body: "Esto es lo que quedó después de desinstalar. Marca lo que quieras quitar, o elimina todo de una vez sin elegir.".into(),
-        more: report.proposed.len().saturating_sub(TRACES_LISTED),
+        body: traces_body(report),
+        more: report.proposed.len().saturating_sub(rows.len()),
         rows,
         aside: Some(Btn {
-            label: if all_checked { "Quitar marcas".into() } else { "Marcar todo".into() },
+            label: if all_checked {
+                "Quitar marcas".into()
+            } else {
+                "Marcar todo".into()
+            },
             icon: "list-checks",
             primary: false,
             action: Some(Action::SelectTraces(!all_checked)),
         }),
         buttons: vec![
-            Btn { label: "Cerrar".into(), icon: "x", primary: false, action: Some(Action::CloseTraces) },
+            Btn {
+                label: "Cerrar".into(),
+                icon: "x",
+                primary: false,
+                action: Some(Action::CloseTraces),
+            },
             Btn {
                 label: format!("Eliminar marcados ({checked})"),
                 icon: "trash-2",
                 primary: false,
                 action: (checked > 0).then(|| Action::AskClean(name.clone())),
             },
-            Btn { label: "Eliminar todo rastro".into(), icon: "trash-2", primary: true, action: Some(Action::AskCleanAll(name)) },
+            Btn {
+                label: "Eliminar todo rastro".into(),
+                icon: "trash-2",
+                primary: true,
+                action: Some(Action::AskCleanAll(name)),
+            },
         ],
         cancel: Action::CloseTraces,
+    }
+}
+
+/// What the window says above the list; when the search was cut short, that too.
+fn traces_body(report: &CleanReport) -> String {
+    let mut body = "Esto es lo que quedó después de desinstalar. Marca lo que quieras quitar, o elimina todo de una vez sin elegir.".to_string();
+    if report.incomplete {
+        body.push_str(" La búsqueda se cortó por tiempo y puede faltar algo: pulsa «Buscar otra vez» para completarla.");
+    }
+    body
+}
+
+/// The rows the window lists, grouped: the first row of each group carries its heading.
+fn trace_rows(m: &Model, report: &CleanReport) -> Vec<Row> {
+    let mut previous_registry = None;
+    report
+        .listed()
+        .into_iter()
+        .map(|t| {
+            let registry = t.is_registry();
+            let heading =
+                (previous_registry != Some(registry)).then(|| group_heading(report, registry));
+            previous_registry = Some(registry);
+            Row {
+                heading,
+                label: t.location.clone(),
+                detail: row_detail(t),
+                size: if t.bytes > 0 {
+                    size_text(Some(t.bytes / 1024))
+                } else {
+                    String::new()
+                },
+                user_data: t.user_data,
+                checked: !m.unchecked.contains(&t.key()),
+                toggle: Action::ToggleTrace(t.key()),
+            }
+        })
+        .collect()
+}
+
+/// «Archivos y carpetas (7) · 196 MB» or «Registro (10)»: how many there are of the group
+/// in the whole report, not only in the list.
+fn group_heading(report: &CleanReport, registry: bool) -> String {
+    let group = report
+        .proposed
+        .iter()
+        .filter(|t| t.is_registry() == registry);
+    let counts = Counts::of(group);
+    if registry {
+        format!("Registro ({})", counts.registry)
+    } else {
+        format!(
+            "Archivos y carpetas ({}) · {}",
+            counts.files,
+            size_text(Some(counts.bytes.div_ceil(1024)))
+        )
+    }
+}
+
+/// What proves the trace is the app's, and for a registry value which value it is.
+fn row_detail(t: &Trace) -> String {
+    let proof = t.evidence.label();
+    match &t.value {
+        Some(value) => format!("{proof} · valor: {value}"),
+        None => proof.to_string(),
     }
 }
 
@@ -232,7 +302,10 @@ fn height_of(c: &Canvas, v: &DialogView) -> f32 {
     let list = if v.rows.is_empty() {
         0.0
     } else {
-        16.0 + v.rows.len() as f32 * ROW_H + if v.more > 0 { 26.0 } else { 0.0 }
+        let headings = v.rows.iter().filter(|r| r.heading.is_some()).count();
+        16.0 + v.rows.len() as f32 * ROW_H
+            + headings as f32 * HEADING_H
+            + if v.more > 0 { 26.0 } else { 0.0 }
     };
     24.0 + 40.0 + 14.0 + body + list + 24.0 + 44.0 + 24.0
 }
@@ -285,6 +358,15 @@ fn list(c: &mut Canvas, v: &DialogView, rect: Rect, mut y: f32) {
     y += 16.0;
     c.line(rect.x, y - 8.0, rect.right(), y - 8.0, theme::LINE);
     for r in &v.rows {
+        if let Some(heading) = &r.heading {
+            c.text(
+                rect.x + 28.0,
+                y + 8.0,
+                heading,
+                theme::eyebrow(theme::TEXT_3),
+            );
+            y += HEADING_H;
+        }
         row(c, r, Rect::new(rect.x + 12.0, y, rect.w - 24.0, ROW_H));
         y += ROW_H;
     }
@@ -322,10 +404,11 @@ fn buttons(c: &mut Canvas, v: &DialogView, rect: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use purifex_domain::app_traces::{Trace, TraceKind};
+    use purifex_domain::app_traces::{Evidence, Trace, TraceKind};
     use purifex_domain::apps::InstalledApp;
     use purifex_domain::cleanup_log::CleanReport;
     use purifex_domain::draw::Op;
+    use purifex_domain::view::TRACES_LISTED;
 
     use super::*;
     use crate::canvas::testing::FakeText;
@@ -352,9 +435,112 @@ mod tests {
                     .map(|i| trace(&format!(r"C:\ProgramData\obs{i}"), i == 0))
                     .collect(),
                 failed: vec![],
+                ..Default::default()
             }),
             ..Model::default()
         }
+    }
+
+    /// A report with `files` folders and `registry` values of one key (their size in `bytes`).
+    fn mixed_report(files: usize, registry: usize) -> CleanReport {
+        let file = |i: usize| Trace {
+            location: format!(r"C:\Users\u\AppData\Local\app{i}"),
+            bytes: 10_000 - i as u64,
+            evidence: Evidence::NameMatch,
+            ..Default::default()
+        };
+        let value = |i: usize| Trace {
+            kind: TraceKind::RegistryValue,
+            location: r"HKCU\Software\Cache".into(),
+            value: Some(format!("app{i}.exe.FriendlyAppName")),
+            evidence: Evidence::PathReference,
+            ..Default::default()
+        };
+        CleanReport {
+            app: "Kdenlive".into(),
+            preview: true,
+            proposed: (0..files)
+                .map(file)
+                .chain((0..registry).map(value))
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    fn model_with(report: CleanReport) -> Model {
+        Model {
+            traces_open: true,
+            traces: Some(report),
+            ..Model::default()
+        }
+    }
+
+    #[test]
+    fn the_list_is_grouped_with_how_many_there_are_of_each_and_says_what_proves_each_trace() {
+        let v = view(&model_with(mixed_report(7, 10))).unwrap();
+        let headings: Vec<&str> = v.rows.iter().filter_map(|r| r.heading.as_deref()).collect();
+        assert_eq!(
+            headings,
+            ["Archivos y carpetas (7) · 69 KB", "Registro (10)"].map(|h| h)
+        );
+        let files = v.rows.iter().filter(|r| r.label.starts_with("C:")).count();
+        let registry = v.rows.len() - files;
+        assert_eq!(
+            (files, registry),
+            (5, 4),
+            "both kinds are listed: {TRACES_LISTED} rows"
+        );
+        assert_eq!(v.more, 17 - TRACES_LISTED);
+        let value_row = v.rows.iter().find(|r| r.label.starts_with("HKCU")).unwrap();
+        assert_eq!(
+            value_row.detail,
+            "referencia a la carpeta de la app · valor: app0.exe.FriendlyAppName"
+        );
+        assert_eq!(v.rows[0].detail, "nombre de la app");
+    }
+
+    #[test]
+    fn two_values_of_one_key_are_checked_one_by_one() {
+        let mut m = model_with(mixed_report(0, 2));
+        let v = view(&m).unwrap();
+        assert_eq!(v.rows.len(), 2);
+        let (first, second) = (v.rows[0].toggle.clone(), v.rows[1].toggle.clone());
+        assert_ne!(first, second, "same key, different values");
+        let Action::ToggleTrace(key) = first else {
+            panic!("a row toggles a trace");
+        };
+        m.unchecked = vec![key];
+        let v = view(&m).unwrap();
+        assert_eq!(
+            v.rows.iter().map(|r| r.checked).collect::<Vec<_>>(),
+            [false, true]
+        );
+    }
+
+    #[test]
+    fn a_search_cut_short_says_so_in_the_window() {
+        let mut report = mixed_report(1, 1);
+        assert!(!view(&model_with(report.clone()))
+            .unwrap()
+            .body
+            .contains("se cortó"));
+        report.incomplete = true;
+        assert!(view(&model_with(report))
+            .unwrap()
+            .body
+            .contains("se cortó por tiempo"));
+    }
+
+    #[test]
+    fn the_window_is_as_tall_as_its_headings_and_rows_need() {
+        let one_kind = view(&model_with(mixed_report(3, 0))).unwrap();
+        let two_kinds = view(&model_with(mixed_report(2, 1))).unwrap();
+        let c = Canvas::new(&FakeText, None);
+        assert_eq!(
+            height_of(&c, &two_kinds) - height_of(&c, &one_kind),
+            HEADING_H,
+            "same three rows, one more heading"
+        );
     }
 
     fn labels(v: &DialogView) -> Vec<&str> {

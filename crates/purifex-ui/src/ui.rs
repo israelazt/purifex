@@ -7,17 +7,18 @@ use std::time::Duration;
 
 use purifex_domain::draw::{DrawList, Rect};
 use purifex_domain::ports::TextMetrics;
-use purifex_domain::ui_event::{Key, UiEvent};
 use purifex_domain::view::{Action, Model, Page};
 
 use crate::anim::Anims;
 use crate::canvas::{Canvas, Hit};
 use crate::dialog::{self, DialogView};
-use crate::scrollbar::{Pressed, Scrollbar};
+use crate::scrollbar::Scrollbar;
 use crate::theme::{self, PAGE_PAD, SIDEBAR_W, TOPBAR_H};
 use crate::{apps_page, drivers_page, fixes_page, overview_page, sessions_page, shell};
 
 /// The time the page takes to go most of the way to where the wheel wants it.
+mod events;
+
 const SCROLL_MS: f32 = 70.0;
 /// Units an arrow key scrolls.
 const SCROLL_STEP: f32 = 64.0;
@@ -133,7 +134,6 @@ impl Ui {
     }
 
     /// The picture of the window at `width` x `height` units.
-    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn frame(
         &mut self,
         model: &Model,
@@ -146,13 +146,37 @@ impl Ui {
         self.anims.begin(now_ms);
         let elapsed = now_ms.saturating_sub(self.last_ms);
         self.last_ms = now_ms;
+        self.follow(model, now_ms);
+        self.smooth_scroll(elapsed);
+        self.query = model.query.clone();
+        let anims = std::mem::take(&mut self.anims);
+        let mut c = Canvas::new(text, self.mouse).with_anims(anims, self.entered_ms);
+        c.search_focus = self.search_focus;
+        let (shown, covered) = self.dialog_state(&mut c, model);
+        let main = Rect::new(
+            SIDEBAR_W,
+            TOPBAR_H,
+            (width - SIDEBAR_W).max(0.0),
+            (height - TOPBAR_H).max(0.0),
+        );
+        self.draw_page(&mut c, model, main);
+        self.draw_scrollbar(&mut c, main, width);
+        shell::sidebar(&mut c, model, height);
+        shell::topbar(&mut c, model, width);
+        self.draw_dialog(&mut c, shown, covered, width, height);
+        self.finish(c)
+    }
+
+    /// Notes what changed in the model since the last picture: another page starts at the
+    /// top and appears; what the page shows has just arrived and appears; a new message
+    /// scrolls to the top so it is seen.
+    fn follow(&mut self, model: &Model, now_ms: u64) {
         let ready = page_is_ready(model);
         if model.page != self.page {
             self.page = model.page;
             (self.scroll, self.scroll_target) = (0.0, 0.0);
             self.entered_ms = now_ms;
         } else if ready && !self.was_ready {
-            // What the page shows has just arrived: it appears now.
             self.entered_ms = now_ms;
         }
         self.was_ready = ready;
@@ -161,12 +185,11 @@ impl Ui {
             self.scroll_target = 0.0;
         }
         self.seen_notice = notice;
-        self.smooth_scroll(elapsed);
-        self.query = model.query.clone();
-        let anims = std::mem::take(&mut self.anims);
-        let mut c = Canvas::new(text, self.mouse).with_anims(anims, self.entered_ms);
-        c.search_focus = self.search_focus;
-        // A dialog: it fades in and out, and while it shows nothing under it answers.
+    }
+
+    /// A dialog fades in and out, and while it shows nothing under it answers. Returns how
+    /// visible it is (0 to 1) and whether it covers the page.
+    fn dialog_state(&mut self, c: &mut Canvas, model: &Model) -> (f32, bool) {
         let wanted = dialog::view(model);
         let open = wanted.is_some();
         self.modal_cancel = wanted.as_ref().map(|v| v.cancel.clone());
@@ -177,12 +200,11 @@ impl Ui {
         let covered = shown > 0.001;
         self.modal = open;
         c.block_mouse(covered);
-        let main = Rect::new(
-            SIDEBAR_W,
-            TOPBAR_H,
-            (width - SIDEBAR_W).max(0.0),
-            (height - TOPBAR_H).max(0.0),
-        );
+        (shown, covered)
+    }
+
+    /// The page of the model inside `main`, scrolled; notes how tall it turned out.
+    fn draw_page(&mut self, c: &mut Canvas, model: &Model, main: Rect) {
         let top = main.y + 28.0;
         let area = Rect::new(
             main.x + PAGE_PAD,
@@ -193,11 +215,11 @@ impl Ui {
         c.clip(main);
         c.reveal(0);
         let used = match model.page {
-            Page::Overview => overview_page::draw(&mut c, model, area),
-            Page::Drivers => drivers_page::draw(&mut c, model, area),
-            Page::Sessions => sessions_page::draw(&mut c, model, area),
-            Page::Fixes => fixes_page::draw(&mut c, model, area),
-            Page::Apps => apps_page::draw(&mut c, model, area),
+            Page::Overview => overview_page::draw(c, model, area),
+            Page::Drivers => drivers_page::draw(c, model, area),
+            Page::Sessions => sessions_page::draw(c, model, area),
+            Page::Fixes => fixes_page::draw(c, model, area),
+            Page::Apps => apps_page::draw(c, model, area),
         };
         c.rest();
         c.unclip();
@@ -205,6 +227,9 @@ impl Ui {
         self.viewport_height = main.h;
         self.scroll_target = self.scroll_target.clamp(0.0, self.max_scroll());
         self.scroll = self.scroll.clamp(0.0, self.max_scroll());
+    }
+
+    fn draw_scrollbar(&mut self, c: &mut Canvas, main: Rect, width: f32) {
         self.bar
             .layout(main, width, self.scroll, self.content_height);
         if let (Some(thumb), Some(track)) = (self.bar.thumb(), self.bar.track()) {
@@ -215,24 +240,31 @@ impl Ui {
             };
             c.fill(thumb, 3.0, theme::TEXT_3.with_alpha(0.45 + 0.4 * hover));
         }
-        shell::sidebar(&mut c, model, height);
-        shell::topbar(&mut c, model, width);
-        if covered {
-            c.block_mouse(false);
-            c.clear_hits();
-            if let Some(view) = &self.dialog {
-                dialog::draw(&mut c, view, shown, width, height);
-            }
-        } else {
+    }
+
+    /// The dialog over everything, if it shows; otherwise it is forgotten.
+    fn draw_dialog(&mut self, c: &mut Canvas, shown: f32, covered: bool, width: f32, height: f32) {
+        if !covered {
             self.dialog = None;
+            return;
         }
+        c.block_mouse(false);
+        c.clear_hits();
+        if let Some(view) = &self.dialog {
+            dialog::draw(c, view, shown, width, height);
+        }
+    }
+
+    /// Keeps from the canvas what the next events need: the search box, the motion and
+    /// the places that answer to the pointer.
+    fn finish(&mut self, mut c: Canvas) -> DrawList {
         self.search_box = c.take_search_box();
         self.anims = c.take_anims();
         self.anims.end();
-        let c_regions = c.take_regions();
+        let regions = c.take_regions();
         let (list, hits) = c.finish();
         self.hits = hits;
-        self.regions = c_regions;
+        self.regions = regions;
         self.hover_region = self.region_at_mouse();
         self.hovered = self.hit_at_mouse();
         list
@@ -257,116 +289,6 @@ impl Ui {
 
     fn hit_at_mouse(&self) -> Option<usize> {
         self.mouse.and_then(|(x, y)| self.hit_at(x, y))
-    }
-
-    #[expect(clippy::too_many_lines, reason = "legacy: split")]
-    pub fn event(&mut self, event: UiEvent) -> UiOutput {
-        let mut out = UiOutput::default();
-        match event {
-            // A dialog is open: it alone answers.
-            UiEvent::Press { x, y } if self.modal => {
-                self.mouse = Some((x, y));
-                if let Some(index) = self.hit_at(x, y) {
-                    out.actions.push(self.hits[index].action.clone());
-                    out.redraw = true;
-                }
-            }
-            UiEvent::Key(Key::Escape) if self.modal => {
-                if let Some(action) = self.modal_cancel.clone() {
-                    out.actions.push(action);
-                    out.redraw = true;
-                }
-            }
-            UiEvent::Wheel { .. } | UiEvent::Key(_) | UiEvent::Char(_) if self.modal => {}
-            UiEvent::Move { x, y } if self.bar.dragging() => {
-                self.mouse = Some((x, y));
-                // Holding the thumb: the page follows the pointer at once, with no glide.
-                if let Some(to) = self.bar.scroll_for(y, self.max_scroll()) {
-                    (self.scroll, self.scroll_target) = (to, to);
-                }
-                out.redraw = true;
-            }
-            UiEvent::Release => out.redraw = self.bar.release(),
-            UiEvent::Focus => {
-                if self.page == Page::Apps {
-                    out.actions.push(Action::RefreshApps);
-                }
-            }
-            UiEvent::Key(Key::Down) => out.redraw = self.scroll_by(SCROLL_STEP),
-            UiEvent::Key(Key::Up) => out.redraw = self.scroll_by(-SCROLL_STEP),
-            UiEvent::Key(Key::PageDown) => out.redraw = self.scroll_by(self.viewport_height * 0.9),
-            UiEvent::Key(Key::PageUp) => out.redraw = self.scroll_by(-self.viewport_height * 0.9),
-            UiEvent::Key(Key::Home) => out.redraw = self.scroll_by(-self.content_height),
-            UiEvent::Key(Key::End) => out.redraw = self.scroll_by(self.content_height),
-            UiEvent::Move { x, y } => {
-                self.mouse = Some((x, y));
-                let now = self.hit_at(x, y);
-                let region = self.region_at(x, y);
-                // The picture changes when the pointer goes to another button, or to
-                // another place with a hover effect (a row of a table).
-                out.redraw = now != self.hovered || region != self.hover_region;
-                (self.hovered, self.hover_region) = (now, region);
-            }
-            UiEvent::Leave => {
-                self.mouse = None;
-                out.redraw = self.hovered.take().is_some() | self.hover_region.take().is_some();
-            }
-            UiEvent::Press { x, y } => {
-                self.mouse = Some((x, y));
-                match self.bar.press(x, y) {
-                    // On the scroll bar: the thumb is taken, or the page goes a screen.
-                    Some(Pressed::Grabbed) => out.redraw = true,
-                    Some(Pressed::Page(direction)) => {
-                        out.redraw = self.scroll_by(direction * self.viewport_height * 0.9);
-                    }
-                    None => {
-                        if let Some(index) = self.hit_at(x, y) {
-                            out.actions.push(self.hits[index].action.clone());
-                        }
-                        let focus = self.over_search();
-                        out.redraw = focus != self.search_focus || !out.actions.is_empty();
-                        self.search_focus = focus;
-                    }
-                }
-            }
-            UiEvent::Wheel { dy } => {
-                let before = self.scroll_target;
-                self.scroll_target = (self.scroll_target + dy).clamp(0.0, self.max_scroll());
-                out.redraw = self.scroll_target != before;
-            }
-            UiEvent::Char(c) if self.search_focus => {
-                let query = format!("{}{c}", self.query);
-                out.actions.push(self.typed(query));
-                out.redraw = true;
-            }
-            UiEvent::Key(Key::Backspace) if self.search_focus => {
-                let mut query = self.query.clone();
-                query.pop();
-                out.actions.push(self.typed(query));
-                out.redraw = true;
-            }
-            UiEvent::Key(Key::Escape) if self.search_focus => {
-                if self.query.is_empty() {
-                    self.search_focus = false;
-                } else {
-                    out.actions.push(self.typed(String::new()));
-                }
-                out.redraw = true;
-            }
-            UiEvent::Key(Key::Enter) if self.search_focus => {
-                self.search_focus = false;
-                out.redraw = true;
-            }
-            UiEvent::Key(Key::CtrlK) => {
-                if self.page != Page::Drivers && self.page != Page::Apps {
-                    out.actions.push(Action::Go(Page::Drivers));
-                }
-                self.search_focus = true;
-                out.redraw = true;
-            }
-            _ => {}
-        }
-        out
     }
 
     /// Moves where the page wants to be by `dy`; whether that changed anything.
@@ -422,6 +344,7 @@ impl Ui {
 #[cfg(test)]
 mod tests {
     use purifex_domain::draw::Op;
+    use purifex_domain::ui_event::{Key, UiEvent};
 
     use super::*;
     use crate::canvas::testing::FakeText;

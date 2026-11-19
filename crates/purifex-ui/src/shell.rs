@@ -169,7 +169,6 @@ fn nav_item(c: &mut Canvas, rect: Rect, item: &NavItem, active: bool) {
     }
 }
 
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
 pub fn sidebar(c: &mut Canvas, m: &Model, height: f32) {
     let area = Rect::new(0.0, TOPBAR_H, SIDEBAR_W, height - TOPBAR_H);
     c.fill(area, 0.0, theme::BG_SIDE);
@@ -180,8 +179,18 @@ pub fn sidebar(c: &mut Canvas, m: &Model, height: f32) {
         height,
         theme::LINE,
     );
+    let card = engine_card(c, m);
+    let below_navigation = navigation(c, m, card.bottom() + 24.0);
+    // The state of the drivers, at the bottom, if there is room for it.
+    let foot = Rect::new(12.0, height - 12.0 - 88.0, 240.0, 88.0);
+    if foot.y > below_navigation {
+        drivers_state(c, m, foot);
+    }
+}
 
-    // The engine card.
+/// The card at the top of the side bar: the name, and how many devices and recordings
+/// were read. Returns its rectangle.
+fn engine_card(c: &mut Canvas, m: &Model) -> Rect {
     let card = Rect::new(12.0, TOPBAR_H + 16.0, 240.0, 112.0);
     c.fill(card, 8.0, theme::PANEL);
     c.stroke(card, 8.0, 1.0, theme::LINE);
@@ -209,10 +218,11 @@ pub fn sidebar(c: &mut Canvas, m: &Model, height: f32) {
         .sessions
         .as_ref()
         .map_or("–".to_string(), |s| s.len().to_string());
+    let (left, right) = (card.x + 14.0, card.right() - 14.0);
     row(
         c,
-        card.x + 14.0,
-        card.right() - 14.0,
+        left,
+        right,
         card.y + 62.0,
         "Dispositivos",
         &devices,
@@ -220,18 +230,30 @@ pub fn sidebar(c: &mut Canvas, m: &Model, height: f32) {
     );
     row(
         c,
-        card.x + 14.0,
-        card.right() - 14.0,
+        left,
+        right,
         card.y + 82.0,
         "Grabaciones",
         &sessions,
         None,
     );
+    card
+}
 
-    // Navigation.
-    let mut y = card.bottom() + 24.0;
+/// The entries of the navigation, one per page, from `y` down; returns where they end.
+fn navigation(c: &mut Canvas, m: &Model, mut y: f32) -> f32 {
     c.text(20.0, y, "NAVEGACIÓN", theme::eyebrow(theme::TEXT_3));
     y += 24.0;
+    for item in &nav_items(m) {
+        let rect = Rect::new(12.0, y, 240.0, 40.0);
+        nav_item(c, rect, item, item.page == Some(m.page));
+        y += 44.0;
+    }
+    y
+}
+
+/// The pages of the navigation with what each one has to say in its badge.
+fn nav_items(m: &Model) -> [NavItem<'static>; 5] {
     let attention = m
         .overview
         .as_ref()
@@ -247,7 +269,7 @@ pub fn sidebar(c: &mut Canvas, m: &Model, height: f32) {
         .as_ref()
         .filter(|f| !f.is_empty())
         .map(|f| (f.len().to_string(), Tone::Amber));
-    let items = [
+    [
         NavItem {
             icon: "gauge",
             label: "Estado general",
@@ -278,50 +300,45 @@ pub fn sidebar(c: &mut Canvas, m: &Model, height: f32) {
             page: Some(Page::Fixes),
             badge: fixes_badge,
         },
-    ];
-    for item in &items {
-        let rect = Rect::new(12.0, y, 240.0, 40.0);
-        nav_item(c, rect, item, item.page == Some(m.page));
-        y += 44.0;
-    }
+    ]
+}
 
-    // The state of the drivers, at the bottom.
-    let foot = Rect::new(12.0, height - 12.0 - 88.0, 240.0, 88.0);
-    if foot.y > y {
-        c.fill(foot, 8.0, theme::PANEL);
-        c.stroke(foot, 8.0, 1.0, theme::LINE);
-        row(
-            c,
-            foot.x + 14.0,
-            foot.right() - 14.0,
-            foot.y + 14.0,
-            "Modo",
-            "Solo lectura",
-            Some(Tone::Green),
-        );
-        let health = m
-            .overview
-            .as_ref()
-            .filter(|o| o.devices.hardware > 0)
-            .map(|o| o.devices.healthy as f32 * 100.0 / o.devices.hardware as f32);
-        let text = health.map_or("–".to_string(), |h| format!("{h:.1} %"));
-        row(
-            c,
-            foot.x + 14.0,
-            foot.right() - 14.0,
-            foot.y + 38.0,
-            "Salud de drivers",
-            &text,
-            None,
-        );
-        // The bar fills the first time the figure is known.
-        let shown = c.value("health", health.unwrap_or(0.0), 800);
-        progress(
-            c,
-            Rect::new(foot.x + 14.0, foot.y + 66.0, foot.w - 28.0, 4.0),
-            shown,
-        );
-    }
+/// The card at the bottom: the mode and the health of the drivers, with its bar.
+fn drivers_state(c: &mut Canvas, m: &Model, foot: Rect) {
+    c.fill(foot, 8.0, theme::PANEL);
+    c.stroke(foot, 8.0, 1.0, theme::LINE);
+    let (left, right) = (foot.x + 14.0, foot.right() - 14.0);
+    row(
+        c,
+        left,
+        right,
+        foot.y + 14.0,
+        "Modo",
+        "Solo lectura",
+        Some(Tone::Green),
+    );
+    let health = m
+        .overview
+        .as_ref()
+        .filter(|o| o.devices.hardware > 0)
+        .map(|o| o.devices.healthy as f32 * 100.0 / o.devices.hardware as f32);
+    let text = health.map_or("–".to_string(), |h| format!("{h:.1} %"));
+    row(
+        c,
+        left,
+        right,
+        foot.y + 38.0,
+        "Salud de drivers",
+        &text,
+        None,
+    );
+    // The bar fills the first time the figure is known.
+    let shown = c.value("health", health.unwrap_or(0.0), 800);
+    progress(
+        c,
+        Rect::new(foot.x + 14.0, foot.y + 66.0, foot.w - 28.0, 4.0),
+        shown,
+    );
 }
 
 #[cfg(test)]

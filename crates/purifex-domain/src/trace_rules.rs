@@ -289,7 +289,6 @@ fn is_dump_of(name: &str, exes: &[String]) -> bool {
 mod tests {
     use super::*;
     use crate::app_traces::{judge_with, propose_with};
-    use crate::apps::AppKind;
 
     const DIR: &str = r"C:\Program Files\Kdenlive";
     const USER: &str = r"C:\Users\ana\AppData";
@@ -298,16 +297,8 @@ mod tests {
         InstalledApp {
             id: format!("id:{name}"),
             name: name.into(),
-            publisher: None,
-            version: None,
             install_location: location.map(String::from),
-            uninstall: None,
-            quiet_uninstall: None,
-            size_kb: None,
-            kind: AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         }
     }
 
@@ -324,9 +315,9 @@ mod tests {
             kind,
             location: location.into(),
             bytes: 10,
-            registered_install: false,
             value: value.map(String::from),
             text: text.map(String::from),
+            ..Default::default()
         }
     }
 

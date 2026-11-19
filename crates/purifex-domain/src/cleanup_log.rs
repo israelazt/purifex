@@ -200,17 +200,16 @@ mod tests {
             bytes: 2048,
             why: "w".into(),
             user_data: true,
-            value: None,
             evidence: Evidence::NameMatch,
+            ..Default::default()
         };
         let value = Trace {
             kind: TraceKind::RegistryValue,
             location: r"HKCU\Software\X\MuiCache".into(),
-            bytes: 0,
             why: "w".into(),
-            user_data: false,
             value: Some("k.exe.FriendlyAppName".into()),
             evidence: Evidence::PathReference,
+            ..Default::default()
         };
         let entries = |ts: &[Trace]| -> Vec<CleanupEntry> {
             ts.iter()
@@ -309,8 +308,7 @@ mod tests {
                 bytes: 10,
                 why: "x".into(),
                 user_data: true,
-                value: None,
-                evidence: Default::default(),
+                ..Default::default()
             },
             kept: r"C:\q\1".into(),
             state,

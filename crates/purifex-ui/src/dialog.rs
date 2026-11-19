@@ -321,7 +321,7 @@ pub fn draw(c: &mut Canvas, v: &DialogView, t: f32, width: f32, height: f32) {
 #[cfg(test)]
 mod tests {
     use purifex_domain::app_traces::{Trace, TraceKind};
-    use purifex_domain::apps::{AppKind, InstalledApp};
+    use purifex_domain::apps::InstalledApp;
     use purifex_domain::cleanup_log::CleanReport;
     use purifex_domain::draw::Op;
 
@@ -335,8 +335,7 @@ mod tests {
             bytes: 2048,
             why: "lleva el nombre de la app".into(),
             user_data,
-            value: None,
-            evidence: Default::default(),
+            ..Default::default()
         }
     }
 
@@ -429,16 +428,8 @@ mod tests {
         let app = InstalledApp {
             id: "HKLM64:Discord".into(),
             name: "Discord".into(),
-            publisher: None,
-            version: None,
-            install_location: None,
             uninstall: Some("u".into()),
-            quiet_uninstall: None,
-            size_kb: None,
-            kind: AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         };
         let m = Model {
             apps: Some(vec![app]),

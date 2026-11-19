@@ -865,14 +865,9 @@ mod tests {
             name: name.into(),
             publisher: Some("Discord Inc.".into()),
             version: Some("1.0".into()),
-            install_location: None,
             uninstall: Some("u.exe".into()),
-            quiet_uninstall: None,
             size_kb: Some(1024),
-            kind: purifex_domain::apps::AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         }
     }
 
@@ -890,9 +885,7 @@ mod tests {
             kind: TraceKind::Folder,
             location: r"C:\Users\u\AppData\Roaming\Discord".into(),
             bytes: 10,
-            registered_install: false,
-            value: None,
-            text: None,
+            ..Default::default()
         }];
         let mut c = Core::new(Box::new(
             App::new(
@@ -1019,9 +1012,7 @@ mod tests {
             kind: TraceKind::Folder,
             location: r"C:\Program Files\obs-studio".into(),
             bytes: 10,
-            registered_install: false,
-            value: None,
-            text: None,
+            ..Default::default()
         }];
         let core = Core::new(Box::new(
             App::new(
@@ -1136,9 +1127,7 @@ mod tests {
                 kind: TraceKind::Folder,
                 location: format!(r"C:\ProgramData\{n}"),
                 bytes: 10,
-                registered_install: false,
-                value: None,
-                text: None,
+                ..Default::default()
             })
             .to_vec();
         let core = Core::new(Box::new(

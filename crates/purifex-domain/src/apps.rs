@@ -5,17 +5,20 @@
 use serde::{Deserialize, Serialize};
 
 /// How an app was installed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AppKind {
     /// A classic program with its own uninstaller (listed in the registry).
+    #[default]
     Desktop,
     /// An app of the Microsoft Store (a package).
     Store,
 }
 
-/// One installed app. Every field but the name may be unknown.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// One installed app. Every field but the name may be unknown. `Default` is a blank
+/// record to fill in (a reader of the registry, a test): build it with
+/// `InstalledApp { id, name, ..Default::default() }` so a new field touches one place.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstalledApp {
     /// Stable id: the registry key of the app, or the full name of the package.
     pub id: String,
@@ -148,14 +151,9 @@ mod tests {
             name: name.into(),
             publisher: Some(publisher.into()),
             version: Some(version.into()),
-            install_location: None,
             uninstall: Some("C:\\x\\unins000.exe".into()),
-            quiet_uninstall: None,
             size_kb: Some(2048),
-            kind: AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         }
     }
 

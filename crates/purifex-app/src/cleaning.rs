@@ -6,7 +6,7 @@
 //! that is still installed).
 
 use purifex_domain::app_traces::{names_of, propose_with, simple};
-use purifex_domain::apps::{AppKind, InstalledApp};
+use purifex_domain::apps::InstalledApp;
 use purifex_domain::cleanup_log::{is_restored, next_seq, CleanReport, CleanupEntry, CleanupState};
 use purifex_domain::ports::{CleanupStore, SeedProbe, TraceFinder, Uninstaller};
 
@@ -149,16 +149,7 @@ impl Cleaning {
         let unknown = InstalledApp {
             id: format!("name:{name}"),
             name: name.to_string(),
-            publisher: None,
-            version: None,
-            install_location: None,
-            uninstall: None,
-            quiet_uninstall: None,
-            size_kb: None,
-            kind: AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         };
         if names_of(&unknown).is_empty() {
             return Err(format!(
@@ -273,11 +264,9 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use purifex_domain::app_traces::{Candidate, TraceKind};
-    use purifex_domain::apps::AppKind;
-
     use super::*;
     use crate::testing::{CleanLog, FakeCleaning, FakeFinder};
+    use purifex_domain::app_traces::{Candidate, TraceKind};
 
     fn app(name: &str, publisher: &str) -> InstalledApp {
         InstalledApp {
@@ -285,14 +274,8 @@ mod tests {
             name: name.into(),
             publisher: Some(publisher.into()),
             version: Some("1.0".into()),
-            install_location: None,
             uninstall: Some("u.exe".into()),
-            quiet_uninstall: None,
-            size_kb: None,
-            kind: AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         }
     }
 
@@ -301,9 +284,7 @@ mod tests {
             kind: TraceKind::Folder,
             location: location.into(),
             bytes: 100,
-            registered_install: false,
-            value: None,
-            text: None,
+            ..Default::default()
         }
     }
 
@@ -477,10 +458,7 @@ mod tests {
             kind: TraceKind::RegistryKey,
             location: r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.dsc"
                 .into(),
-            bytes: 0,
-            registered_install: false,
-            value: None,
-            text: None,
+            ..Default::default()
         };
         let seeds = purifex_domain::seeds::Seeds::new(None, &[], &[".dsc".into()]);
         let log = Rc::new(RefCell::new(CleanLog::default()));

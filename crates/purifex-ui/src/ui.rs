@@ -875,15 +875,9 @@ mod tests {
             id: format!("HKLM64:{name}"),
             name: name.into(),
             publisher: Some("Acme".into()),
-            version: None,
-            install_location: None,
             uninstall: Some("u.exe".into()),
-            quiet_uninstall: None,
-            size_kb: None,
             kind: purifex_domain::apps::AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         };
         Model {
             page: Page::Apps,

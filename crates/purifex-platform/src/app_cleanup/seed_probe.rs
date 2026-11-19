@@ -78,7 +78,6 @@ fn exe_of_icon(icon: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use purifex_domain::apps::AppKind;
 
     use super::super::registry_write::{delete_key_tree, set_value_raw, RawValue};
     use super::*;
@@ -120,16 +119,9 @@ mod tests {
         let app = InstalledApp {
             id: "x".into(),
             name: "Fake App".into(),
-            publisher: None,
-            version: None,
             install_location: Some(folder.to_string_lossy().into_owned()),
-            uninstall: None,
-            quiet_uninstall: None,
-            size_kb: None,
-            kind: AppKind::Desktop,
-            hidden: false,
             display_icon: Some(format!(r#""{}",0"#, folder.join("Icon.exe").display())),
-            observed: Default::default(),
+            ..Default::default()
         };
         let seeds = WindowsSeedProbe.observe(&app);
 
@@ -151,16 +143,8 @@ mod tests {
         let app = InstalledApp {
             id: "x".into(),
             name: "Nada".into(),
-            publisher: None,
-            version: None,
             install_location: Some(r"C:\Program Files".into()),
-            uninstall: None,
-            quiet_uninstall: None,
-            size_kb: None,
-            kind: AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         };
         assert!(WindowsSeedProbe.observe(&app).is_empty());
     }

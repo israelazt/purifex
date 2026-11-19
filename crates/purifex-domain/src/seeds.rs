@@ -175,22 +175,14 @@ fn usable_extension(ext: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::apps::AppKind;
 
     fn app(location: Option<&str>, uninstall: Option<&str>) -> InstalledApp {
         InstalledApp {
             id: "x".into(),
             name: "Kdenlive".into(),
-            publisher: None,
-            version: None,
             install_location: location.map(String::from),
             uninstall: uninstall.map(String::from),
-            quiet_uninstall: None,
-            size_kb: None,
-            kind: AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         }
     }
 

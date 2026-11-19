@@ -226,9 +226,7 @@ mod tests {
             location: location.into(),
             bytes: 1,
             why: "test".into(),
-            user_data: false,
-            value: None,
-            evidence: Default::default(),
+            ..Default::default()
         }
     }
 

@@ -1,7 +1,7 @@
 //! The classic apps installed in the computer: what each one registered in
 //! `Uninstall` (the list that Windows' own "Installed apps" shows). Read only.
 
-use purifex_domain::apps::{AppKind, InstalledApp};
+use purifex_domain::apps::InstalledApp;
 use purifex_domain::ports::AppInventory;
 use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
@@ -53,10 +53,9 @@ impl AppInventory for RegistryApps {
                     uninstall: key.text("UninstallString"),
                     quiet_uninstall: key.text("QuietUninstallString"),
                     size_kb: key.number("EstimatedSize").map(u64::from),
-                    kind: AppKind::Desktop,
                     hidden: is_hidden(&key, &sub),
                     display_icon: key.text("DisplayIcon"),
-                    observed: Default::default(),
+                    ..Default::default()
                 });
             }
         }

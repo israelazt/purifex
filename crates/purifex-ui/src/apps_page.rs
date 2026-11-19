@@ -291,7 +291,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
 #[cfg(test)]
 mod tests {
     use purifex_domain::app_traces::{Trace, TraceKind};
-    use purifex_domain::apps::AppKind;
+
     use purifex_domain::cleanup_log::CleanReport;
     use purifex_domain::draw::Op;
 
@@ -304,14 +304,9 @@ mod tests {
             name: name.into(),
             publisher: Some(publisher.into()),
             version: Some("1.0".into()),
-            install_location: None,
             uninstall: Some("u.exe".into()),
-            quiet_uninstall: None,
             size_kb: Some(2048),
-            kind: AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         }
     }
 
@@ -350,9 +345,7 @@ mod tests {
                     location: format!(r"C:\x\{i}"),
                     bytes: 4096,
                     why: "w".into(),
-                    user_data: false,
-                    value: None,
-                    evidence: Default::default(),
+                    ..Default::default()
                 })
                 .collect(),
             failed: vec![],

@@ -83,10 +83,8 @@ fn key_candidate(label: &str, path: &str, text: Option<String>) -> Candidate {
     Candidate {
         kind: TraceKind::RegistryKey,
         location: format!(r"{label}\{path}"),
-        bytes: 0,
-        registered_install: false,
-        value: None,
         text,
+        ..Default::default()
     }
 }
 
@@ -112,10 +110,9 @@ pub fn find_values(hives: &Hives, seeds: &Seeds) -> Vec<Candidate> {
                     found.push(Candidate {
                         kind: TraceKind::RegistryValue,
                         location: format!(r"{label}\{path}"),
-                        bytes: 0,
-                        registered_install: false,
                         value: Some(name),
                         text,
+                        ..Default::default()
                     });
                 }
             }
@@ -286,7 +283,7 @@ pub fn find_program_keys(hives: &Hives, names: &[String], seeds: &Seeds) -> Vec<
 #[cfg(test)]
 mod tests {
     use purifex_domain::app_traces::{judge_with, Evidence};
-    use purifex_domain::apps::{AppKind, InstalledApp};
+    use purifex_domain::apps::InstalledApp;
 
     use super::super::registry_write::{delete_key_tree, set_value_raw, RawValue};
     use super::*;
@@ -301,16 +298,7 @@ mod tests {
         InstalledApp {
             id: "x".into(),
             name: "Fake App".into(),
-            publisher: None,
-            version: None,
-            install_location: None,
-            uninstall: None,
-            quiet_uninstall: None,
-            size_kb: None,
-            kind: AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         }
     }
 
@@ -419,10 +407,9 @@ mod tests {
         let value = |name: &str, text: Option<&str>| Candidate {
             kind: TraceKind::RegistryValue,
             location: r"HKCU\Software\X".into(),
-            bytes: 0,
-            registered_install: false,
             value: Some(name.into()),
             text: text.map(String::from),
+            ..Default::default()
         };
         let values = [
             value(

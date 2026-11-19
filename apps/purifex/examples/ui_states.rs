@@ -106,21 +106,16 @@ mod states {
             }
             "apps" => {
                 use purifex_domain::app_traces::{Trace, TraceKind};
-                use purifex_domain::apps::{AppKind, InstalledApp};
+                use purifex_domain::apps::InstalledApp;
                 use purifex_domain::cleanup_log::CleanReport;
                 let app = |name: &str, publisher: &str, kb: u64| InstalledApp {
                     id: format!("HKLM64:{name}"),
                     name: name.into(),
                     publisher: Some(publisher.into()),
                     version: Some("1.0".into()),
-                    install_location: None,
                     uninstall: Some("u.exe".into()),
-                    quiet_uninstall: None,
                     size_kb: Some(kb),
-                    kind: AppKind::Desktop,
-                    hidden: false,
-                    display_icon: None,
-                    observed: Default::default(),
+                    ..Default::default()
                 };
                 model.page = Page::Apps;
                 model.apps = Some(vec![
@@ -139,8 +134,7 @@ mod states {
                     bytes,
                     why: why.into(),
                     user_data: user,
-                    value: None,
-                    evidence: Default::default(),
+                    ..Default::default()
                 };
                 model.traces = Some(CleanReport {
                     app: "Inkscape".into(),

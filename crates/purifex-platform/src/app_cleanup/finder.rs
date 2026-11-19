@@ -101,8 +101,7 @@ pub(super) fn candidate_at(path: &Path, registered: bool) -> Option<Candidate> {
         location: path.to_string_lossy().into_owned(),
         bytes,
         registered_install: registered,
-        value: None,
-        text: None,
+        ..Default::default()
     })
 }
 
@@ -178,10 +177,7 @@ impl TraceFinder for WindowsTraceFinder {
                     found.push(Candidate {
                         kind: TraceKind::RegistryKey,
                         location: format!(r"{label}\{path}\{sub}"),
-                        bytes: 0,
-                        registered_install: false,
-                        value: None,
-                        text: None,
+                        ..Default::default()
                     });
                 }
             }
@@ -197,7 +193,7 @@ impl TraceFinder for WindowsTraceFinder {
 mod tests {
     use std::time::Instant;
 
-    use purifex_domain::apps::{AppKind, InstalledApp};
+    use purifex_domain::apps::InstalledApp;
 
     use super::super::find_files::{find_files, UserPlaces};
     use super::super::find_registry::{
@@ -213,16 +209,8 @@ mod tests {
         let app = InstalledApp {
             id: "x".into(),
             name: "Kdenlive".into(),
-            publisher: None,
-            version: None,
             install_location: Some(r"C:\Program Files\Kdenlive".into()),
-            uninstall: None,
-            quiet_uninstall: None,
-            size_kb: None,
-            kind: AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         };
         let names = names_of(&app);
         let hives = Hives::real();

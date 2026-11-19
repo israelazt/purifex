@@ -9,9 +9,10 @@ use crate::apps::InstalledApp;
 use crate::seeds::{seeds_of, Seeds};
 use crate::trace_rules::judge_by_evidence;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TraceKind {
+    #[default]
     Folder,
     File,
     /// A key of the registry, written `HKCU\Software\App`.
@@ -58,7 +59,7 @@ impl Evidence {
 }
 
 /// A place that might belong to the app, as the finder found it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Candidate {
     pub kind: TraceKind,
     pub location: String,
@@ -73,7 +74,7 @@ pub struct Candidate {
 }
 
 /// A trace that may be removed, and why.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Trace {
     pub kind: TraceKind,
     pub location: String,
@@ -261,12 +262,12 @@ pub fn judge_with(
         bytes: candidate.bytes,
         why,
         user_data,
-        value: None,
         evidence: if registered {
             Evidence::RegisteredInstall
         } else {
             Evidence::NameMatch
         },
+        ..Default::default()
     })
 }
 
@@ -378,7 +379,6 @@ pub fn traces_to_text_for(app: &str, traces: &[Trace]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::apps::AppKind;
 
     #[test]
     fn history_written_before_values_and_evidence_still_reads() {
@@ -394,9 +394,9 @@ mod tests {
             location: r"HKCU\Software\X".into(),
             bytes,
             why: "w".into(),
-            user_data: false,
             value: value.map(String::from),
             evidence: Evidence::NameMatch,
+            ..Default::default()
         }
     }
 
@@ -426,11 +426,10 @@ mod tests {
         let t = Trace {
             kind: TraceKind::RegistryValue,
             location: r"HKCU\Software\X\MuiCache".into(),
-            bytes: 0,
             why: "w".into(),
-            user_data: false,
             value: Some(r"C:\Apps\X\x.exe".into()),
             evidence: Evidence::PathReference,
+            ..Default::default()
         };
         let back: Trace = serde_json::from_str(&serde_json::to_string(&t).unwrap()).unwrap();
         assert_eq!(back, t);
@@ -441,15 +440,9 @@ mod tests {
             id: format!("HKLM64:{name}"),
             name: name.into(),
             publisher: Some(publisher.into()),
-            version: None,
             install_location: location.map(String::from),
             uninstall: Some("u.exe".into()),
-            quiet_uninstall: None,
-            size_kb: None,
-            kind: AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         }
     }
 
@@ -458,9 +451,7 @@ mod tests {
             kind,
             location: location.into(),
             bytes: 1000,
-            registered_install: false,
-            value: None,
-            text: None,
+            ..Default::default()
         }
     }
 

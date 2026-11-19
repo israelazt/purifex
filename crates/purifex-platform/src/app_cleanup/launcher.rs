@@ -46,7 +46,6 @@ impl Uninstaller for RegisteredUninstaller {
 
 #[cfg(test)]
 mod tests {
-    use purifex_domain::apps::AppKind;
 
     use super::*;
 
@@ -54,16 +53,8 @@ mod tests {
         InstalledApp {
             id: "HKLM64:x".into(),
             name: "X".into(),
-            publisher: None,
-            version: None,
-            install_location: None,
             uninstall: uninstall.map(String::from),
-            quiet_uninstall: None,
-            size_kb: None,
-            kind: AppKind::Desktop,
-            hidden: false,
-            display_icon: None,
-            observed: Default::default(),
+            ..Default::default()
         }
     }
 

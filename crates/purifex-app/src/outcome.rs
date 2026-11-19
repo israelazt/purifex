@@ -7,6 +7,7 @@ use purifex_domain::cleanup_log::{cleanup_to_text, CleanReport, CleanupEntry};
 use purifex_domain::compare::ComparisonReport;
 use purifex_domain::driver_offers::{offers_to_text, OfferReport};
 use purifex_domain::fix::{history_to_text, proposals_to_text, FixReport, HistoryEntry, Proposal};
+use purifex_domain::quarantine::{PurgeReport, QuarantineInfo};
 use purifex_domain::report::ScanReport;
 use purifex_domain::session_list::{rows_to_text, SessionRow};
 
@@ -24,6 +25,8 @@ pub enum Outcome {
     Apps(Vec<InstalledApp>),
     Clean(Box<CleanReport>),
     CleanupLog(Vec<CleanupEntry>),
+    Quarantine(QuarantineInfo),
+    Purge(PurgeReport),
     Message(String),
     Fixes(Vec<Proposal>),
     Fix(Box<FixReport>),
@@ -47,6 +50,8 @@ impl Outcome {
             Self::Apps(apps) => apps_to_text(apps),
             Self::Clean(report) => report.to_text(),
             Self::CleanupLog(entries) => cleanup_to_text(entries),
+            Self::Quarantine(info) => info.to_text(),
+            Self::Purge(report) => report.to_text(),
             Self::Message(text) => text.clone(),
             Self::Fixes(proposals) => proposals_to_text(proposals),
             Self::Fix(report) => report.to_text(),
@@ -71,6 +76,8 @@ impl Outcome {
             Self::Apps(apps) => serde_json::json!({ "apps": apps }),
             Self::Clean(report) => return report.to_json(),
             Self::CleanupLog(entries) => serde_json::json!({ "cleanups": entries }),
+            Self::Quarantine(info) => serde_json::json!({ "quarantine": info }),
+            Self::Purge(report) => return report.to_json(),
             Self::Message(text) => serde_json::json!({ "message": text }),
             Self::Fixes(proposals) => serde_json::json!({ "fixes": proposals }),
             Self::Fix(report) => return report.to_json(),

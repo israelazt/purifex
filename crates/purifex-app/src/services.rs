@@ -18,6 +18,7 @@ use purifex_domain::ports::{
     AppInventory, Clock, PerformanceSampler, SessionArchive, SessionFile, SystemInventory,
     UrlOpener,
 };
+use purifex_domain::quarantine::{PurgeReport, QuarantineInfo};
 use purifex_domain::report::{ScanReport, Scope};
 use purifex_domain::session_list::SessionRow;
 
@@ -93,6 +94,12 @@ pub trait Services {
     /// Puts back what removal `seq` took out.
     fn restore_cleanup(&mut self, seq: u64) -> Result<CleanupEntry, String>;
     fn cleanup_history(&self) -> Result<Vec<CleanupEntry>, String>;
+    /// What the quarantine holds: how many traces, how big, how old.
+    fn quarantine(&mut self) -> Result<QuarantineInfo, String>;
+    /// Deletes for good what the quarantine holds; without `confirmed` it only says how much.
+    fn empty_quarantine(&mut self, confirmed: bool) -> Result<PurgeReport, String>;
+    /// Lets go of what has been in the quarantine for seven days.
+    fn expire_quarantine(&mut self) -> Result<PurgeReport, String>;
     /// An app was seen to disappear from the list: keep what was known of it.
     fn note_uninstalled(&mut self, app: &InstalledApp) -> Result<(), String>;
 }
@@ -319,6 +326,18 @@ where
 
     fn cleanup_history(&self) -> Result<Vec<CleanupEntry>, String> {
         self.cleaning.history()
+    }
+
+    fn quarantine(&mut self) -> Result<QuarantineInfo, String> {
+        self.cleaning.quarantine_info()
+    }
+
+    fn empty_quarantine(&mut self, confirmed: bool) -> Result<PurgeReport, String> {
+        self.cleaning.empty_quarantine(confirmed)
+    }
+
+    fn expire_quarantine(&mut self) -> Result<PurgeReport, String> {
+        self.cleaning.expire_quarantine()
     }
 
     fn note_uninstalled(&mut self, app: &InstalledApp) -> Result<(), String> {

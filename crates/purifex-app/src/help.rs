@@ -12,6 +12,9 @@ Uso:
   purifex compare [ANTES DESPUÉS] [--json]
                                   Compara dos partidas (por defecto, las dos últimas)
   purifex apps [--json]           Apps instaladas (solo lista)
+  purifex apps quarantine [--json]
+                                  Lo que guarda la cuarentena de restos (y suelta lo que lleva 7 días)
+  purifex apps purge [--yes]      Vacía la cuarentena para siempre (sin --yes solo dice cuánto)
   purifex mcp                     Servidor MCP para tu IA (lo lanza tu cliente de IA, no se usa a mano)
   purifex updates [--json]        Drivers que ofrece Windows Update (solo lista; no instala)
   purifex fixes [--json]          Arreglos que se proponen, con la medición que los justifica

@@ -5,16 +5,21 @@
 use serde::{Deserialize, Serialize};
 
 use crate::app_traces::Trace;
+use crate::date::Date;
 use crate::view::{REGISTRY_ROOM, TRACES_LISTED};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CleanupState {
+    #[default]
     Removed,
+    /// A line that says a removal was put back.
     Restored,
+    /// A line that says the quarantine copy of a removal was deleted for good.
+    Purged,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CleanupEntry {
     pub seq: u64,
     pub app: String,
@@ -22,8 +27,14 @@ pub struct CleanupEntry {
     /// Where the removed thing is kept (the quarantine folder).
     pub kept: String,
     pub state: CleanupState,
-    /// For a `Restored` line: the `seq` of the removal it undoes.
-    pub restores: Option<u64>,
+    /// For a `Restored` or `Purged` line: the `seq` of the removal it closes. (Before purging
+    /// existed it was called `restores`: old logs still read.)
+    #[serde(default, alias = "restores")]
+    pub settles: Option<u64>,
+    /// The day of this line: when it was removed, put back or deleted (a line written before
+    /// the day was kept has none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on: Option<Date>,
 }
 
 impl CleanupEntry {
@@ -40,7 +51,14 @@ impl CleanupEntry {
 pub fn is_restored(entries: &[CleanupEntry], seq: u64) -> bool {
     entries
         .iter()
-        .any(|e| e.state == CleanupState::Restored && e.restores == Some(seq))
+        .any(|e| e.state == CleanupState::Restored && e.settles == Some(seq))
+}
+
+/// Whether the quarantine copy of the removal `seq` was deleted for good.
+pub fn is_purged(entries: &[CleanupEntry], seq: u64) -> bool {
+    entries
+        .iter()
+        .any(|e| e.state == CleanupState::Purged && e.settles == Some(seq))
 }
 
 /// The next number for a line.
@@ -201,8 +219,10 @@ pub fn cleanup_to_text(entries: &[CleanupEntry]) -> String {
     for e in entries.iter().rev() {
         let what = match e.state {
             CleanupState::Removed if is_restored(entries, e.seq) => "quitado y devuelto",
+            CleanupState::Removed if is_purged(entries, e.seq) => "quitado (copia borrada)",
             CleanupState::Removed => "quitado",
             CleanupState::Restored => "devuelto",
+            CleanupState::Purged => "copia de la cuarentena borrada",
         };
         let _ = writeln!(out, "#{} {} — {}: {}", e.seq, what, e.app, e.trace.location);
     }
@@ -310,7 +330,7 @@ mod tests {
                     trace: t.clone(),
                     kept: "k".into(),
                     state: CleanupState::Removed,
-                    restores: None,
+                    ..Default::default()
                 })
                 .collect()
         };
@@ -389,7 +409,7 @@ mod tests {
 
     use crate::app_traces::TraceKind;
 
-    fn entry(seq: u64, state: CleanupState, restores: Option<u64>) -> CleanupEntry {
+    fn entry(seq: u64, state: CleanupState, settles: Option<u64>) -> CleanupEntry {
         CleanupEntry {
             seq,
             app: "Discord".into(),
@@ -403,8 +423,23 @@ mod tests {
             },
             kept: r"C:\q\1".into(),
             state,
-            restores,
+            settles,
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn a_line_written_before_purging_existed_still_reads() {
+        let old = r#"{"seq":2,"app":"X","trace":{"kind":"folder","location":"C:\\x\\y","bytes":1,"why":"w","user_data":false},"kept":"k","state":"restored","restores":1}"#;
+        let e = CleanupEntry::from_line(old).unwrap();
+        assert_eq!(
+            (e.state, e.settles, e.on),
+            (CleanupState::Restored, Some(1), None)
+        );
+        let dated = r#"{"seq":3,"app":"X","trace":{"kind":"folder","location":"C:\\x","bytes":1,"why":"w","user_data":false},"kept":"k","state":"removed","settles":null,"on":"2026-11-19"}"#;
+        let e = CleanupEntry::from_line(dated).unwrap();
+        assert_eq!(e.on, Date::new(2026, 11, 19));
+        assert_eq!(CleanupEntry::from_line(&e.to_line()).unwrap(), e);
     }
 
     #[test]

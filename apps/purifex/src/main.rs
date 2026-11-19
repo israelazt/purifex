@@ -55,7 +55,8 @@ fn build_app() -> impl purifex_app::Services + 'static {
         Box::new(RegisteredUninstaller),
         Box::new(LocalCleanup::new()),
     )
-    .with_probe(Box::new(WindowsSeedProbe));
+    .with_probe(Box::new(WindowsSeedProbe))
+    .with_clock(Box::new(SystemClock::new()));
     App::new(scanner, recorder, archive)
         .with_fixer(fixer)
         .with_offers(offering)

@@ -31,6 +31,15 @@ pub enum AppsCommand {
     History {
         json: bool,
     },
+    /// What the quarantine holds.
+    Quarantine {
+        json: bool,
+    },
+    /// Empties the quarantine for good (without `--yes`: only says how much).
+    Purge {
+        yes: bool,
+        json: bool,
+    },
 }
 
 /// The words that name the order: an initial `--json`, then the command if it is one of
@@ -44,7 +53,18 @@ fn split_command<'a>(
         None => (false, Vec::new()),
     };
     match rest.split_first() {
-        Some((c, r)) if ["traces", "uninstall", "clean", "restore", "history"].contains(c) => {
+        Some((c, r))
+            if [
+                "traces",
+                "uninstall",
+                "clean",
+                "restore",
+                "history",
+                "quarantine",
+                "purge",
+            ]
+            .contains(c) =>
+        {
             (json, Some(*c), r.to_vec())
         }
         _ => (json, None, rest),
@@ -99,6 +119,8 @@ impl AppsCommand {
                 json,
             }),
             Some("history") => Ok(Self::History { json }),
+            Some("quarantine") => Ok(Self::Quarantine { json }),
+            Some("purge") => Ok(Self::Purge { yes, json }),
             Some(_) => {
                 let seq = name.trim().trim_start_matches('#').parse().map_err(|_| {
                     "falta el número de la eliminación (mira `purifex apps history`)".to_string()
@@ -115,6 +137,8 @@ impl AppsCommand {
                 | Self::Traces { json: true, .. }
                 | Self::Clean { json: true, .. }
                 | Self::History { json: true }
+                | Self::Quarantine { json: true }
+                | Self::Purge { json: true, .. }
         )
     }
 
@@ -150,6 +174,11 @@ impl AppsCommand {
                 )))
             }
             Self::History { .. } => services.cleanup_history().map(Outcome::CleanupLog),
+            Self::Quarantine { .. } => {
+                services.expire_quarantine()?;
+                services.quarantine().map(Outcome::Quarantine)
+            }
+            Self::Purge { yes, .. } => services.empty_quarantine(yes).map(Outcome::Purge),
         }
     }
 }
@@ -199,6 +228,34 @@ mod tests {
             parse(&["history"]).unwrap(),
             AppsCommand::History { json: false }
         );
+    }
+
+    #[test]
+    fn the_quarantine_can_be_looked_at_and_emptied_only_with_yes() {
+        assert_eq!(
+            parse(&["quarantine", "--json"]).unwrap(),
+            AppsCommand::Quarantine { json: true }
+        );
+        assert_eq!(
+            parse(&["purge"]).unwrap(),
+            AppsCommand::Purge {
+                yes: false,
+                json: false
+            }
+        );
+        assert_eq!(
+            parse(&["--json", "purge", "--yes"]).unwrap(),
+            AppsCommand::Purge {
+                yes: true,
+                json: true
+            }
+        );
+        assert!(parse(&["purge", "--force"]).is_err());
+        assert!(AppsCommand::Purge {
+            yes: false,
+            json: true
+        }
+        .wants_json());
     }
 
     #[test]

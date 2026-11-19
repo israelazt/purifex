@@ -94,6 +94,11 @@ pub trait CleanupStore {
     /// the system no longer lists it, and its traces are looked for from this).
     fn remember(&mut self, app: &crate::apps::InstalledApp) -> Result<(), String>;
     fn remembered(&self) -> Result<Vec<crate::apps::InstalledApp>, String>;
+    /// Deletes for good the quarantine copy of a removal and returns the bytes freed. It only
+    /// ever deletes inside the quarantine folder: a copy that is not there is refused.
+    fn purge(&mut self, entry: &crate::cleanup_log::CleanupEntry) -> Result<u64, String>;
+    /// What the quarantine takes on disk.
+    fn quarantine_bytes(&self) -> Result<u64, String>;
 }
 
 /// The clock: today's day, and a monotonic time to measure how long things take.

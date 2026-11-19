@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Ticks of 100 ns between 1601-01-01 (Windows) and 1970-01-01 (Unix).
 const UNIX_EPOCH_AS_TICKS: i64 = 116_444_736_000_000_000;
@@ -69,6 +69,17 @@ impl Date {
         )
     }
 
+    /// `2026-11-18`: year, month and day, each a number, and a real day.
+    pub fn parse(text: &str) -> Option<Date> {
+        let mut parts = text.split('-');
+        let date = Date::new(
+            parts.next()?.parse().ok()?,
+            parts.next()?.parse().ok()?,
+            parts.next()?.parse().ok()?,
+        )?;
+        parts.next().is_none().then_some(date)
+    }
+
     /// Whole days from `self` to `later` (negative if `later` is earlier).
     pub fn days_until(self, later: Date) -> i64 {
         later.days() - self.days()
@@ -95,6 +106,13 @@ impl fmt::Display for Date {
 impl Serialize for Date {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for Date {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Date::parse(&text).ok_or_else(|| serde::de::Error::custom(format!("not a date: {text}")))
     }
 }
 

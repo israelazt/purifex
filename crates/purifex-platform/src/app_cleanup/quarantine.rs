@@ -14,6 +14,8 @@ use purifex_domain::apps::InstalledApp;
 use purifex_domain::cleanup_log::{CleanupEntry, ValueCopy};
 use purifex_domain::ports::CleanupStore;
 
+use super::finder::folder_size;
+
 use super::registry_write;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -47,6 +49,39 @@ impl LocalCleanup {
 impl Default for LocalCleanup {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Deletes a folder with everything in it. A read-only file (something that came from a
+/// program that marks its files so) is made writable first, once, if Windows refuses.
+fn remove_tree(folder: &Path) -> std::io::Result<()> {
+    match fs::remove_dir_all(folder) {
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            make_writable(folder);
+            fs::remove_dir_all(folder)
+        }
+        other => other,
+    }
+}
+
+fn make_writable(path: &Path) {
+    let Ok(meta) = fs::symlink_metadata(path) else {
+        return;
+    };
+    if meta.file_type().is_symlink() {
+        return; // never follow a link out of the quarantine
+    }
+    let mut permissions = meta.permissions();
+    #[expect(
+        clippy::permissions_set_readonly_false,
+        reason = "on Windows this only clears the read-only attribute"
+    )]
+    permissions.set_readonly(false);
+    let _ = fs::set_permissions(path, permissions);
+    if meta.is_dir() {
+        for entry in fs::read_dir(path).into_iter().flatten().flatten() {
+            make_writable(&entry.path());
+        }
     }
 }
 
@@ -174,6 +209,28 @@ impl CleanupStore for LocalCleanup {
         self.add_line("uninstalled.jsonl", &line)
     }
 
+    fn purge(&mut self, entry: &CleanupEntry) -> Result<u64, String> {
+        let folder = self.base()?.join("quarantine").join(entry.seq.to_string());
+        let kept = Path::new(&entry.kept);
+        // Only what is inside this removal's own folder of the quarantine is ever deleted.
+        let escapes = kept
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir));
+        if escapes || !kept.starts_with(&folder) {
+            return Err("la copia no está en la cuarentena: no se borra".into());
+        }
+        if !folder.exists() {
+            return Ok(0);
+        }
+        let bytes = folder_size(&folder);
+        remove_tree(&folder).map_err(|e| io_message(&e, "no se pudo borrar la copia"))?;
+        Ok(bytes)
+    }
+
+    fn quarantine_bytes(&self) -> Result<u64, String> {
+        Ok(folder_size(&self.base()?.join("quarantine")))
+    }
+
     fn remembered(&self) -> Result<Vec<InstalledApp>, String> {
         let path = self.base()?.join("uninstalled.jsonl");
         let text = fs::read_to_string(&path).unwrap_or_default();
@@ -237,7 +294,7 @@ mod tests {
             trace: t,
             kept,
             state: CleanupState::Removed,
-            restores: None,
+            ..Default::default()
         }
     }
 
@@ -396,6 +453,82 @@ mod tests {
         let no_name = trace(TraceKind::RegistryValue, &key);
         assert!(store.remove(&no_name, 3).is_err());
         delete_key_tree(&key).unwrap();
+        let _ = fs::remove_dir_all(&work);
+    }
+
+    /// A folder moved to the quarantine as a removal, with a file of `size` bytes in it.
+    fn quarantined(store: &mut LocalCleanup, work: &Path, seq: u64, size: usize) -> CleanupEntry {
+        let place = work.join(format!("Datos{seq}"));
+        fs::create_dir_all(&place).unwrap();
+        fs::write(place.join("save.dat"), vec![7u8; size]).unwrap();
+        let t = trace(TraceKind::Folder, &place.to_string_lossy());
+        let kept = store.remove(&t, seq).unwrap();
+        entry(seq, t, kept)
+    }
+
+    #[test]
+    fn purging_deletes_the_copy_for_good_and_says_how_much_it_freed() {
+        let work = temp("q-purge");
+        let mut store = LocalCleanup::in_dir(work.join("Purifex"));
+        let first = quarantined(&mut store, &work, 1, 5000);
+        let second = quarantined(&mut store, &work, 2, 3000);
+        assert_eq!(store.quarantine_bytes().unwrap(), 8000);
+        assert_eq!(store.purge(&first).unwrap(), 5000);
+        assert!(!Path::new(&first.kept).exists(), "the copy is gone");
+        assert!(
+            Path::new(&second.kept).exists(),
+            "the other one is not touched"
+        );
+        assert_eq!(store.quarantine_bytes().unwrap(), 3000);
+        assert_eq!(
+            store.purge(&first).unwrap(),
+            0,
+            "already gone is not an error"
+        );
+        let _ = fs::remove_dir_all(&work);
+    }
+
+    #[test]
+    fn only_what_is_inside_the_quarantine_is_ever_deleted() {
+        let work = temp("q-purge-guard");
+        let mut store = LocalCleanup::in_dir(work.join("Purifex"));
+        let mine = quarantined(&mut store, &work, 1, 10);
+        let outside = work.join("Precioso");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("no-borrar.txt"), b"x").unwrap();
+        let elsewhere = entry(
+            1,
+            mine.trace.clone(),
+            outside.to_string_lossy().into_owned(),
+        );
+        assert!(store.purge(&elsewhere).unwrap_err().contains("no se borra"));
+        let escape = format!(
+            r"{}\..\..\Precioso",
+            work.join("Purifex").join("quarantine").join("1").display()
+        );
+        let sneaky = entry(1, mine.trace.clone(), escape);
+        assert!(store.purge(&sneaky).unwrap_err().contains("no se borra"));
+        let other_removal = entry(2, mine.trace.clone(), mine.kept.clone());
+        assert!(
+            store.purge(&other_removal).is_err(),
+            "a copy of another removal"
+        );
+        assert!(outside.join("no-borrar.txt").exists());
+        assert!(Path::new(&mine.kept).exists());
+        let _ = fs::remove_dir_all(&work);
+    }
+
+    #[test]
+    fn a_read_only_file_in_the_copy_does_not_stop_it_from_being_deleted() {
+        let work = temp("q-purge-readonly");
+        let mut store = LocalCleanup::in_dir(work.join("Purifex"));
+        let e = quarantined(&mut store, &work, 1, 100);
+        let file = Path::new(&e.kept).join("save.dat");
+        let mut permissions = fs::metadata(&file).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&file, permissions).unwrap();
+        assert_eq!(store.purge(&e).unwrap(), 100);
+        assert!(!Path::new(&e.kept).exists());
         let _ = fs::remove_dir_all(&work);
     }
 

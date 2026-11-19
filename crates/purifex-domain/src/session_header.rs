@@ -56,7 +56,7 @@ impl SessionHeader {
             match key {
                 "game" => game = Some(value.to_string()),
                 "cores" => cores = value.parse().ok(),
-                "started" => started = parse_date(value),
+                "started" => started = Date::parse(value),
                 _ => {}
             }
             rest = next;
@@ -68,16 +68,6 @@ impl SessionHeader {
             started: started?,
         })
     }
-}
-
-fn parse_date(text: &str) -> Option<Date> {
-    let mut parts = text.split('-');
-    let date = Date::new(
-        parts.next()?.parse().ok()?,
-        parts.next()?.parse().ok()?,
-        parts.next()?.parse().ok()?,
-    )?;
-    parts.next().is_none().then_some(date)
 }
 
 #[cfg(test)]

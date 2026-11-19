@@ -7,8 +7,13 @@
 
 use purifex_domain::app_traces::{names_of, propose_with, simple, Trace};
 use purifex_domain::apps::InstalledApp;
-use purifex_domain::cleanup_log::{is_restored, next_seq, CleanReport, CleanupEntry, CleanupState};
-use purifex_domain::ports::{CleanupStore, SeedProbe, TraceFinder, Uninstaller};
+use purifex_domain::cleanup_log::{
+    is_purged, is_restored, next_seq, CleanReport, CleanupEntry, CleanupState,
+};
+use purifex_domain::date::Date;
+use purifex_domain::ports::{CleanupStore, Clock, SeedProbe, TraceFinder, Uninstaller};
+
+mod purging;
 
 #[derive(Default)]
 pub struct Cleaning {
@@ -16,6 +21,7 @@ pub struct Cleaning {
     launcher: Option<Box<dyn Uninstaller>>,
     store: Option<Box<dyn CleanupStore>>,
     probe: Option<Box<dyn SeedProbe>>,
+    clock: Option<Box<dyn Clock>>,
 }
 
 /// The app that `query` names (its id, its name, or a part of it that only one has).
@@ -71,7 +77,18 @@ impl Cleaning {
             launcher: Some(launcher),
             store: Some(store),
             probe: None,
+            clock: None,
         }
+    }
+
+    /// The day is written on each removal, so the quarantine can let go of old ones.
+    pub fn with_clock(mut self, clock: Box<dyn Clock>) -> Self {
+        self.clock = Some(clock);
+        self
+    }
+
+    fn today(&self) -> Option<Date> {
+        self.clock.as_ref().map(|c| c.today())
     }
 
     /// What is observed of an app before its uninstaller starts (kept with it).
@@ -217,6 +234,7 @@ impl Cleaning {
     /// Moves each trace to the quarantine and logs it. A trace that cannot be removed
     /// (in use, needs an administrator) is reported with why, and the rest go on.
     fn remove_all(&mut self, app: &str, traces: &[Trace]) -> Result<Removals, String> {
+        let today = self.today();
         let store = self.store()?;
         let mut log = store.entries()?;
         let (mut removed, mut failed) = (Vec::new(), Vec::new());
@@ -230,7 +248,8 @@ impl Cleaning {
                         trace: trace.clone(),
                         kept,
                         state: CleanupState::Removed,
-                        restores: None,
+                        on: today,
+                        ..Default::default()
                     };
                     store.append(&entry)?;
                     log.push(entry.clone());
@@ -244,6 +263,7 @@ impl Cleaning {
 
     /// Puts back what removal `seq` took out.
     pub fn restore(&mut self, seq: u64) -> Result<CleanupEntry, String> {
+        let today = self.today();
         let store = self.store()?;
         let log = store.entries()?;
         let entry = log
@@ -254,6 +274,11 @@ impl Cleaning {
         if is_restored(&log, seq) {
             return Err(format!("la eliminación #{seq} ya se devolvió"));
         }
+        if is_purged(&log, seq) {
+            return Err(format!(
+                "la copia de la eliminación #{seq} ya se borró de la cuarentena: no se puede devolver"
+            ));
+        }
         store.restore(&entry)?;
         let line = CleanupEntry {
             seq: next_seq(&log),
@@ -261,7 +286,8 @@ impl Cleaning {
             trace: entry.trace.clone(),
             kept: entry.kept,
             state: CleanupState::Restored,
-            restores: Some(seq),
+            settles: Some(seq),
+            on: today,
         };
         store.append(&line)?;
         Ok(line)
@@ -526,7 +552,7 @@ mod tests {
             .removed[0]
             .seq;
         let line = c.restore(seq).unwrap();
-        assert_eq!(line.restores, Some(seq));
+        assert_eq!(line.settles, Some(seq));
         assert_eq!(log.borrow().restored, [DATA]);
         assert!(c.restore(seq).unwrap_err().contains("ya se devolvió"));
         assert!(c.restore(99).unwrap_err().contains("no hay ninguna"));

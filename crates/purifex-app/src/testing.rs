@@ -320,6 +320,9 @@ pub struct CleanLog {
     pub remembered: Vec<purifex_domain::apps::InstalledApp>,
     /// Locations that refuse to be removed (in use).
     pub stuck: Vec<String>,
+    /// The removals whose quarantine copy was deleted, and the ones that refuse to be.
+    pub purged: Vec<u64>,
+    pub stuck_purge: Vec<u64>,
 }
 
 pub struct FakeCleaning(pub Rc<RefCell<CleanLog>>);
@@ -376,7 +379,22 @@ impl purifex_domain::ports::CleanupStore for FakeCleaning {
     fn remembered(&self) -> Result<Vec<purifex_domain::apps::InstalledApp>, String> {
         Ok(self.0.borrow().remembered.clone())
     }
+    fn purge(&mut self, entry: &purifex_domain::cleanup_log::CleanupEntry) -> Result<u64, String> {
+        let mut log = self.0.borrow_mut();
+        if log.stuck_purge.contains(&entry.seq) {
+            return Err("en uso".into());
+        }
+        log.purged.push(entry.seq);
+        Ok(PURGE_BYTES)
+    }
+    fn quarantine_bytes(&self) -> Result<u64, String> {
+        let log = self.0.borrow();
+        Ok(log.removed.len().saturating_sub(log.purged.len()) as u64 * PURGE_BYTES)
+    }
 }
+
+/// What each fake quarantine copy weighs.
+pub const PURGE_BYTES: u64 = 1024;
 
 /// Installed apps that a test can change (an uninstaller finishing removes one).
 #[derive(Clone, Default)]

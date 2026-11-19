@@ -65,6 +65,16 @@ fn reg(args: &[&str]) -> Result<(), String> {
     }
 }
 
+/// What to tell the user of a file that could not be moved: a refusal of Windows to
+/// touch a protected place needs an administrator; the rest is said as it is.
+fn io_message(e: &std::io::Error, what: &str) -> String {
+    if e.kind() == std::io::ErrorKind::PermissionDenied {
+        "requiere administrador".into()
+    } else {
+        format!("{what} (¿está en uso o en otro disco?): {e}")
+    }
+}
+
 fn last_part(location: &str) -> &str {
     location
         .rsplit(['\\', '/'])
@@ -83,9 +93,8 @@ impl CleanupStore for LocalCleanup {
                     return Err("ya no existe".into());
                 }
                 let kept = folder.join(last_part(&trace.location));
-                fs::rename(from, &kept).map_err(|e| {
-                    format!("no se pudo mover a la cuarentena (¿está en uso o en otro disco?): {e}")
-                })?;
+                fs::rename(from, &kept)
+                    .map_err(|e| io_message(&e, "no se pudo mover a la cuarentena"))?;
                 Ok(kept.to_string_lossy().into_owned())
             }
             TraceKind::RegistryKey => {
@@ -121,7 +130,7 @@ impl CleanupStore for LocalCleanup {
                 if let Some(parent) = target.parent() {
                     fs::create_dir_all(parent).map_err(|e| e.to_string())?;
                 }
-                fs::rename(&entry.kept, target).map_err(|e| format!("no se pudo devolver: {e}"))
+                fs::rename(&entry.kept, target).map_err(|e| io_message(&e, "no se pudo devolver"))
             }
             TraceKind::RegistryKey => reg(&["import", &entry.kept]),
             TraceKind::RegistryValue => {
@@ -304,6 +313,19 @@ mod tests {
         let mut t = trace(TraceKind::RegistryValue, key);
         t.value = Some(name.into());
         t
+    }
+
+    #[test]
+    fn a_refusal_of_windows_says_it_needs_an_administrator_and_other_errors_say_why() {
+        use std::io::{Error, ErrorKind};
+        let denied = Error::from(ErrorKind::PermissionDenied);
+        assert_eq!(
+            io_message(&denied, "no se pudo mover"),
+            "requiere administrador"
+        );
+        let busy = Error::other("en uso");
+        let text = io_message(&busy, "no se pudo mover");
+        assert!(text.contains("no se pudo mover") && text.contains("en uso"));
     }
 
     #[test]

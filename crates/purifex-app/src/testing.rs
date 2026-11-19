@@ -309,3 +309,71 @@ impl purifex_domain::ports::HistoryStore for FakeFixes {
         Ok(())
     }
 }
+
+/// What the cleaning fakes did, to look at from a test.
+#[derive(Default)]
+pub struct CleanLog {
+    pub launched: Vec<String>,
+    pub removed: Vec<String>,
+    pub restored: Vec<String>,
+    pub entries: Vec<purifex_domain::cleanup_log::CleanupEntry>,
+    pub remembered: Vec<purifex_domain::apps::InstalledApp>,
+    /// Locations that refuse to be removed (in use).
+    pub stuck: Vec<String>,
+}
+
+pub struct FakeCleaning(pub Rc<RefCell<CleanLog>>);
+
+pub struct FakeFinder(pub Vec<purifex_domain::app_traces::Candidate>);
+
+impl purifex_domain::ports::TraceFinder for FakeFinder {
+    fn candidates(
+        &self,
+        _: &purifex_domain::apps::InstalledApp,
+    ) -> Result<Vec<purifex_domain::app_traces::Candidate>, String> {
+        Ok(self.0.clone())
+    }
+}
+
+impl purifex_domain::ports::Uninstaller for FakeCleaning {
+    fn launch(&self, app: &purifex_domain::apps::InstalledApp) -> Result<(), String> {
+        self.0.borrow_mut().launched.push(app.name.clone());
+        Ok(())
+    }
+}
+
+impl purifex_domain::ports::CleanupStore for FakeCleaning {
+    fn remove(
+        &mut self,
+        trace: &purifex_domain::app_traces::Trace,
+        seq: u64,
+    ) -> Result<String, String> {
+        let mut log = self.0.borrow_mut();
+        if log.stuck.contains(&trace.location) {
+            return Err("en uso".into());
+        }
+        log.removed.push(trace.location.clone());
+        Ok(format!("q/{seq}"))
+    }
+    fn restore(&mut self, entry: &purifex_domain::cleanup_log::CleanupEntry) -> Result<(), String> {
+        self.0
+            .borrow_mut()
+            .restored
+            .push(entry.trace.location.clone());
+        Ok(())
+    }
+    fn entries(&self) -> Result<Vec<purifex_domain::cleanup_log::CleanupEntry>, String> {
+        Ok(self.0.borrow().entries.clone())
+    }
+    fn append(&mut self, e: &purifex_domain::cleanup_log::CleanupEntry) -> Result<(), String> {
+        self.0.borrow_mut().entries.push(e.clone());
+        Ok(())
+    }
+    fn remember(&mut self, app: &purifex_domain::apps::InstalledApp) -> Result<(), String> {
+        self.0.borrow_mut().remembered.push(app.clone());
+        Ok(())
+    }
+    fn remembered(&self) -> Result<Vec<purifex_domain::apps::InstalledApp>, String> {
+        Ok(self.0.borrow().remembered.clone())
+    }
+}

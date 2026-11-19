@@ -14,11 +14,14 @@ fn say(line: &str) {
 
 #[cfg(windows)]
 fn main() {
-    use purifex_app::{App, Archive, Candidates, Command, Fixer, Offering, Recorder, Scanner};
+    use purifex_app::{
+        App, Archive, Candidates, Cleaning, Command, Fixer, Offering, Recorder, Scanner,
+    };
     use purifex_platform::{
-        install_stderr_log, BrowserOpener, JsonlCandidates, JsonlHistory, LocalSessionArchive,
-        LocalSessionFile, RegistryApps, SetupApiInventory, SystemClock, SystemFixes,
-        WindowsSampler, WindowsUpdateOffers,
+        install_stderr_log, BrowserOpener, JsonlCandidates, JsonlHistory, LocalCleanup,
+        LocalSessionArchive, LocalSessionFile, RegisteredUninstaller, RegistryApps,
+        SetupApiInventory, SystemClock, SystemFixes, WindowsSampler, WindowsTraceFinder,
+        WindowsUpdateOffers,
     };
 
     install_stderr_log();
@@ -42,7 +45,12 @@ fn main() {
         .with_offers(offering)
         .with_candidates(Candidates::new(Box::new(JsonlCandidates::new())))
         .with_opener(Box::new(BrowserOpener))
-        .with_apps(Box::new(RegistryApps));
+        .with_apps(Box::new(RegistryApps))
+        .with_cleaning(Cleaning::new(
+            Box::new(WindowsTraceFinder),
+            Box::new(RegisteredUninstaller),
+            Box::new(LocalCleanup::new()),
+        ));
     if matches!(command, Command::Mcp) {
         let stdin = std::io::stdin();
         if let Err(error) = purifex_app::mcp::serve(&mut app, stdin.lock(), std::io::stdout()) {

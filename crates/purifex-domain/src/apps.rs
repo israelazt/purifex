@@ -2,10 +2,10 @@
 //! done with each. Plain facts and rules: reading the registry and running an
 //! uninstaller belong to the adapters.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// How an app was installed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AppKind {
     /// A classic program with its own uninstaller (listed in the registry).
@@ -15,7 +15,7 @@ pub enum AppKind {
 }
 
 /// One installed app. Every field but the name may be unknown.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstalledApp {
     /// Stable id: the registry key of the app, or the full name of the package.
     pub id: String,
@@ -35,6 +35,14 @@ pub struct InstalledApp {
 }
 
 impl InstalledApp {
+    pub fn to_line(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    pub fn from_line(line: &str) -> Result<Self, String> {
+        serde_json::from_str(line).map_err(|e| e.to_string())
+    }
+
     /// Whether the list of apps shows it: it has a name and a way to uninstall it,
     /// and it is not hidden.
     pub fn is_listable(&self) -> bool {

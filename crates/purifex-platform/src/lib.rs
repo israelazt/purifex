@@ -7,6 +7,8 @@ pub mod decode;
 pub mod nt_layout;
 
 #[cfg(windows)]
+mod app_cleanup;
+#[cfg(windows)]
 mod apps_registry;
 #[cfg(windows)]
 mod browser;
@@ -37,6 +39,8 @@ mod window;
 #[cfg(windows)]
 mod windows_update;
 
+#[cfg(windows)]
+pub use app_cleanup::{LocalCleanup, RegisteredUninstaller, WindowsTraceFinder};
 #[cfg(windows)]
 pub use apps_registry::RegistryApps;
 #[cfg(windows)]

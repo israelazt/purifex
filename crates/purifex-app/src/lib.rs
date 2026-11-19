@@ -6,7 +6,9 @@
 
 pub mod archive;
 pub mod candidates;
+pub mod cleaning;
 pub mod command;
+mod command_apps;
 pub mod core;
 pub mod fixer;
 mod help;
@@ -22,6 +24,7 @@ mod updates_wait;
 
 pub use archive::Archive;
 pub use candidates::Candidates;
+pub use cleaning::Cleaning;
 pub use command::{Command, Output, Screenshot, UiOptions};
 pub use core::Core;
 pub use fixer::Fixer;

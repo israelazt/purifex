@@ -41,6 +41,35 @@ pub trait AppInventory {
     fn apps(&self) -> Result<Vec<crate::apps::InstalledApp>, String>;
 }
 
+/// Looks for places that might hold the traces of an app. It only reads and
+/// proposes; `app_traces::judge` decides.
+pub trait TraceFinder {
+    fn candidates(
+        &self,
+        app: &crate::apps::InstalledApp,
+    ) -> Result<Vec<crate::app_traces::Candidate>, String>;
+}
+
+/// Starts the uninstaller that the app registered (and does not wait for it).
+pub trait Uninstaller {
+    fn launch(&self, app: &crate::apps::InstalledApp) -> Result<(), String>;
+}
+
+/// Takes traces out of their place into a quarantine that can give them back, and
+/// keeps the log of what it did.
+pub trait CleanupStore {
+    /// Moves the trace to the quarantine; returns where it is kept.
+    fn remove(&mut self, trace: &crate::app_traces::Trace, seq: u64) -> Result<String, String>;
+    /// Puts the removed thing back where it was (it must not exist there now).
+    fn restore(&mut self, entry: &crate::cleanup_log::CleanupEntry) -> Result<(), String>;
+    fn entries(&self) -> Result<Vec<crate::cleanup_log::CleanupEntry>, String>;
+    fn append(&mut self, entry: &crate::cleanup_log::CleanupEntry) -> Result<(), String>;
+    /// Keeps what was known of an app when its uninstaller was started (afterwards
+    /// the system no longer lists it, and its traces are looked for from this).
+    fn remember(&mut self, app: &crate::apps::InstalledApp) -> Result<(), String>;
+    fn remembered(&self) -> Result<Vec<crate::apps::InstalledApp>, String>;
+}
+
 /// The clock: today's day, and a monotonic time to measure how long things take.
 pub trait Clock {
     fn today(&self) -> Date;

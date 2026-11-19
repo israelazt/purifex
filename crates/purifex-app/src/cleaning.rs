@@ -1,0 +1,364 @@
+//! Uninstalling an app and cleaning what it leaves. Three steps, each its own
+//! decision: start the app's own uninstaller; look for traces (a preview that
+//! touches nothing); remove them to a quarantine that can give them back. The
+//! rules of what may be removed are the domain's (`app_traces`); this only
+//! orders the steps and refuses the ones that are not safe yet (cleaning an app
+//! that is still installed).
+
+use purifex_domain::app_traces::propose;
+use purifex_domain::apps::InstalledApp;
+use purifex_domain::cleanup_log::{is_restored, next_seq, CleanReport, CleanupEntry, CleanupState};
+use purifex_domain::ports::{CleanupStore, TraceFinder, Uninstaller};
+
+#[derive(Default)]
+pub struct Cleaning {
+    finder: Option<Box<dyn TraceFinder>>,
+    launcher: Option<Box<dyn Uninstaller>>,
+    store: Option<Box<dyn CleanupStore>>,
+}
+
+/// The app that `query` names (its id, its name, or a part of it that only one has).
+pub fn find<'a>(apps: &'a [InstalledApp], query: &str) -> Result<&'a InstalledApp, String> {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return Err("falta el nombre de la app".into());
+    }
+    if let Some(app) = apps
+        .iter()
+        .find(|a| a.id.to_lowercase() == q || a.name.to_lowercase() == q)
+    {
+        return Ok(app);
+    }
+    let matching: Vec<&InstalledApp> = apps
+        .iter()
+        .filter(|a| a.name.to_lowercase().contains(&q))
+        .collect();
+    match matching.as_slice() {
+        [one] => Ok(one),
+        [] => Err(format!("no hay ninguna app que se llame «{query}»")),
+        many => {
+            let names: Vec<&str> = many.iter().take(5).map(|a| a.name.as_str()).collect();
+            Err(format!(
+                "«{query}» coincide con varias apps ({}…): escribe el nombre completo",
+                names.join(", ")
+            ))
+        }
+    }
+}
+
+impl Cleaning {
+    pub fn new(
+        finder: Box<dyn TraceFinder>,
+        launcher: Box<dyn Uninstaller>,
+        store: Box<dyn CleanupStore>,
+    ) -> Self {
+        Self {
+            finder: Some(finder),
+            launcher: Some(launcher),
+            store: Some(store),
+        }
+    }
+
+    fn store(&mut self) -> Result<&mut Box<dyn CleanupStore>, String> {
+        self.store
+            .as_mut()
+            .ok_or_else(|| "esta versión no puede limpiar restos".to_string())
+    }
+
+    /// Starts the uninstaller of the app. Protected apps are refused.
+    pub fn uninstall(
+        &mut self,
+        apps: &[InstalledApp],
+        query: &str,
+    ) -> Result<InstalledApp, String> {
+        let app = find(apps, query)?.clone();
+        if let Some(why) = app.protection() {
+            return Err(format!("{} no se desinstala desde aquí: {why}", app.name));
+        }
+        if self.launcher.is_none() {
+            return Err("esta versión no sabe desinstalar".into());
+        }
+        // Remembered first: once the uninstaller finishes the system forgets the app.
+        self.store()?.remember(&app)?;
+        if let Some(launcher) = &self.launcher {
+            launcher.launch(&app)?;
+        }
+        Ok(app)
+    }
+
+    /// The app to clean: still installed (`true`), or one whose uninstaller was started.
+    fn resolve(&self, apps: &[InstalledApp], query: &str) -> Result<(InstalledApp, bool), String> {
+        if let Ok(app) = find(apps, query) {
+            return Ok((app.clone(), true));
+        }
+        let q = query.trim().to_lowercase();
+        let store = self
+            .store
+            .as_ref()
+            .ok_or("esta versión no puede limpiar restos")?;
+        store
+            .remembered()?
+            .into_iter()
+            .rev()
+            .find(|a| a.name.to_lowercase() == q || a.id.to_lowercase() == q || a.name.to_lowercase().contains(&q))
+            .map(|a| (a, false))
+            .ok_or_else(|| format!("no hay ninguna app instalada ni desinstalada desde Purifex que se llame «{query}»"))
+    }
+
+    /// Looks for the traces; with `confirmed` and the app gone, removes them to the
+    /// quarantine. `apps` are the ones listed to the user (to name one); `all` is
+    /// everything installed, which is what must be left alone.
+    pub fn clean(
+        &mut self,
+        apps: &[InstalledApp],
+        all: &[InstalledApp],
+        query: &str,
+        confirmed: bool,
+    ) -> Result<CleanReport, String> {
+        let (app, installed) = self.resolve(apps, query)?;
+        let finder = self
+            .finder
+            .as_ref()
+            .ok_or("esta versión no sabe buscar restos")?;
+        let others: Vec<InstalledApp> = all.iter().filter(|a| a.id != app.id).cloned().collect();
+        let proposed = propose(&app, &others, &finder.candidates(&app)?);
+        if !confirmed {
+            return Ok(CleanReport {
+                app: app.name,
+                preview: true,
+                removed: vec![],
+                proposed,
+                failed: vec![],
+            });
+        }
+        if installed {
+            return Err(format!("{} sigue instalada: termina su desinstalador primero (los restos de una app en uso no se tocan)", app.name));
+        }
+        let store = self.store()?;
+        let mut log = store.entries()?;
+        let (mut removed, mut failed) = (Vec::new(), Vec::new());
+        for trace in &proposed {
+            let seq = next_seq(&log);
+            match store.remove(trace, seq) {
+                Ok(kept) => {
+                    let entry = CleanupEntry {
+                        seq,
+                        app: app.name.clone(),
+                        trace: trace.clone(),
+                        kept,
+                        state: CleanupState::Removed,
+                        restores: None,
+                    };
+                    store.append(&entry)?;
+                    log.push(entry.clone());
+                    removed.push(entry);
+                }
+                Err(why) => failed.push((trace.clone(), why)),
+            }
+        }
+        Ok(CleanReport {
+            app: app.name,
+            preview: false,
+            removed,
+            proposed: vec![],
+            failed,
+        })
+    }
+
+    /// Puts back what removal `seq` took out.
+    pub fn restore(&mut self, seq: u64) -> Result<CleanupEntry, String> {
+        let store = self.store()?;
+        let log = store.entries()?;
+        let entry = log
+            .iter()
+            .find(|e| e.seq == seq && e.state == CleanupState::Removed)
+            .ok_or_else(|| format!("no hay ninguna eliminación #{seq}"))?
+            .clone();
+        if is_restored(&log, seq) {
+            return Err(format!("la eliminación #{seq} ya se devolvió"));
+        }
+        store.restore(&entry)?;
+        let line = CleanupEntry {
+            seq: next_seq(&log),
+            app: entry.app.clone(),
+            trace: entry.trace.clone(),
+            kept: entry.kept.clone(),
+            state: CleanupState::Restored,
+            restores: Some(seq),
+        };
+        store.append(&line)?;
+        Ok(line)
+    }
+
+    pub fn history(&self) -> Result<Vec<CleanupEntry>, String> {
+        self.store.as_ref().map_or(Ok(Vec::new()), |s| s.entries())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use purifex_domain::app_traces::{Candidate, TraceKind};
+    use purifex_domain::apps::AppKind;
+
+    use super::*;
+    use crate::testing::{CleanLog, FakeCleaning, FakeFinder};
+
+    fn app(name: &str, publisher: &str) -> InstalledApp {
+        InstalledApp {
+            id: format!("HKLM64:{name}"),
+            name: name.into(),
+            publisher: Some(publisher.into()),
+            version: Some("1.0".into()),
+            install_location: None,
+            uninstall: Some("u.exe".into()),
+            quiet_uninstall: None,
+            size_kb: None,
+            kind: AppKind::Desktop,
+            hidden: false,
+        }
+    }
+
+    fn folder(location: &str) -> Candidate {
+        Candidate {
+            kind: TraceKind::Folder,
+            location: location.into(),
+            bytes: 100,
+            registered_install: false,
+        }
+    }
+
+    fn cleaning(found: Vec<Candidate>) -> (Cleaning, Rc<RefCell<CleanLog>>) {
+        let log = Rc::new(RefCell::new(CleanLog::default()));
+        let c = Cleaning::new(
+            Box::new(FakeFinder(found)),
+            Box::new(FakeCleaning(log.clone())),
+            Box::new(FakeCleaning(log.clone())),
+        );
+        (c, log)
+    }
+
+    const DATA: &str = r"C:\Users\u\AppData\Roaming\Discord";
+    const LOCAL: &str = r"C:\Users\u\AppData\Local\Discord";
+
+    #[test]
+    fn an_app_is_found_by_name_by_a_part_only_it_has_and_never_by_a_guess() {
+        let apps = vec![app("Discord", "D"), app("Git", "G"), app("Git LFS", "G")];
+        assert_eq!(find(&apps, "discord").unwrap().name, "Discord");
+        assert_eq!(find(&apps, "cord").unwrap().name, "Discord");
+        assert_eq!(
+            find(&apps, "Git").unwrap().name,
+            "Git",
+            "the exact name wins over a longer one"
+        );
+        assert!(find(&apps, "gi").unwrap_err().contains("varias apps"));
+        assert!(find(&apps, "nada").unwrap_err().contains("no hay ninguna"));
+        assert!(find(&apps, " ").is_err());
+    }
+
+    #[test]
+    fn uninstalling_starts_the_official_uninstaller_and_a_protected_app_is_refused() {
+        let (mut c, log) = cleaning(vec![]);
+        let apps = vec![
+            app("Discord", "Discord Inc."),
+            app(
+                "Microsoft Visual C++ 2015 Redistributable",
+                "Microsoft Corporation",
+            ),
+        ];
+        assert_eq!(c.uninstall(&apps, "Discord").unwrap().name, "Discord");
+        assert_eq!(log.borrow().launched, ["Discord"]);
+        assert_eq!(
+            log.borrow().remembered.len(),
+            1,
+            "remembered for the cleaning"
+        );
+        let err = c.uninstall(&apps, "Visual C++").unwrap_err();
+        assert!(err.contains("no se desinstala desde aquí"));
+        assert_eq!(
+            log.borrow().launched.len(),
+            1,
+            "the protected one was not started"
+        );
+    }
+
+    #[test]
+    fn the_traces_can_be_previewed_while_installed_but_never_removed() {
+        let (mut c, log) = cleaning(vec![folder(DATA)]);
+        let apps = vec![app("Discord", "Discord Inc.")];
+        let preview = c.clean(&apps, &apps, "Discord", false).unwrap();
+        assert!(preview.preview && preview.proposed.len() == 1);
+        let err = c.clean(&apps, &apps, "Discord", true).unwrap_err();
+        assert!(err.contains("sigue instalada"));
+        assert!(log.borrow().removed.is_empty(), "nothing touched");
+    }
+
+    #[test]
+    fn after_the_uninstall_the_traces_are_removed_to_the_quarantine_and_logged() {
+        let (mut c, log) = cleaning(vec![folder(DATA), folder(LOCAL)]);
+        let mut apps = vec![app("Discord", "Discord Inc."), app("Git", "G")];
+        c.uninstall(&apps, "Discord").unwrap();
+        apps.remove(0); // the uninstaller finished: the system no longer lists it
+        let report = c.clean(&apps, &apps, "Discord", true).unwrap();
+        assert_eq!(report.removed.len(), 2);
+        assert!(report.removed[0].seq < report.removed[1].seq);
+        assert_eq!(log.borrow().removed.len(), 2);
+        assert_eq!(log.borrow().entries.len(), 2);
+        assert!(report.to_text().contains("purifex apps restore"));
+    }
+
+    #[test]
+    fn what_the_rules_refuse_is_never_removed_even_if_the_finder_proposes_it() {
+        let (mut c, log) = cleaning(vec![
+            folder(r"C:\Windows\System32\Discord"),
+            folder(r"C:\Program Files"),
+            folder(r"C:\Users\u\AppData\Roaming\Slack"),
+            folder(DATA),
+        ]);
+        let mut apps = vec![app("Discord", "Discord Inc.")];
+        c.uninstall(&apps, "Discord").unwrap();
+        apps.clear();
+        let report = c.clean(&apps, &apps, "Discord", true).unwrap();
+        assert_eq!(log.borrow().removed, [DATA]);
+        assert_eq!(report.removed.len(), 1);
+    }
+
+    #[test]
+    fn one_that_cannot_be_removed_is_reported_and_the_others_still_go() {
+        let (mut c, log) = cleaning(vec![folder(DATA), folder(LOCAL)]);
+        log.borrow_mut().stuck.push(LOCAL.into());
+        let mut apps = vec![app("Discord", "D")];
+        c.uninstall(&apps, "Discord").unwrap();
+        apps.clear();
+        let report = c.clean(&apps, &apps, "Discord", true).unwrap();
+        assert_eq!(report.removed.len(), 1);
+        assert_eq!(report.failed.len(), 1);
+        assert!(report.to_text().contains("no se pudo quitar"));
+    }
+
+    #[test]
+    fn an_app_that_was_never_uninstalled_from_here_has_nothing_to_clean() {
+        let (mut c, _) = cleaning(vec![folder(DATA)]);
+        assert!(c
+            .clean(&[], &[], "Discord", true)
+            .unwrap_err()
+            .contains("no hay ninguna app"));
+    }
+
+    #[test]
+    fn a_removal_can_be_put_back_once_and_the_log_says_so() {
+        let (mut c, log) = cleaning(vec![folder(DATA)]);
+        let mut apps = vec![app("Discord", "D")];
+        c.uninstall(&apps, "Discord").unwrap();
+        apps.clear();
+        let seq = c.clean(&apps, &apps, "Discord", true).unwrap().removed[0].seq;
+        let line = c.restore(seq).unwrap();
+        assert_eq!(line.restores, Some(seq));
+        assert_eq!(log.borrow().restored, [DATA]);
+        assert!(c.restore(seq).unwrap_err().contains("ya se devolvió"));
+        assert!(c.restore(99).unwrap_err().contains("no hay ninguna"));
+        assert_eq!(c.history().unwrap().len(), 2);
+    }
+}

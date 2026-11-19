@@ -82,12 +82,6 @@ mod tests {
     use super::super::registry_write::{delete_key_tree, set_value_raw, RawValue};
     use super::*;
 
-    fn sz(text: &str) -> RawValue {
-        let mut data: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
-        data.extend([0, 0]);
-        RawValue { kind: 1, data }
-    }
-
     #[test]
     fn the_programs_and_the_extensions_of_an_app_are_seen_before_it_is_gone() {
         let id = std::process::id();
@@ -105,16 +99,16 @@ mod tests {
             r#""{}" "%1""#,
             folder.join("bin").join("Fake.EXE").display()
         );
-        set_value_raw(&format!(r"{classes}\{ext}"), "", &sz(&progid)).unwrap();
+        set_value_raw(&format!(r"{classes}\{ext}"), "", &RawValue::sz(&progid)).unwrap();
         set_value_raw(
             &format!(r"{classes}\{progid}\shell\open\command"),
             "",
-            &sz(&command),
+            &RawValue::sz(&command),
         )
         .unwrap();
         // Another type that points somewhere else must not be taken.
         let other = format!(".po{}", id % 100_000);
-        set_value_raw(&format!(r"{classes}\{other}"), "", &sz("txtfile")).unwrap();
+        set_value_raw(&format!(r"{classes}\{other}"), "", &RawValue::sz("txtfile")).unwrap();
 
         let app = InstalledApp {
             id: "x".into(),

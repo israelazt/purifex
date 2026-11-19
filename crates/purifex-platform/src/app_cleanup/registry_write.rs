@@ -55,6 +55,24 @@ pub struct RawValue {
     pub data: Vec<u8>,
 }
 
+#[cfg(test)]
+impl RawValue {
+    /// The bytes of a text in UTF-16, followed by `nul` terminators.
+    pub(super) fn utf16_bytes(text: &str, nul: usize) -> Vec<u8> {
+        let mut data: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        data.extend(std::iter::repeat_n(0, nul * 2));
+        data
+    }
+
+    /// A `REG_SZ` value.
+    pub(super) fn sz(text: &str) -> RawValue {
+        RawValue {
+            kind: 1,
+            data: Self::utf16_bytes(text, 1),
+        }
+    }
+}
+
 /// `HKCU\Software\X` as the root handle and the path below it.
 fn split(path: &str) -> Result<(HKEY, &str), RegError> {
     let (hive, sub) = path.split_once('\\').ok_or(RegError::Refused)?;
@@ -213,28 +231,22 @@ mod tests {
         }
     }
 
-    fn sz(text: &str) -> RawValue {
-        let mut data: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
-        data.extend([0, 0]);
-        RawValue { kind: 1, data }
-    }
-
     #[test]
     fn a_value_is_written_read_back_exactly_and_deleted_alone() {
         let k = Scratch::new("value");
-        set_value_raw(&k.0, "a", &sz("uno")).unwrap();
-        set_value_raw(&k.0, "b", &sz("dos")).unwrap();
-        assert_eq!(read_value_raw(&k.0, "a").unwrap(), sz("uno"));
+        set_value_raw(&k.0, "a", &RawValue::sz("uno")).unwrap();
+        set_value_raw(&k.0, "b", &RawValue::sz("dos")).unwrap();
+        assert_eq!(read_value_raw(&k.0, "a").unwrap(), RawValue::sz("uno"));
         delete_value(&k.0, "a").unwrap();
         assert_eq!(read_value_raw(&k.0, "a"), Err(RegError::NotFound));
-        assert_eq!(read_value_raw(&k.0, "b").unwrap(), sz("dos"));
+        assert_eq!(read_value_raw(&k.0, "b").unwrap(), RawValue::sz("dos"));
         assert_eq!(delete_value(&k.0, "a"), Err(RegError::NotFound));
     }
 
     #[test]
     fn a_key_goes_with_everything_under_it() {
         let k = Scratch::new("tree");
-        set_value_raw(&format!(r"{}\hijo\nieto", k.0), "v", &sz("x")).unwrap();
+        set_value_raw(&format!(r"{}\hijo\nieto", k.0), "v", &RawValue::sz("x")).unwrap();
         delete_key_tree(&k.0).unwrap();
         assert_eq!(
             read_value_raw(&format!(r"{}\hijo\nieto", k.0), "v"),
@@ -275,7 +287,7 @@ mod tests {
             assert_eq!(delete_value(key, "v"), Err(RegError::Refused), "{key}");
             assert_eq!(read_value_raw(key, "v"), Err(RegError::Refused), "{key}");
             assert_eq!(
-                set_value_raw(key, "v", &sz("x")),
+                set_value_raw(key, "v", &RawValue::sz("x")),
                 Err(RegError::Refused),
                 "{key}"
             );
@@ -289,7 +301,7 @@ mod tests {
             Err(RegError::NotFound)
         );
         // Without elevation Windows does not let a user write under HKLM\SOFTWARE.
-        let denied = set_value_raw(r"HKLM\SOFTWARE\PurifexTestDenied", "v", &sz("x"));
+        let denied = set_value_raw(r"HKLM\SOFTWARE\PurifexTestDenied", "v", &RawValue::sz("x"));
         if denied.is_ok() {
             let _ = delete_key_tree(r"HKLM\SOFTWARE\PurifexTestDenied");
         } else {

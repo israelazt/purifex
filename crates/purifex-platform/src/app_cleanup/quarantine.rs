@@ -301,12 +301,6 @@ mod tests {
         let _ = fs::remove_dir_all(&work);
     }
 
-    fn utf16(text: &str, nul: usize) -> Vec<u8> {
-        let mut data: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
-        data.extend(std::iter::repeat_n(0, nul * 2));
-        data
-    }
-
     fn value_trace(key: &str, name: &str) -> Trace {
         let mut t = trace(TraceKind::RegistryValue, key);
         t.value = Some(name.into());
@@ -332,13 +326,17 @@ mod tests {
         let work = temp("q-value");
         let key = format!(r"HKCU\Software\PurifexTest\valores_{}", std::process::id());
         let values = [
-            ("sz", 1, utf16(r"C:\Apps\X\x.exe ñ", 1)),
-            ("expand", 2, utf16(r"%ProgramFiles%\X", 1)),
+            ("sz", 1, RawValue::utf16_bytes(r"C:\Apps\X\x.exe ñ", 1)),
+            ("expand", 2, RawValue::utf16_bytes(r"%ProgramFiles%\X", 1)),
             ("binary", 3, vec![0, 1, 2, 254, 255]),
             ("dword", 4, 0xDEADBEEFu32.to_le_bytes().to_vec()),
-            ("multi", 7, utf16("uno\0dos", 2)),
+            ("multi", 7, RawValue::utf16_bytes("uno\0dos", 2)),
             ("empty", 3, vec![]),
-            ("nombre con espacios \\ y raro", 1, utf16("x", 1)),
+            (
+                "nombre con espacios \\ y raro",
+                1,
+                RawValue::utf16_bytes("x", 1),
+            ),
         ];
         for (name, kind, data) in &values {
             let v = RawValue {
@@ -349,7 +347,7 @@ mod tests {
         }
         let neighbour = RawValue {
             kind: 1,
-            data: utf16("vecino", 1),
+            data: RawValue::utf16_bytes("vecino", 1),
         };
         set_value_raw(&key, "vecino", &neighbour).unwrap();
         let mut store = LocalCleanup::in_dir(work.join("Purifex"));
@@ -377,7 +375,7 @@ mod tests {
         let key = format!(r"HKCU\Software\PurifexTest\guardas_{}", std::process::id());
         let v = RawValue {
             kind: 1,
-            data: utf16("a", 1),
+            data: RawValue::utf16_bytes("a", 1),
         };
         set_value_raw(&key, "v", &v).unwrap();
         let mut store = LocalCleanup::in_dir(work.join("Purifex"));
@@ -389,7 +387,7 @@ mod tests {
             "v",
             &RawValue {
                 kind: 1,
-                data: utf16("nuevo", 1),
+                data: RawValue::utf16_bytes("nuevo", 1),
             },
         )
         .unwrap();

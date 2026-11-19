@@ -288,12 +288,6 @@ mod tests {
     use super::super::registry_write::{delete_key_tree, set_value_raw, RawValue};
     use super::*;
 
-    fn sz(text: &str) -> RawValue {
-        let mut data: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
-        data.extend([0, 0]);
-        RawValue { kind: 1, data }
-    }
-
     fn app() -> InstalledApp {
         InstalledApp {
             id: "x".into(),
@@ -323,7 +317,7 @@ mod tests {
         let exe = format!(r"{folder}\bin\fake.exe");
         let cv = r"Microsoft\Windows\CurrentVersion";
         let set = |key: &str, name: &str, value: &str| {
-            set_value_raw(&format!(r"{hk}\{key}"), name, &sz(value)).unwrap();
+            set_value_raw(&format!(r"{hk}\{key}"), name, &RawValue::sz(value)).unwrap();
         };
         set(&format!(r"Classes\{ext}"), "", &progid);
         set(

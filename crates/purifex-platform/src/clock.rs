@@ -43,3 +43,13 @@ impl Clock for SystemClock {
         std::thread::sleep(time);
     }
 }
+
+/// The local time as `20261118-165329`, for names of files.
+pub(crate) fn local_stamp() -> String {
+    // SAFETY: a plain query with no arguments.
+    let t = unsafe { GetLocalTime() };
+    format!(
+        "{:04}{:02}{:02}-{:02}{:02}{:02}",
+        t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond
+    )
+}

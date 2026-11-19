@@ -12,25 +12,22 @@ use std::time::Instant;
 use purifex_domain::ports::{PerformanceSampler, SamplerInfo};
 use purifex_domain::process_group::{group_of, Group};
 use purifex_domain::sample::{effective_mhz, GameLoad, GroupLoad, ProcLoad, Sample};
-use windows::Wdk::System::SystemInformation::{NtQuerySystemInformation, SYSTEM_INFORMATION_CLASS};
+use windows::Wdk::System::SystemInformation::SYSTEM_INFORMATION_CLASS;
 use windows::Win32::System::Power::{
     CallNtPowerInformation, POWER_INFORMATION_LEVEL, PROCESSOR_POWER_INFORMATION,
 };
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
 use crate::nt_layout::{parse_cores, parse_processes, CoreTimes, RawProcess};
+use crate::nt_query::{
+    self, CORES as SYSTEM_PROCESSOR_PERFORMANCE, CORE_ENTRY,
+    PROCESSES as SYSTEM_PROCESS_INFORMATION,
+};
 use cpu_clock::CpuClock;
 use nvml::Nvml;
 
-const SYSTEM_PROCESS_INFORMATION: SYSTEM_INFORMATION_CLASS = SYSTEM_INFORMATION_CLASS(5);
-const SYSTEM_PROCESSOR_PERFORMANCE: SYSTEM_INFORMATION_CLASS = SYSTEM_INFORMATION_CLASS(8);
 const PROCESSOR_INFORMATION: POWER_INFORMATION_LEVEL = POWER_INFORMATION_LEVEL(11);
-const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xC000_0004_u32 as i32;
 /// How many other processes each sample lists.
-/// The most memory a system table may take.
-const MAX_TABLE: usize = 64 * 1024 * 1024;
-/// Size of one core's entry in the performance table.
-const CORE_ENTRY: usize = 48;
 const TOP_PROCESSES: usize = 5;
 /// Below this share of the CPU a process is not worth listing.
 const MIN_LISTED: f32 = 0.2;
@@ -84,48 +81,9 @@ impl WindowsSampler {
         self.nvml.is_some()
     }
 
-    /// Fills `self.buffer` with a system table, growing it as the system asks.
-    /// `unit` is the size the table must be a multiple of (its entry size, for
-    /// the tables that insist on it).
+    /// Fills `self.buffer` with a system table (see `nt_query`).
     fn query(&mut self, class: SYSTEM_INFORMATION_CLASS, unit: usize) -> Result<usize, String> {
-        let round = |n: usize| n.div_ceil(unit) * unit;
-        if self.buffer.len() < 64 * 1024 {
-            self.buffer.resize(round(256 * 1024), 0);
-        }
-        self.buffer
-            .truncate(round(self.buffer.len()).min(self.buffer.len()));
-        self.buffer.resize(round(self.buffer.len()), 0);
-        for _ in 0..8 {
-            let mut needed = 0u32;
-            // SAFETY: the buffer is as long as the length passed.
-            let status = unsafe {
-                NtQuerySystemInformation(
-                    class,
-                    self.buffer.as_mut_ptr().cast(),
-                    self.buffer.len() as u32,
-                    &mut needed,
-                )
-            };
-            if status.0 >= 0 {
-                return Ok(if needed == 0 {
-                    self.buffer.len()
-                } else {
-                    needed as usize
-                });
-            }
-            if status.0 != STATUS_INFO_LENGTH_MISMATCH {
-                return Err(format!(
-                    "NtQuerySystemInformation falló: 0x{:08x}",
-                    status.0 as u32
-                ));
-            }
-            let size = round((needed as usize + 64 * 1024).max(self.buffer.len() * 2));
-            if size > MAX_TABLE {
-                return Err("la tabla del sistema es demasiado grande".into());
-            }
-            self.buffer.resize(size, 0);
-        }
-        Err("la tabla del sistema no deja de crecer".into())
+        nt_query::query(&mut self.buffer, class, unit)
     }
 
     fn processes(&mut self) -> Result<Vec<RawProcess>, String> {

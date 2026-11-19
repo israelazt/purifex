@@ -9,11 +9,15 @@ pub mod nt_layout;
 #[cfg(windows)]
 mod clock;
 #[cfg(windows)]
+mod fixes;
+#[cfg(windows)]
 mod gfx;
 #[cfg(windows)]
 mod inventory;
 #[cfg(windows)]
 mod log_console;
+#[cfg(windows)]
+mod nt_query;
 #[cfg(windows)]
 mod sampler;
 #[cfg(windows)]
@@ -26,11 +30,15 @@ mod window;
 #[cfg(windows)]
 pub use clock::SystemClock;
 #[cfg(windows)]
+pub use fixes::{JsonlHistory, SystemFixes};
+#[cfg(windows)]
 pub use gfx::{render_png, Renderer, TextEngine};
 #[cfg(windows)]
 pub use inventory::SetupApiInventory;
 #[cfg(windows)]
 pub use log_console::install_stderr_log;
+#[cfg(windows)]
+pub use nt_query::running_programs;
 #[cfg(windows)]
 pub use sampler::WindowsSampler;
 #[cfg(windows)]

@@ -12,11 +12,14 @@ use purifex_domain::view::{Action, Model, Page};
 
 use crate::anim::Anims;
 use crate::canvas::{Canvas, Hit};
+use crate::scrollbar::{Pressed, Scrollbar};
 use crate::theme::{self, PAGE_PAD, SIDEBAR_W, TOPBAR_H};
 use crate::{apps_page, drivers_page, fixes_page, overview_page, sessions_page, shell};
 
 /// The time the page takes to go most of the way to where the wheel wants it.
 const SCROLL_MS: f32 = 70.0;
+/// Units an arrow key scrolls.
+const SCROLL_STEP: f32 = 64.0;
 
 /// Whether what the page shows has been read (until then it says "Leyendo…").
 fn page_is_ready(m: &Model) -> bool {
@@ -48,6 +51,10 @@ pub struct Ui {
     entered_ms: u64,
     was_ready: bool,
     last_ms: u64,
+    /// The message and the error shown last: when a new one appears the page goes
+    /// to the top, where they are drawn (the user may be far below).
+    seen_notice: (Option<String>, Option<String>),
+    bar: Scrollbar,
     content_height: f32,
     viewport_height: f32,
     mouse: Option<(f32, f32)>,
@@ -74,6 +81,8 @@ impl Ui {
             entered_ms: 0,
             was_ready: false,
             last_ms: 0,
+            seen_notice: (None, None),
+            bar: Scrollbar::default(),
             content_height: 0.0,
             viewport_height: 0.0,
             mouse: None,
@@ -131,6 +140,11 @@ impl Ui {
             self.entered_ms = now_ms;
         }
         self.was_ready = ready;
+        let notice = (model.message.clone(), model.error.clone());
+        if notice != self.seen_notice && (notice.0.is_some() || notice.1.is_some()) {
+            self.scroll_target = 0.0;
+        }
+        self.seen_notice = notice;
         self.smooth_scroll(elapsed);
         self.query = model.query.clone();
         let anims = std::mem::take(&mut self.anims);
@@ -164,15 +178,15 @@ impl Ui {
         self.viewport_height = main.h;
         self.scroll_target = self.scroll_target.clamp(0.0, self.max_scroll());
         self.scroll = self.scroll.clamp(0.0, self.max_scroll());
-        if self.max_scroll() > 0.0 {
-            let ratio = self.viewport_height / self.content_height;
-            let thumb = Rect::new(
-                width - 8.0,
-                main.y + self.scroll / self.content_height * main.h + 2.0,
-                4.0,
-                (main.h * ratio - 4.0).max(24.0),
-            );
-            c.fill(thumb, 2.0, theme::TEXT_3.with_alpha(0.55));
+        self.bar
+            .layout(main, width, self.scroll, self.content_height);
+        if let (Some(thumb), Some(track)) = (self.bar.thumb(), self.bar.track()) {
+            let hover = if self.bar.dragging() {
+                1.0
+            } else {
+                c.hover(track)
+            };
+            c.fill(thumb, 3.0, theme::TEXT_3.with_alpha(0.45 + 0.4 * hover));
         }
         shell::sidebar(&mut c, model, height);
         shell::topbar(&mut c, model, width);
@@ -198,6 +212,21 @@ impl Ui {
     pub fn event(&mut self, event: UiEvent) -> UiOutput {
         let mut out = UiOutput::default();
         match event {
+            UiEvent::Move { x, y } if self.bar.dragging() => {
+                self.mouse = Some((x, y));
+                // Holding the thumb: the page follows the pointer at once, with no glide.
+                if let Some(to) = self.bar.scroll_for(y, self.max_scroll()) {
+                    (self.scroll, self.scroll_target) = (to, to);
+                }
+                out.redraw = true;
+            }
+            UiEvent::Release => out.redraw = self.bar.release(),
+            UiEvent::Key(Key::Down) => out.redraw = self.scroll_by(SCROLL_STEP),
+            UiEvent::Key(Key::Up) => out.redraw = self.scroll_by(-SCROLL_STEP),
+            UiEvent::Key(Key::PageDown) => out.redraw = self.scroll_by(self.viewport_height * 0.9),
+            UiEvent::Key(Key::PageUp) => out.redraw = self.scroll_by(-self.viewport_height * 0.9),
+            UiEvent::Key(Key::Home) => out.redraw = self.scroll_by(-self.content_height),
+            UiEvent::Key(Key::End) => out.redraw = self.scroll_by(self.content_height),
             UiEvent::Move { x, y } => {
                 self.mouse = Some((x, y));
                 let now = self.hit_at(x, y);
@@ -210,12 +239,21 @@ impl Ui {
             }
             UiEvent::Press { x, y } => {
                 self.mouse = Some((x, y));
-                if let Some(index) = self.hit_at(x, y) {
-                    out.actions.push(self.hits[index].action.clone());
+                match self.bar.press(x, y) {
+                    // On the scroll bar: the thumb is taken, or the page goes a screen.
+                    Some(Pressed::Grabbed) => out.redraw = true,
+                    Some(Pressed::Page(direction)) => {
+                        out.redraw = self.scroll_by(direction * self.viewport_height * 0.9);
+                    }
+                    None => {
+                        if let Some(index) = self.hit_at(x, y) {
+                            out.actions.push(self.hits[index].action.clone());
+                        }
+                        let focus = self.over_search();
+                        out.redraw = focus != self.search_focus || !out.actions.is_empty();
+                        self.search_focus = focus;
+                    }
                 }
-                let focus = self.over_search();
-                out.redraw = focus != self.search_focus || !out.actions.is_empty();
-                self.search_focus = focus;
             }
             UiEvent::Wheel { dy } => {
                 let before = self.scroll_target;
@@ -255,6 +293,13 @@ impl Ui {
             _ => {}
         }
         out
+    }
+
+    /// Moves where the page wants to be by `dy`; whether that changed anything.
+    fn scroll_by(&mut self, dy: f32) -> bool {
+        let before = self.scroll_target;
+        self.scroll_target = (self.scroll_target + dy).clamp(0.0, self.max_scroll());
+        self.scroll_target != before
     }
 
     /// The search text after a key, remembered at once: several keys can arrive
@@ -608,5 +653,118 @@ mod tests {
         ui.event(UiEvent::Key(Key::CtrlK));
         assert!(ui.event(UiEvent::Key(Key::Escape)).actions.is_empty());
         assert!(!ui.search_focused(), "the second one leaves it");
+    }
+
+    #[test]
+    fn a_new_message_or_error_takes_the_page_to_the_top_where_it_is_drawn() {
+        let mut model = tall_model();
+        let mut ui = Ui::new();
+        frame_at(&mut ui, &model, 0);
+        ui.event(UiEvent::Wheel { dy: 600.0 });
+        assert_eq!(ui.scroll_target, 600.0);
+        frame_at(&mut ui, &model, 16);
+        assert_eq!(
+            ui.scroll_target, 600.0,
+            "nothing new: it stays where the user is"
+        );
+        model.error = Some("algo falló".into());
+        frame_at(&mut ui, &model, 32);
+        assert_eq!(ui.scroll_target, 0.0, "the error is at the top: go there");
+        ui.event(UiEvent::Wheel { dy: 300.0 });
+        frame_at(&mut ui, &model, 48);
+        assert_eq!(
+            ui.scroll_target, 300.0,
+            "the same error does not pull the page up again"
+        );
+        model.message = Some("hecho".into());
+        frame_at(&mut ui, &model, 64);
+        assert_eq!(ui.scroll_target, 0.0);
+    }
+
+    #[test]
+    fn the_keys_scroll_a_line_a_page_or_to_either_end_and_never_past_them() {
+        let model = tall_model();
+        let mut ui = Ui::new();
+        frame_at(&mut ui, &model, 0);
+        let page = ui.viewport_height * 0.9;
+        assert!(ui.event(UiEvent::Key(Key::Down)).redraw);
+        assert_eq!(ui.scroll_target, 64.0);
+        ui.event(UiEvent::Key(Key::PageDown));
+        assert!((ui.scroll_target - (64.0 + page)).abs() < 0.01);
+        ui.event(UiEvent::Key(Key::Up));
+        assert!((ui.scroll_target - (page)).abs() < 0.01);
+        ui.event(UiEvent::Key(Key::PageUp));
+        assert_eq!(ui.scroll_target, 0.0);
+        assert!(
+            !ui.event(UiEvent::Key(Key::Up)).redraw,
+            "already at the top"
+        );
+        let end = ui.event(UiEvent::Key(Key::End));
+        assert!(end.redraw);
+        assert_eq!(ui.scroll_target, ui.max_scroll());
+        assert!(
+            !ui.event(UiEvent::Key(Key::PageDown)).redraw,
+            "already at the end"
+        );
+        ui.event(UiEvent::Key(Key::Home));
+        assert_eq!(ui.scroll_target, 0.0);
+    }
+
+    #[test]
+    fn the_thumb_can_be_dragged_and_the_page_follows_at_once_until_it_is_let_go() {
+        let model = tall_model();
+        let mut ui = Ui::new();
+        frame_at(&mut ui, &model, 0);
+        let thumb = ui.bar.thumb().expect("a long page has a bar");
+        let (x, y) = (thumb.x + 2.0, thumb.y + 8.0);
+        assert!(
+            ui.event(UiEvent::Press { x, y }).actions.is_empty(),
+            "the bar is not a button"
+        );
+        assert!(ui.bar.dragging());
+        ui.event(UiEvent::Move { x, y: y + 150.0 });
+        assert!(ui.scroll > 0.0, "the page moved with the thumb");
+        assert_eq!(ui.scroll, ui.scroll_target, "no glide while it is held");
+        let held_at = ui.scroll;
+        // The pointer may leave the bar sideways: the thumb is still held.
+        ui.event(UiEvent::Move {
+            x: 300.0,
+            y: y + 300.0,
+        });
+        assert!(ui.scroll > held_at);
+        assert!(ui.event(UiEvent::Release).redraw);
+        assert!(!ui.bar.dragging());
+        let after = ui.scroll;
+        ui.event(UiEvent::Move {
+            x: 300.0,
+            y: y + 500.0,
+        });
+        assert_eq!(
+            ui.scroll, after,
+            "let go: the pointer no longer moves the page"
+        );
+        assert!(!ui.event(UiEvent::Release).redraw, "nothing was held");
+    }
+
+    #[test]
+    fn clicking_the_track_goes_a_page_toward_the_click() {
+        let model = tall_model();
+        let mut ui = Ui::new();
+        frame_at(&mut ui, &model, 0);
+        let (thumb, track) = (ui.bar.thumb().unwrap(), ui.bar.track().unwrap());
+        let page = ui.viewport_height * 0.9;
+        ui.event(UiEvent::Press {
+            x: track.x + 4.0,
+            y: thumb.bottom() + 30.0,
+        });
+        assert!((ui.scroll_target - page).abs() < 0.01);
+        assert!(!ui.bar.dragging());
+        frame_at(&mut ui, &model, 400);
+        let thumb = ui.bar.thumb().unwrap();
+        ui.event(UiEvent::Press {
+            x: track.x + 4.0,
+            y: thumb.y - 10.0,
+        });
+        assert!(ui.scroll_target < 1.0, "back up a page");
     }
 }

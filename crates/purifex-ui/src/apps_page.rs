@@ -17,7 +17,6 @@ use crate::widgets::{button, button_width, icon_box, panel, tag};
 const ROW_H: f32 = 60.0;
 const MAX_TRACES: usize = 10;
 
-const UNINSTALL_QUESTION: &str = "Se abrirá el desinstalador oficial de esta app y lo terminas tú en su ventana. Después podrás buscar y quitar lo que deje. ¿Desinstalar?";
 const CLEAN_QUESTION: &str = "Los restos se mueven a una cuarentena (las claves del registro se guardan antes) y quedan en el historial, donde puedes devolverlos. Incluye datos tuyos de la app, como ajustes y partidas guardadas. ¿Quitar?";
 
 fn info(c: &mut Canvas, area: Rect, text: &str) -> f32 {
@@ -159,6 +158,57 @@ fn cleanup_panel(c: &mut Canvas, m: &Model, name: &str, area: Rect, y: f32) -> f
     rect.h + 16.0
 }
 
+/// The row of the app being asked about: the question and its two buttons in place,
+/// so they are where the user is looking (the list is long and scrolled).
+fn asking_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
+    c.fill(bar, 0.0, Tone::Amber.fill());
+    c.line(
+        bar.x,
+        bar.bottom() - 0.5,
+        bar.right(),
+        bar.bottom() - 0.5,
+        theme::LINE_SOFT,
+    );
+    icon_box(
+        c,
+        bar.x + 16.0,
+        bar.y + 10.0,
+        40.0,
+        "triangle-alert",
+        Tone::Amber,
+    );
+    let name = theme::sans(13.5, theme::TEXT).bold();
+    c.text_cut(bar.x + 70.0, bar.y + 10.0, &app.name, name, bar.w - 520.0);
+    c.text_cut(
+        bar.x + 70.0,
+        bar.y + 32.0,
+        "Se abrirá su desinstalador oficial; lo terminas tú en su ventana.",
+        theme::mono(11.5, theme::AMBER),
+        bar.w - 520.0,
+    );
+    let (yes, no) = ("Desinstalar", "Cancelar");
+    let (yes_w, no_w) = (button_width(c, yes), button_width(c, no));
+    let y = bar.y + 10.0;
+    let yes_x = bar.right() - 16.0 - no_w - 12.0 - yes_w;
+    button(
+        c,
+        Rect::new(yes_x, y, yes_w, 40.0),
+        yes,
+        "trash-2",
+        true,
+        Some(Action::Confirm),
+    );
+    let no_x = bar.right() - 16.0 - no_w;
+    button(
+        c,
+        Rect::new(no_x, y, no_w, 40.0),
+        no,
+        "x",
+        false,
+        Some(Action::CancelConfirm),
+    );
+}
+
 fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
     let hover = c.hover(bar);
     if hover > 0.01 {
@@ -247,11 +297,12 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     );
     for (i, app) in apps.iter().enumerate() {
         c.reveal(if i < 12 { 18 * i as u64 } else { 0 });
-        app_row(
-            c,
-            app,
-            Rect::new(rect.x, rect.y + 48.0 + i as f32 * ROW_H, rect.w, ROW_H),
-        );
+        let bar = Rect::new(rect.x, rect.y + 48.0 + i as f32 * ROW_H, rect.w, ROW_H);
+        if m.confirm == Some(Confirm::Uninstall(app.id.clone())) {
+            asking_row(c, app, bar);
+        } else {
+            app_row(c, app, bar);
+        }
     }
     c.reveal(0);
     if apps.is_empty() {
@@ -265,12 +316,10 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     height
 }
 
+/// The question at the top of the page: the one about removing traces (its button is
+/// up there too). The one about uninstalling is in the row of the app itself.
 fn question(m: &Model) -> Option<&'static str> {
-    match &m.confirm {
-        Some(Confirm::Uninstall(_)) => Some(UNINSTALL_QUESTION),
-        Some(Confirm::Clean(_)) => Some(CLEAN_QUESTION),
-        _ => None,
-    }
+    matches!(m.confirm, Some(Confirm::Clean(_))).then_some(CLEAN_QUESTION)
 }
 
 /// Draws the page in `area` and returns the height it used.

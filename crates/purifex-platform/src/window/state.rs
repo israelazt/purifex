@@ -10,12 +10,15 @@ use windows::Win32::Graphics::Gdi::{
     BeginPaint, EndPaint, InvalidateRect, UpdateWindow, PAINTSTRUCT,
 };
 use windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi;
-use windows::Win32::UI::Input::KeyboardAndMouse::{TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetClientRect, KillTimer, LoadCursorW, PostMessageW, PostQuitMessage, SetCursor, SetTimer,
     SetWindowPos, HTCLIENT, IDC_ARROW, IDC_HAND, MINMAXINFO, SWP_NOACTIVATE, SWP_NOZORDER, WM_APP,
-    WM_CHAR, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_LBUTTONDOWN,
-    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR, WM_SIZE, WM_TIMER, WS_OVERLAPPEDWINDOW,
+    WM_CHAR, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR, WM_SIZE,
+    WM_TIMER, WS_OVERLAPPEDWINDOW,
 };
 
 use crate::gfx::{Drawn, Renderer};
@@ -279,9 +282,44 @@ impl<H: UiHandler> State<H> {
                     x: self.units(low_word(lp.0)),
                     y: self.units(high_word(lp.0)),
                 };
+                // The window keeps the mouse while the button is down, so dragging the
+                // scroll bar goes on even when the pointer leaves the window.
+                // SAFETY: captures the mouse for a live window.
+                unsafe {
+                    SetCapture(hwnd);
+                }
                 let reaction = self.handler().event(event);
                 self.react(hwnd, reaction);
                 Some(LRESULT(0))
+            }
+            WM_LBUTTONUP => {
+                // SAFETY: gives the mouse back (it was captured on the press).
+                unsafe {
+                    let _ = ReleaseCapture();
+                }
+                let reaction = self.handler().event(UiEvent::Release);
+                self.react(hwnd, reaction);
+                Some(LRESULT(0))
+            }
+            WM_KEYDOWN => {
+                // The keys that scroll; the letters come as `WM_CHAR`.
+                let key = match wp.0 as u32 {
+                    0x26 => Some(Key::Up),
+                    0x28 => Some(Key::Down),
+                    0x21 => Some(Key::PageUp),
+                    0x22 => Some(Key::PageDown),
+                    0x24 => Some(Key::Home),
+                    0x23 => Some(Key::End),
+                    _ => None,
+                };
+                match key {
+                    Some(key) => {
+                        let reaction = self.handler().event(UiEvent::Key(key));
+                        self.react(hwnd, reaction);
+                        Some(LRESULT(0))
+                    }
+                    None => None,
+                }
             }
             WM_MOUSEWHEEL => {
                 let notches = high_word(wp.0 as isize) as f32 / 120.0;

@@ -16,6 +16,7 @@ mod overview_cards;
 pub mod overview_page;
 mod overview_panels;
 pub mod page;
+mod scrollbar;
 pub mod sessions_page;
 pub mod shell;
 pub mod theme;

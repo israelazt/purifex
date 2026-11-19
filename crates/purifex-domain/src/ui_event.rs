@@ -16,6 +16,13 @@ pub enum Key {
     Enter,
     /// Ctrl+K: go to the search.
     CtrlK,
+    /// Scrolling keys.
+    Up,
+    Down,
+    PageUp,
+    PageDown,
+    Home,
+    End,
 }
 
 /// Positions are in the units of the drawing (1/96 inch), from the top-left of
@@ -32,6 +39,8 @@ pub enum UiEvent {
         x: f32,
         y: f32,
     },
+    /// The main button was let go (ends dragging the scroll bar).
+    Release,
     /// Positive scrolls the content up (reading further down), in units.
     Wheel {
         dy: f32,

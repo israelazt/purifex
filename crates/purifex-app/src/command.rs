@@ -22,6 +22,11 @@ pub enum Command {
     Sessions {
         json: bool,
     },
+    Compare {
+        before: Option<String>,
+        after: Option<String>,
+        json: bool,
+    },
     Analyze {
         id: Option<String>,
         json: bool,
@@ -65,6 +70,8 @@ Uso:
   purifex sessions [--json]       Lista las grabaciones, la más nueva primero
   purifex analyze [NOMBRE] [--json]
                                   Analiza una grabación (por defecto, la última)
+  purifex compare [ANTES DESPUÉS] [--json]
+                                  Compara dos partidas (por defecto, las dos últimas)
   purifex ui [--screenshot ARCHIVO.png [--page NOMBRE] [--size ANCHOxALTO] [--scale N]]
                                   Abre la interfaz (o la guarda como imagen)
   purifex help                    Esta ayuda
@@ -88,6 +95,7 @@ impl Command {
             Some("watch") => return Self::parse_watch(args),
             Some("sessions") => return Self::parse_sessions(args),
             Some("analyze") => return Self::parse_analyze(args),
+            Some("compare") => return Self::parse_compare(args),
             Some("ui") => return Self::parse_ui(args),
             Some(other) => return Err(format!("orden desconocida: {other}")),
         }
@@ -170,6 +178,36 @@ impl Command {
         Ok(Self::Ui(UiOptions { screenshot }))
     }
 
+    fn parse_compare<'a>(args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
+        let (mut json, mut names) = (false, Vec::new());
+        for arg in args {
+            match arg {
+                "--json" => json = true,
+                "--last" => names.clear(),
+                name if !name.starts_with('-') => {
+                    if !is_valid_id(name) {
+                        return Err(format!("«{name}» no es un nombre de grabación válido"));
+                    }
+                    names.push(name.to_string());
+                }
+                other => return Err(format!("opción desconocida: {other}")),
+            }
+        }
+        match names.len() {
+            0 => Ok(Self::Compare {
+                before: None,
+                after: None,
+                json,
+            }),
+            2 => Ok(Self::Compare {
+                after: names.pop(),
+                before: names.pop(),
+                json,
+            }),
+            _ => Err("compare necesita dos nombres (ANTES DESPUÉS) o ninguno".into()),
+        }
+    }
+
     fn parse_analyze<'a>(args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
         let (mut json, mut id) = (false, None);
         for arg in args {
@@ -216,6 +254,7 @@ impl Command {
             Self::Scan { json: true, .. }
                 | Self::Sessions { json: true }
                 | Self::Analyze { json: true, .. }
+                | Self::Compare { json: true, .. }
         )
     }
 
@@ -237,6 +276,10 @@ impl Command {
                 .record(options, progress)
                 .map(Outcome::Recording)
                 .map_err(|e| format!("No se pudo grabar: {e}")),
+            Self::Compare { before, after, .. } => services
+                .compare(before.as_deref(), after.as_deref())
+                .map(|r| Outcome::Comparison(Box::new(r)))
+                .map_err(|e| format!("No se pudo comparar: {e}")),
             Self::Ui(_) => Err("la interfaz la abre el programa, no un servicio".into()),
             Self::Analyze { id, .. } => services
                 .analyze(id.as_deref())
@@ -518,5 +561,49 @@ mod tests {
         ] {
             assert!(Command::parse(bad).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn compare_takes_two_names_or_none() {
+        assert_eq!(
+            Command::parse(&["compare"]).unwrap(),
+            Command::Compare {
+                before: None,
+                after: None,
+                json: false
+            }
+        );
+        assert_eq!(
+            Command::parse(&["compare", "lol-1", "lol-2", "--json"]).unwrap(),
+            Command::Compare {
+                before: Some("lol-1".into()),
+                after: Some("lol-2".into()),
+                json: true
+            }
+        );
+        for bad in [
+            &["compare", "lol-1"][..],
+            &["compare", "a", "b", "c"],
+            &["compare", "../x", "b"],
+            &["compare", "--x"],
+        ] {
+            assert!(Command::parse(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn compare_without_two_games_says_why_and_exits_with_an_error() {
+        let mut app = app(FakeInventory::with(vec![]));
+        let out = Command::Compare {
+            before: None,
+            after: None,
+            json: false,
+        }
+        .run(&mut app, &mut |_| {});
+        assert!(
+            !out.ok && out.text.contains("al menos dos partidas"),
+            "{}",
+            out.text
+        );
     }
 }

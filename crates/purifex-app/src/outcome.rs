@@ -2,6 +2,7 @@
 //! server (the MCP one) can use the data itself.
 
 use purifex_domain::analysis::Analysis;
+use purifex_domain::compare::ComparisonReport;
 use purifex_domain::report::ScanReport;
 use purifex_domain::session_list::{rows_to_text, SessionRow};
 
@@ -14,6 +15,7 @@ pub enum Outcome {
     Recording(Recording),
     Sessions(Vec<SessionRow>),
     Analysis(Box<Analysis>),
+    Comparison(Box<ComparisonReport>),
     Help,
 }
 
@@ -28,6 +30,7 @@ impl Outcome {
             ),
             Self::Sessions(rows) => rows_to_text(rows),
             Self::Analysis(analysis) => analysis.to_text(),
+            Self::Comparison(report) => report.to_text(),
             Self::Help => HELP.to_string(),
         }
     }
@@ -41,6 +44,7 @@ impl Outcome {
             }),
             Self::Sessions(rows) => serde_json::json!({ "sessions": rows }),
             Self::Analysis(analysis) => return analysis.to_json(),
+            Self::Comparison(report) => return report.to_json(),
             Self::Help => serde_json::json!({ "help": HELP }),
         };
         serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".into())

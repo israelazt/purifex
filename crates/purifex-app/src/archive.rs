@@ -1,6 +1,7 @@
 //! The recordings made so far: listing them and reading one back.
 
 use purifex_domain::analysis::Analysis;
+use purifex_domain::compare::ComparisonReport;
 use purifex_domain::ports::SessionArchive;
 use purifex_domain::session_csv::{self, ParsedSession};
 use purifex_domain::session_id::{sort_newest_first, stamp_of};
@@ -71,6 +72,42 @@ impl<A: SessionArchive> Archive<A> {
             .into_iter()
             .filter_map(|info| self.analyze(Some(&info.id)).ok())
             .find(Analysis::is_game)
+    }
+
+    /// The recordings that are games, the newest first (a broken one or a test
+    /// is skipped).
+    fn games(&self) -> Vec<Analysis> {
+        let Ok(mut infos) = self.archive.list() else {
+            return Vec::new();
+        };
+        sort_newest_first(&mut infos);
+        infos
+            .into_iter()
+            .filter_map(|info| self.analyze(Some(&info.id)).ok())
+            .filter(Analysis::is_game)
+            .collect()
+    }
+
+    /// Two recordings compared. With no names, the two newest games.
+    pub fn compare(
+        &self,
+        before: Option<&str>,
+        after: Option<&str>,
+    ) -> Result<ComparisonReport, String> {
+        if let (Some(before), Some(after)) = (before, after) {
+            return Ok(ComparisonReport::of(
+                &self.analyze(Some(before))?,
+                &self.analyze(Some(after))?,
+            ));
+        }
+        let games = self.games();
+        match games.as_slice() {
+            [newest, previous, ..] => Ok(ComparisonReport::of(previous, newest)),
+            _ => Err(format!(
+                "hacen falta al menos dos partidas grabadas (de 2 minutos o más, con el juego abierto); hay {}",
+                games.len()
+            )),
+        }
     }
 
     /// One recording, read back.
@@ -150,6 +187,42 @@ mod tests {
         assert!(Archive::new(FakeArchive::default()).latest().is_none());
         let only_tests = Archive::new(FakeArchive::with(&[("lol-20261118-170557", SHORT)]));
         assert!(only_tests.latest().is_none(), "a test is not a game");
+    }
+
+    #[test]
+    fn with_no_names_the_two_newest_games_are_compared_oldest_first() {
+        let archive = Archive::new(FakeArchive::with(&[
+            ("lol-20261118-100000", GAME),
+            ("lol-20261118-120000", GAME),
+            ("lol-20261118-130000", SHORT),
+            ("lol-20261118-140000", "roto"),
+        ]));
+        let report = archive.compare(None, None).unwrap();
+        assert_eq!(
+            (report.before.as_str(), report.after.as_str()),
+            ("lol-20261118-100000", "lol-20261118-120000")
+        );
+        let named = archive
+            .compare(Some("lol-20261118-120000"), Some("lol-20261118-100000"))
+            .unwrap();
+        assert_eq!(named.before, "lol-20261118-120000");
+    }
+
+    #[test]
+    fn comparing_with_fewer_than_two_games_says_how_many_there_are() {
+        let one = Archive::new(FakeArchive::with(&[
+            ("lol-20261118-100000", GAME),
+            ("lol-20261118-110000", SHORT),
+        ]));
+        let error = one.compare(None, None).unwrap_err();
+        assert!(
+            error.contains("al menos dos partidas") && error.contains("hay 1"),
+            "{error}"
+        );
+        assert!(one
+            .compare(Some("lol-20261118-100000"), Some("zzz"))
+            .unwrap_err()
+            .contains("no existe"));
     }
 
     #[test]

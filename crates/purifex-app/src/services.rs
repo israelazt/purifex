@@ -3,6 +3,7 @@
 //! [`App`] is the real implementation, built from the services of this crate.
 
 use purifex_domain::analysis::Analysis;
+use purifex_domain::compare::ComparisonReport;
 use purifex_domain::drivers_view::DriversView;
 use purifex_domain::overview::Overview;
 use purifex_domain::ports::{
@@ -29,6 +30,12 @@ pub trait Services {
     fn sessions(&self) -> Result<Vec<SessionRow>, String>;
     /// The analysis of a recording; with no name, of the newest.
     fn analyze(&self, id: Option<&str>) -> Result<Analysis, String>;
+    /// Two recordings compared; with no names, the two newest games.
+    fn compare(
+        &self,
+        before: Option<&str>,
+        after: Option<&str>,
+    ) -> Result<ComparisonReport, String>;
     /// The devices and their drivers, as the table shows them.
     fn drivers(&self) -> Result<DriversView, String>;
     /// The general state: a fresh scan and the last recording.
@@ -79,6 +86,14 @@ where
 
     fn analyze(&self, id: Option<&str>) -> Result<Analysis, String> {
         self.archive.analyze(id)
+    }
+
+    fn compare(
+        &self,
+        before: Option<&str>,
+        after: Option<&str>,
+    ) -> Result<ComparisonReport, String> {
+        self.archive.compare(before, after)
     }
 
     fn drivers(&self) -> Result<DriversView, String> {

@@ -42,6 +42,18 @@ impl HistoryStore for Nothing {
     }
 }
 
+/// The applied change `seq` of the history, if it can still be undone.
+fn undoable(entries: &[HistoryEntry], seq: u64) -> Result<&HistoryEntry, String> {
+    let entry = entries
+        .iter()
+        .find(|e| e.seq == seq && e.state == HistoryState::Applied)
+        .ok_or_else(|| format!("no hay un cambio #{seq} que deshacer"))?;
+    if is_undone(entries, seq) {
+        return Err(format!("el cambio #{seq} ya está deshecho"));
+    }
+    Ok(entry)
+}
+
 impl Fixer {
     pub fn new(backend: Box<dyn FixBackend>, history: Box<dyn HistoryStore>) -> Self {
         Self { backend, history }
@@ -152,33 +164,15 @@ impl Fixer {
     }
 
     /// Undoes the change `seq`: puts the value back as it was.
-    #[expect(clippy::too_many_lines, reason = "legacy: split")]
     pub fn undo(&mut self, seq: u64, confirmed: bool) -> Result<FixReport, String> {
         let entries = self.history.entries()?;
-        let entry = entries
-            .iter()
-            .find(|e| e.seq == seq && e.state == HistoryState::Applied)
-            .ok_or_else(|| format!("no hay un cambio #{seq} que deshacer"))?;
-        if is_undone(&entries, seq) {
-            return Err(format!("el cambio #{seq} ya está deshecho"));
-        }
-        let now = self.backend.current(&entry.fix)?;
-        if now != entry.after {
-            return Err(format!(
-                "el ajuste se cambió fuera de Purifex (ahora: {now}, esperaba: {}); no lo toco",
-                entry.after
-            ));
-        }
-        let blockers = self.backend.blockers(&entry.fix)?;
-        if !blockers.is_empty() {
-            return Err(format!("ahora no se puede: {}", blockers.join(" · ")));
-        }
-        let title = spec(&entry.fix)
-            .map_or(entry.fix.as_str(), |s| s.title)
-            .to_string();
+        let entry = undoable(&entries, seq)?;
+        self.check_untouched(entry)?;
         let report = |preview: bool, seq: Option<u64>, after: SettingValue| FixReport {
             fix: entry.fix.clone(),
-            title: title.clone(),
+            title: spec(&entry.fix)
+                .map_or(entry.fix.as_str(), |s| s.title)
+                .to_string(),
             before: entry.after.clone(),
             after,
             preview,
@@ -190,18 +184,7 @@ impl Fixer {
         if !confirmed {
             return Ok(report(true, None, entry.before.clone()));
         }
-        self.backend.set(&entry.fix, &entry.before)?;
-        let after = self.backend.current(&entry.fix)?;
-        // An `Unset` is put back as the default, so "it changed away" is what counts.
-        let held = if entry.before == SettingValue::Unset {
-            after != entry.after
-        } else {
-            after == entry.before
-        };
-        if !held {
-            let _ = self.backend.set(&entry.fix, &entry.after);
-            return Err("el ajuste no volvió a su valor anterior; se dejó como estaba".into());
-        }
+        let after = self.revert(entry)?;
         let line = HistoryEntry {
             seq: Self::next_seq(&entries),
             fix: entry.fix.clone(),
@@ -218,6 +201,40 @@ impl Fixer {
             ));
         }
         Ok(report(false, Some(line.seq), after))
+    }
+
+    /// The setting is still as the change left it and nothing blocks changing it back.
+    fn check_untouched(&self, entry: &HistoryEntry) -> Result<(), String> {
+        let now = self.backend.current(&entry.fix)?;
+        if now != entry.after {
+            return Err(format!(
+                "el ajuste se cambió fuera de Purifex (ahora: {now}, esperaba: {}); no lo toco",
+                entry.after
+            ));
+        }
+        let blockers = self.backend.blockers(&entry.fix)?;
+        if !blockers.is_empty() {
+            return Err(format!("ahora no se puede: {}", blockers.join(" · ")));
+        }
+        Ok(())
+    }
+
+    /// Puts the setting back as it was and reads it to make sure it holds; if not, it is
+    /// left as the change had it. Returns the value read.
+    fn revert(&mut self, entry: &HistoryEntry) -> Result<SettingValue, String> {
+        self.backend.set(&entry.fix, &entry.before)?;
+        let after = self.backend.current(&entry.fix)?;
+        // An `Unset` is put back as the default, so "it changed away" is what counts.
+        let held = if entry.before == SettingValue::Unset {
+            after != entry.after
+        } else {
+            after == entry.before
+        };
+        if !held {
+            let _ = self.backend.set(&entry.fix, &entry.after);
+            return Err("el ajuste no volvió a su valor anterior; se dejó como estaba".into());
+        }
+        Ok(after)
     }
 
     pub fn history(&self) -> Result<Vec<HistoryEntry>, String> {

@@ -59,7 +59,8 @@ impl<S: PerformanceSampler, C: Clock, F: SessionFile> Recorder<S, C, F> {
         }
     }
 
-    #[expect(clippy::too_many_lines, reason = "legacy: split")]
+    /// Records a game: waits for it (if asked), takes a sample per interval, writes each as
+    /// it is taken, and summarizes when the game closes or the time is up.
     pub fn run(
         &mut self,
         options: WatchOptions,
@@ -67,12 +68,24 @@ impl<S: PerformanceSampler, C: Clock, F: SessionFile> Recorder<S, C, F> {
         progress: &mut dyn FnMut(&str),
     ) -> Result<Recording, String> {
         if options.wait_for_game {
-            progress("Esperando a que empiece la partida (abre el juego; Ctrl+C para cancelar)…");
-            while !self.sampler.game_running()? {
-                self.clock.sleep(WAIT_STEP);
-            }
-            progress("Partida detectada: grabando una muestra por segundo.");
+            self.wait_for_game(progress)?;
         }
+        let file = self.open_file(file_name)?;
+        let samples = self.collect(options, progress)?;
+        self.finish(&samples, file)
+    }
+
+    fn wait_for_game(&mut self, progress: &mut dyn FnMut(&str)) -> Result<(), String> {
+        progress("Esperando a que empiece la partida (abre el juego; Ctrl+C para cancelar)…");
+        while !self.sampler.game_running()? {
+            self.clock.sleep(WAIT_STEP);
+        }
+        progress("Partida detectada: grabando una muestra por segundo.");
+        Ok(())
+    }
+
+    /// Creates the file with its two header lines; returns where it is.
+    fn open_file(&mut self, file_name: &str) -> Result<String, String> {
         let path = self.file.create(file_name)?;
         let info = self.sampler.describe();
         let header = SessionHeader::new(&info.game, info.cores, self.clock.today());
@@ -80,28 +93,23 @@ impl<S: PerformanceSampler, C: Clock, F: SessionFile> Recorder<S, C, F> {
         self.file.append(CSV_HEADER)?;
         // The first reading only sets the baseline for the differences.
         let _ = self.sampler.sample();
+        Ok(path)
+    }
 
+    /// Takes the samples until the game closes, the time is up, or the measuring fails.
+    fn collect(
+        &mut self,
+        options: WatchOptions,
+        progress: &mut dyn FnMut(&str),
+    ) -> Result<Vec<Sample>, String> {
         let start = self.clock.monotonic();
         let mut samples: Vec<Sample> = Vec::new();
-        let (mut absent, mut failures, mut ticks) = (0u32, 0u32, 0u32);
-        loop {
-            ticks += 1;
-            let due = start + options.interval * ticks;
-            self.clock.sleep(due.saturating_sub(self.clock.monotonic()));
-            let mut sample = match self.sampler.sample() {
-                Ok(sample) => sample,
-                Err(error) => {
-                    failures += 1;
-                    log_warn!("sample failed: {error}");
-                    if failures >= FAILURES_TO_STOP {
-                        return Err(format!("la medición falla: {error}"));
-                    }
-                    continue;
-                }
+        let (mut absent, mut failures) = (0u32, 0u32);
+        for tick in 1.. {
+            let due = start + options.interval * tick;
+            let Some(sample) = self.take_sample(start, due, &mut failures)? else {
+                continue;
             };
-            failures = 0;
-            sample.at_ms = u64::try_from(self.clock.monotonic().saturating_sub(start).as_millis())
-                .unwrap_or(u64::MAX);
             if options.wait_for_game {
                 if sample.game.is_none() {
                     absent += 1;
@@ -112,12 +120,7 @@ impl<S: PerformanceSampler, C: Clock, F: SessionFile> Recorder<S, C, F> {
                 }
                 absent = 0;
             }
-            if let Err(error) = self.file.append(&sample.csv_row()) {
-                log_warn!("could not write the sample: {error}");
-            }
-            if samples.len() % LIVE_EVERY == LIVE_EVERY - 1 {
-                progress(&live_line(&sample));
-            }
+            self.write(&sample, samples.len(), progress);
             let finished = options
                 .max_seconds
                 .is_some_and(|max| sample.at_ms / 1000 >= max);
@@ -126,19 +129,57 @@ impl<S: PerformanceSampler, C: Clock, F: SessionFile> Recorder<S, C, F> {
                 break;
             }
         }
+        Ok(samples)
+    }
+
+    /// Waits until `due` and measures. A failure is counted and skipped (`None`) until
+    /// there are too many in a row.
+    fn take_sample(
+        &mut self,
+        start: Duration,
+        due: Duration,
+        failures: &mut u32,
+    ) -> Result<Option<Sample>, String> {
+        self.clock.sleep(due.saturating_sub(self.clock.monotonic()));
+        match self.sampler.sample() {
+            Ok(mut sample) => {
+                *failures = 0;
+                let elapsed = self.clock.monotonic().saturating_sub(start);
+                sample.at_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
+                Ok(Some(sample))
+            }
+            Err(error) => {
+                *failures += 1;
+                log_warn!("sample failed: {error}");
+                if *failures >= FAILURES_TO_STOP {
+                    return Err(format!("la medición falla: {error}"));
+                }
+                Ok(None)
+            }
+        }
+    }
+
+    /// Writes the sample; a line of progress now and then. Losing a row is not fatal.
+    fn write(&mut self, sample: &Sample, kept: usize, progress: &mut dyn FnMut(&str)) {
+        if let Err(error) = self.file.append(&sample.csv_row()) {
+            log_warn!("could not write the sample: {error}");
+        }
+        if kept % LIVE_EVERY == LIVE_EVERY - 1 {
+            progress(&live_line(sample));
+        }
+    }
+
+    fn finish(&mut self, samples: &[Sample], file: String) -> Result<Recording, String> {
         if samples.is_empty() {
             return Err("no se tomó ninguna muestra".into());
         }
-        let summary = summarize(&samples);
+        let summary = summarize(samples);
         // The summary beside the data saves recalculating it; losing it is not fatal.
         let json = serde_json::to_string_pretty(&summary).unwrap_or_default();
         if let Err(error) = self.file.write_summary(&json) {
             log_warn!("could not write the summary: {error}");
         }
-        Ok(Recording {
-            summary,
-            file: path,
-        })
+        Ok(Recording { summary, file })
     }
 }
 

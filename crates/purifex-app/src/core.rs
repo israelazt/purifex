@@ -715,24 +715,28 @@ mod tests {
         }
     }
 
-    #[test]
-    #[expect(clippy::too_many_lines, reason = "legacy: split")]
-    fn the_apps_page_uninstalls_with_a_confirmation_then_finds_and_removes_the_traces() {
+    /// The apps page of a computer with Discord installed and one trace of it left on disk.
+    struct AppsFixture {
+        core: Core,
+        installed: crate::testing::FakeApps,
+        log: std::rc::Rc<std::cell::RefCell<crate::testing::CleanLog>>,
+    }
+
+    fn apps_page() -> AppsFixture {
         use crate::testing::{CleanLog, FakeApps, FakeCleaning, FakeFinder};
         use crate::Cleaning;
-        use purifex_domain::app_traces::{Candidate, TraceKind};
+        use purifex_domain::app_traces::Candidate;
         use std::cell::RefCell;
         use std::rc::Rc;
         let installed = FakeApps::default();
         installed.0.borrow_mut().push(fake_app("Discord"));
         let log = Rc::new(RefCell::new(CleanLog::default()));
         let found = vec![Candidate {
-            kind: TraceKind::Folder,
             location: r"C:\Users\u\AppData\Roaming\Discord".into(),
             bytes: 10,
             ..Default::default()
         }];
-        let mut c = Core::new(Box::new(
+        let mut core = Core::new(Box::new(
             App::new(
                 Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
                 Recorder::new(
@@ -749,56 +753,65 @@ mod tests {
                 Box::new(FakeCleaning(log.clone())),
             )),
         ));
-        c.tick();
-        c.apply(Action::Go(Page::Apps));
-        assert!(c.model().busy, "the apps are read on the tick");
-        c.tick();
-        assert_eq!(c.model().visible_apps().len(), 1);
-        // Asking changes nothing; the uninstaller starts only on confirming.
-        c.apply(Action::AskUninstall("HKLM64:Discord".into()));
-        assert_eq!(
-            c.model().confirm,
-            Some(Confirm::Uninstall("HKLM64:Discord".into()))
-        );
+        core.tick();
+        core.apply(Action::Go(Page::Apps));
+        assert!(core.model().busy, "the apps are read on the tick");
+        core.tick();
+        assert_eq!(core.model().visible_apps().len(), 1);
+        AppsFixture {
+            core,
+            installed,
+            log,
+        }
+    }
+
+    #[test]
+    fn the_uninstaller_starts_only_when_the_person_confirms() {
+        let AppsFixture { mut core, log, .. } = apps_page();
+        let id = "HKLM64:Discord".to_string();
+        core.apply(Action::AskUninstall(id.clone()));
+        assert_eq!(core.model().confirm, Some(Confirm::Uninstall(id.clone())));
+        assert!(log.borrow().launched.is_empty(), "asking changes nothing");
+        core.apply(Action::CancelConfirm);
         assert!(log.borrow().launched.is_empty());
-        c.apply(Action::CancelConfirm);
-        assert!(log.borrow().launched.is_empty());
-        c.apply(Action::AskUninstall("HKLM64:Discord".into()));
-        c.apply(Action::Confirm);
+        core.apply(Action::AskUninstall(id));
+        core.apply(Action::Confirm);
         assert_eq!(log.borrow().launched, ["Discord"]);
-        assert_eq!(c.model().uninstalled.as_deref(), Some("Discord"));
-        assert!(c
-            .model()
-            .message
-            .as_deref()
-            .unwrap()
-            .contains("Buscar restos"));
-        // While it is still installed the traces can be looked at but not removed.
-        c.apply(Action::FindTraces("Discord".into()));
-        assert!(c.model().busy);
-        c.tick();
-        assert_eq!(c.model().traces.as_ref().unwrap().proposed.len(), 1);
-        c.apply(Action::AskClean("Discord".into()));
-        c.apply(Action::Confirm);
-        assert!(c
-            .model()
-            .error
-            .as_deref()
-            .unwrap()
-            .contains("sigue instalada"));
+        assert_eq!(core.model().uninstalled.as_deref(), Some("Discord"));
+        let message = core.model().message.as_deref().unwrap();
+        assert!(message.contains("Buscar restos"));
+    }
+
+    #[test]
+    fn while_the_app_is_installed_its_traces_can_be_looked_at_but_not_removed() {
+        let AppsFixture { mut core, log, .. } = apps_page();
+        core.apply(Action::FindTraces("Discord".into()));
+        assert!(core.model().busy);
+        core.tick();
+        assert_eq!(core.model().traces.as_ref().unwrap().proposed.len(), 1);
+        core.apply(Action::AskClean("Discord".into()));
+        core.apply(Action::Confirm);
+        let error = core.model().error.as_deref().unwrap();
+        assert!(error.contains("sigue instalada"));
         assert!(log.borrow().removed.is_empty());
-        // The uninstaller finished: now they go to the quarantine.
+    }
+
+    #[test]
+    fn once_the_uninstaller_has_finished_the_traces_go_to_the_quarantine() {
+        let AppsFixture {
+            mut core,
+            installed,
+            log,
+        } = apps_page();
+        core.apply(Action::FindTraces("Discord".into()));
+        core.tick();
         installed.0.borrow_mut().clear();
-        c.apply(Action::AskClean("Discord".into()));
-        c.apply(Action::Confirm);
+        core.apply(Action::AskClean("Discord".into()));
+        core.apply(Action::Confirm);
         assert_eq!(log.borrow().removed.len(), 1);
-        assert!(c
-            .model()
-            .message
-            .as_deref()
-            .unwrap()
-            .contains("Se quitaron 1 restos"));
-        assert!(c.model().traces.is_none());
+        let message = core.model().message.as_deref().unwrap();
+        assert!(message.contains("Se quitaron 1 restos"));
+        assert!(core.model().traces.is_none());
     }
 
     #[test]

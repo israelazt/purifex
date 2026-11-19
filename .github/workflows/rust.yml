@@ -41,8 +41,8 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Clippy (portable layers)
-        run: cargo clippy -p purifex-domain -p purifex-app -p purifex-platform --all-targets -- -D warnings
+        run: cargo clippy -p purifex-domain -p purifex-app -p purifex-platform -p purifex-ui --all-targets -- -D warnings
       - name: Tests (portable layers)
-        run: cargo test -p purifex-domain -p purifex-app -p purifex-platform
+        run: cargo test -p purifex-domain -p purifex-app -p purifex-platform -p purifex-ui
       - name: The program builds
         run: cargo build -p purifex

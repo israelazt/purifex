@@ -80,64 +80,89 @@ pub fn find_files(
     seeds: &Seeds,
     budget: Duration,
 ) -> (Vec<Candidate>, bool) {
-    let until = Instant::now() + budget;
-    let mut complete = true;
-    let mut found = Vec::new();
-    // Settings: `<name>rc`, `<name>.ini`... next to the others of the user.
-    let data_dirs = [
+    let mut found = settings_files(places, names);
+    found.extend(crash_dumps(places, seeds));
+    let (shortcuts, complete) = shortcuts(places, seeds, Instant::now() + budget);
+    found.extend(shortcuts);
+    (found, complete)
+}
+
+/// Settings next to the others of the user: `<name>rc`, `<name>.ini`...
+fn settings_files(places: &UserPlaces, names: &[String]) -> Vec<Candidate> {
+    if names.is_empty() {
+        return Vec::new();
+    }
+    let dirs = [
         places.local.clone(),
         places.roaming.clone(),
         places.local.as_ref().map(|l| l.join("State")),
     ];
-    if !names.is_empty() {
-        for dir in data_dirs.iter().flatten() {
-            for (name, path) in files_of(dir) {
-                let s = simple(&name);
-                if names.iter().any(|n| s.starts_with(n.as_str())) {
-                    found.extend(with_text(&path, None));
-                }
-            }
-        }
-    }
-    // Crash dumps: `<program>.exe.<pid>.dmp`.
-    if let Some(local) = &places.local {
-        for (name, path) in files_of(&local.join("CrashDumps")) {
+    dirs.iter()
+        .flatten()
+        .flat_map(|dir| files_of(dir))
+        .filter(|(name, _)| {
+            let s = simple(name);
+            names.iter().any(|n| s.starts_with(n.as_str()))
+        })
+        .filter_map(|(_, path)| with_text(&path, None))
+        .collect()
+}
+
+/// Crash dumps: `<program>.exe.<pid>.dmp`.
+fn crash_dumps(places: &UserPlaces, seeds: &Seeds) -> Vec<Candidate> {
+    let Some(local) = &places.local else {
+        return Vec::new();
+    };
+    files_of(&local.join("CrashDumps"))
+        .filter(|(name, _)| {
             let lower = name.to_lowercase();
-            if lower.ends_with(".dmp") && seeds.exes.iter().any(|e| lower.starts_with(e.as_str())) {
-                found.extend(with_text(&path, None));
-            }
-        }
-    }
-    // Recent files of a type the app registered, or recent shortcuts into its folder.
+            lower.ends_with(".dmp") && seeds.exes.iter().any(|e| lower.starts_with(e.as_str()))
+        })
+        .filter_map(|(_, path)| with_text(&path, None))
+        .collect()
+}
+
+/// Recent files of a type the app registered, and shortcuts (desktop, start menu) whose
+/// target is inside its folder. Returns what it found and whether it finished in time.
+fn shortcuts(places: &UserPlaces, seeds: &Seeds, until: Instant) -> (Vec<Candidate>, bool) {
+    let (mut found, mut complete) = (Vec::new(), true);
+    let mut take = |(more, done): (Vec<Candidate>, bool)| {
+        found.extend(more);
+        complete &= done;
+    };
     if let Some(roaming) = &places.roaming {
-        shortcuts_in(
-            &roaming.join(r"Microsoft\Windows\Recent"),
-            seeds,
-            Reading {
-                by_extension: true,
-                until,
-            },
-            &mut (&mut found, &mut complete),
-        );
-    }
-    for folder in &places.shortcut_folders {
-        let plain = Reading {
-            by_extension: false,
+        let recent = Reading {
+            by_extension: true,
             until,
         };
-        shortcuts_in(folder, seeds, plain, &mut (&mut found, &mut complete));
-        for sub in fs::read_dir(folder)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .take(2_000)
-        {
-            if sub.file_type().is_ok_and(|t| t.is_dir()) {
-                shortcuts_in(&sub.path(), seeds, plain, &mut (&mut found, &mut complete));
-            }
+        take(shortcuts_in(
+            &roaming.join(r"Microsoft\Windows\Recent"),
+            seeds,
+            recent,
+        ));
+    }
+    let by_target = Reading {
+        by_extension: false,
+        until,
+    };
+    for folder in &places.shortcut_folders {
+        take(shortcuts_in(folder, seeds, by_target));
+        for sub in subfolders(folder) {
+            take(shortcuts_in(&sub, seeds, by_target));
         }
     }
     (found, complete)
+}
+
+/// The folders directly inside `dir` (a start menu has one level of them).
+fn subfolders(dir: &Path) -> impl Iterator<Item = PathBuf> {
+    fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .take(2_000)
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .map(|e| e.path())
 }
 
 #[derive(Clone, Copy)]
@@ -146,13 +171,9 @@ struct Reading {
     until: Instant,
 }
 
-fn shortcuts_in(
-    dir: &Path,
-    seeds: &Seeds,
-    reading: Reading,
-    out: &mut (&mut Vec<Candidate>, &mut bool),
-) {
-    let (found, complete) = out;
+/// The shortcuts of one folder that belong to the app, and whether reading their targets
+/// finished before the deadline.
+fn shortcuts_in(dir: &Path, seeds: &Seeds, reading: Reading) -> (Vec<Candidate>, bool) {
     let shortcuts: Vec<(String, PathBuf)> = files_of(dir)
         .filter_map(|(name, path)| {
             let lower = name.to_lowercase();
@@ -161,6 +182,7 @@ fn shortcuts_in(
                 .map(|stem| (stem.to_string(), path))
         })
         .collect();
+    let mut found = Vec::new();
     // First by name, which costs nothing, over the whole list...
     let mut unmatched = Vec::new();
     for (stem, path) in shortcuts {
@@ -172,23 +194,17 @@ fn shortcuts_in(
     }
     // ...then by target, which means reading each file: bounded in number and in time.
     // Not for the recent files: they point to the user's documents, and the list is long.
-    if reading.by_extension {
-        return;
-    }
-    let Some(folder) = &seeds.folder else {
-        return;
+    let Some(folder) = seeds.folder.as_ref().filter(|_| !reading.by_extension) else {
+        return (found, true);
     };
     for (read, path) in unmatched.iter().enumerate() {
         if read >= MAX_SHORTCUTS || Instant::now() > reading.until {
-            **complete = false;
-            break;
+            return (found, false);
         }
-        if let Some(target) = shortcut_target(path) {
-            if path_refers_to(&target, folder) {
-                found.extend(with_text(path, Some(target)));
-            }
-        }
+        let target = shortcut_target(path).filter(|t| path_refers_to(t, folder));
+        found.extend(target.and_then(|t| with_text(path, Some(t))));
     }
+    (found, true)
 }
 
 #[cfg(test)]
@@ -236,10 +252,8 @@ mod tests {
         v
     }
 
-    #[test]
-    fn settings_dumps_and_shortcuts_of_the_app_are_found_and_the_rest_is_not() {
-        let p = tree("files");
-        let kdenlive_exe = format!(r"{APP}\bin\kdenlive.exe");
+    /// Plants what an app leaves in the user's folders, and some look-alikes that are not its.
+    fn plant_files(p: &UserPlaces, exe: &str) {
         for f in [
             r"Local\kdenliverc",
             r"Local\State\kdenlivestaterc",
@@ -247,31 +261,27 @@ mod tests {
             r"Local\otherrc",
             r"Local\CrashDumps\kdenlive.exe.33876.dmp",
             r"Local\CrashDumps\other.exe.1.dmp",
-        ] {
-            put(&p, f, b"x");
-        }
-        put(
-            &p,
             r"Roaming\Microsoft\Windows\Recent\Video.kdenlive.lnk",
-            b"x",
-        );
-        put(&p, r"Roaming\Microsoft\Windows\Recent\Notes.txt.lnk", b"x");
+            r"Roaming\Microsoft\Windows\Recent\Notes.txt.lnk",
+            r"Desktop\broken.lnk",
+        ] {
+            put(p, f, b"x");
+        }
+        let other = r"C:\Program Files\Kdenlive2\k.exe";
+        put(p, r"Desktop\Editor.lnk", &shortcut(exe, true, true));
+        put(p, r"Desktop\Other.lnk", &shortcut(other, true, true));
         put(
-            &p,
-            r"Desktop\Editor.lnk",
-            &shortcut(&kdenlive_exe, true, true),
-        );
-        put(
-            &p,
-            r"Desktop\Other.lnk",
-            &shortcut(r"C:\Program Files\Kdenlive2\k.exe", true, true),
-        );
-        put(
-            &p,
+            p,
             r"Menu\Editores\Kdenlive.lnk",
-            &shortcut(&kdenlive_exe, false, true),
+            &shortcut(exe, false, true),
         );
-        put(&p, r"Desktop\broken.lnk", b"not a shortcut");
+    }
+
+    #[test]
+    fn settings_dumps_and_shortcuts_of_the_app_are_found_and_the_rest_is_not() {
+        let p = tree("files");
+        let kdenlive_exe = format!(r"{APP}\bin\kdenlive.exe");
+        plant_files(&p, &kdenlive_exe);
 
         let (found, complete) = find_files(&p, &["kdenlive".into()], &seeds(), LONG);
         assert!(complete);

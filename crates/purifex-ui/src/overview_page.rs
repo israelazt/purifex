@@ -38,7 +38,14 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
         };
         return y - area.y;
     };
-    // The four cards: in a row, or two by two when the window is narrow.
+    y += cards(c, o, area, y);
+    y += leads(c, Rect::new(area.x, y, area.w, 0.0).with_width(area.w), o);
+    y += console_and_principles(c, o, area, y);
+    y - area.y
+}
+
+/// The four cards: in a row, or two by two when the window is narrow. Returns their height.
+fn cards(c: &mut Canvas, o: &Overview, area: Rect, y: f32) -> f32 {
     let columns = if area.w < 820.0 { 2 } else { 4 };
     let gap = 16.0;
     let card_w = (area.w - gap * (columns as f32 - 1.0)) / columns as f32;
@@ -58,9 +65,12 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
         draw_card(c, card, o);
     }
     c.reveal(0);
-    y += 4usize.div_ceil(columns) as f32 * (card_h + gap) + 4.0;
-    y += leads(c, Rect::new(area.x, y, area.w, 0.0).with_width(area.w), o);
-    // The console and the principles.
+    4usize.div_ceil(columns) as f32 * (card_h + gap) + 4.0
+}
+
+/// The console of events and the principles, side by side. Returns their height.
+fn console_and_principles(c: &mut Canvas, o: &Overview, area: Rect, y: f32) -> f32 {
+    let gap = 16.0;
     let side = (area.w * 0.32).clamp(280.0, 420.0);
     let console_w = area.w - side - gap;
     let h = console_height(c, console_w, &o.console)
@@ -73,8 +83,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
         &o.scanned_on.to_string(),
     );
     principles(c, Rect::new(area.x + console_w + gap, y, side, h));
-    y += h + 24.0;
-    y - area.y
+    h + 24.0
 }
 
 trait WithWidth {

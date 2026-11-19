@@ -223,6 +223,15 @@ mod tests {
     };
     use super::*;
 
+    /// Runs `step`, prints how long it took and how many things it found.
+    fn timed<T>(label: &str, step: impl FnOnce() -> (T, usize)) -> T {
+        let started = Instant::now();
+        let (value, found) = step();
+        let ms = started.elapsed().as_secs_f64() * 1e3;
+        println!("{label:<18} {ms:>6.0} ms  {found}");
+        value
+    }
+
     /// Not a test: `cargo test -p purifex-platform measure_the_real_search -- --ignored
     /// --nocapture` prints how long each part of the search takes on this computer.
     #[test]
@@ -236,50 +245,26 @@ mod tests {
         };
         let names = names_of(&app);
         let hives = Hives::real();
-        let t = Instant::now();
-        let mut seeds = seeds_of(&app);
-        println!(
-            "seeds            {:>6.0} ms",
-            t.elapsed().as_secs_f64() * 1e3
-        );
-        let t = Instant::now();
-        seeds.extensions = discover_extensions(&hives, &seeds);
-        println!(
-            "discover (Classes) {:>4.0} ms  {} found",
-            t.elapsed().as_secs_f64() * 1e3,
-            seeds.extensions.len()
-        );
-        let t = Instant::now();
-        let n = find_files(&UserPlaces::real(), &names, &seeds, FILES_BUDGET)
-            .0
-            .len();
-        println!(
-            "files            {:>6.0} ms  {n}",
-            t.elapsed().as_secs_f64() * 1e3
-        );
-        let t = Instant::now();
-        let n = find_values(&hives, &seeds).len();
-        println!(
-            "values           {:>6.0} ms  {n}",
-            t.elapsed().as_secs_f64() * 1e3
-        );
-        let t = Instant::now();
-        let n = find_associations(&hives, &seeds).len();
-        println!(
-            "associations     {:>6.0} ms  {n}",
-            t.elapsed().as_secs_f64() * 1e3
-        );
-        let t = Instant::now();
-        let n = find_program_keys(&hives, &names, &seeds).len();
-        println!(
-            "program keys     {:>6.0} ms  {n}",
-            t.elapsed().as_secs_f64() * 1e3
-        );
-        let t = Instant::now();
-        let n = WindowsTraceFinder.candidates(&app).unwrap().len();
-        println!(
-            "WHOLE SEARCH     {:>6.0} ms  {n}",
-            t.elapsed().as_secs_f64() * 1e3
-        );
+        let mut seeds = timed("seeds", || (seeds_of(&app), 0));
+        seeds.extensions = timed("discover (Classes)", || {
+            let found = discover_extensions(&hives, &seeds);
+            let n = found.len();
+            (found, n)
+        });
+        let places = UserPlaces::real();
+        timed("files", || {
+            let n = find_files(&places, &names, &seeds, FILES_BUDGET).0.len();
+            ((), n)
+        });
+        timed("values", || ((), find_values(&hives, &seeds).len()));
+        timed("associations", || {
+            ((), find_associations(&hives, &seeds).len())
+        });
+        timed("program keys", || {
+            ((), find_program_keys(&hives, &names, &seeds).len())
+        });
+        timed("WHOLE SEARCH", || {
+            ((), WindowsTraceFinder.candidates(&app).unwrap().len())
+        });
     }
 }

@@ -33,34 +33,47 @@ pub enum AppsCommand {
     },
 }
 
-impl AppsCommand {
-    pub fn parse<'a>(mut args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
-        let first = args.next();
-        let (mut json, mut yes, mut words) = (false, false, Vec::new());
-        let rest: Vec<&str> = match first {
-            Some("--json") => {
-                json = true;
-                args.collect()
-            }
-            Some(word) => std::iter::once(word).chain(args).collect(),
-            None => Vec::new(),
-        };
-        let (command, rest) = match rest.split_first() {
-            Some((c, r)) if ["traces", "uninstall", "clean", "restore", "history"].contains(c) => {
-                (Some(*c), r.to_vec())
-            }
-            _ => (None, rest),
-        };
-        for arg in rest {
-            match arg {
-                "--json" => json = true,
-                "--yes" => yes = true,
-                flag if flag.starts_with("--") => {
-                    return Err(format!("opción desconocida: {flag}"))
-                }
-                word => words.push(word),
-            }
+/// The words that name the order: an initial `--json`, then the command if it is one of
+/// ours. Returns whether `--json` came first, the command, and what is left.
+fn split_command<'a>(
+    mut args: impl Iterator<Item = &'a str>,
+) -> (bool, Option<&'a str>, Vec<&'a str>) {
+    let (json, rest): (bool, Vec<&str>) = match args.next() {
+        Some("--json") => (true, args.collect()),
+        Some(word) => (false, std::iter::once(word).chain(args).collect()),
+        None => (false, Vec::new()),
+    };
+    match rest.split_first() {
+        Some((c, r)) if ["traces", "uninstall", "clean", "restore", "history"].contains(c) => {
+            (json, Some(*c), r.to_vec())
         }
+        _ => (json, None, rest),
+    }
+}
+
+/// Separates the flags (`--json`, `--yes`) from the words; any other `--` is an error.
+fn read_flags(words: Vec<&str>) -> Result<(bool, bool, Vec<&str>), String> {
+    let (mut json, mut yes, mut rest) = (false, false, Vec::new());
+    for arg in words {
+        match arg {
+            "--json" => json = true,
+            "--yes" => yes = true,
+            flag if flag.starts_with("--") => return Err(format!("opción desconocida: {flag}")),
+            word => rest.push(word),
+        }
+    }
+    Ok((json, yes, rest))
+}
+
+impl AppsCommand {
+    pub fn parse<'a>(args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
+        let (json_first, command, rest) = split_command(args);
+        let (json_later, yes, words) = read_flags(rest)?;
+        Self::build(command, json_first || json_later, yes, &words)
+    }
+
+    /// The order from its command (`traces`, `clean`...), the flags and the name of the app.
+    fn build(command: Option<&str>, json: bool, yes: bool, words: &[&str]) -> Result<Self, String> {
         let name = words.join(" ");
         let need_name = || {
             if name.trim().is_empty() {

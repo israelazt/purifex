@@ -51,21 +51,26 @@ impl Renderer {
                 rect,
                 opacity,
             } => self.image(name, *rect, *opacity),
-            Op::Clip { rect } => {
-                // SAFETY: pushes a clip on the live target; it is popped by `Unclip` or at the end.
-                unsafe {
-                    self.target
-                        .PushAxisAlignedClip(&rect_f(*rect), D2D1_ANTIALIAS_MODE_ALIASED);
-                }
-                *clips += 1;
-            }
-            Op::Unclip => {
-                if *clips > 0 {
-                    // SAFETY: pops the last clip pushed.
-                    unsafe { self.target.PopAxisAlignedClip() };
-                    *clips -= 1;
-                }
-            }
+            Op::Clip { rect } => self.push_clip(*rect, clips),
+            Op::Unclip => self.pop_clip(clips),
+        }
+    }
+
+    /// Clips what follows to `rect`, until an `Unclip` (or the end of the picture).
+    fn push_clip(&self, rect: Rect, clips: &mut usize) {
+        // SAFETY: pushes a clip on the live target; it is popped by `Unclip` or at the end.
+        unsafe {
+            self.target
+                .PushAxisAlignedClip(&rect_f(rect), D2D1_ANTIALIAS_MODE_ALIASED);
+        }
+        *clips += 1;
+    }
+
+    fn pop_clip(&self, clips: &mut usize) {
+        if *clips > 0 {
+            // SAFETY: pops the last clip pushed.
+            unsafe { self.target.PopAxisAlignedClip() };
+            *clips -= 1;
         }
     }
 

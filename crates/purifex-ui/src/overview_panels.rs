@@ -84,6 +84,13 @@ pub(crate) fn tag_color(tag: &str) -> Tone {
 
 pub(crate) fn console(c: &mut Canvas, rect: Rect, lines: &[ConsoleLine], date: &str) {
     panel(c, rect);
+    console_head(c, rect);
+    let inner = Rect::new(rect.x + 16.0, rect.y + 72.0, rect.w - 32.0, rect.h - 88.0);
+    console_lines(c, inner, lines, date);
+}
+
+/// The title of the console and the «lectura local» mark.
+fn console_head(c: &mut Canvas, rect: Rect) {
     c.icon(
         "square-terminal",
         rect.x + 18.0,
@@ -114,7 +121,10 @@ pub(crate) fn console(c: &mut Canvas, rect: Rect, lines: &[ConsoleLine], date: &
         rect.y + 56.0,
         theme::LINE_SOFT,
     );
-    let inner = Rect::new(rect.x + 16.0, rect.y + 72.0, rect.w - 32.0, rect.h - 88.0);
+}
+
+/// The events inside the dark box: date, tag and text, wrapped, one under another.
+fn console_lines(c: &mut Canvas, inner: Rect, lines: &[ConsoleLine], date: &str) {
     c.fill(inner, 6.0, theme::BG);
     c.stroke(inner, 6.0, 1.0, theme::LINE_SOFT);
     c.clip(inner);
@@ -190,6 +200,12 @@ pub(crate) fn principles(c: &mut Canvas, rect: Rect) {
         rect.y + 56.0,
         theme::LINE_SOFT,
     );
+    principle_items(c, rect);
+    principles_foot(c, rect);
+}
+
+/// Each principle: a check, its title and its explanation.
+fn principle_items(c: &mut Canvas, rect: Rect) {
     let mut y = rect.y + 74.0;
     for (title, small) in PRINCIPLES {
         c.fill(
@@ -214,6 +230,10 @@ pub(crate) fn principles(c: &mut Canvas, rect: Rect) {
         );
         y += 24.0 + h + 12.0;
     }
+}
+
+/// The foot of the panel: what the interface is made of.
+fn principles_foot(c: &mut Canvas, rect: Rect) {
     let foot = rect.bottom() - 40.0;
     c.line(rect.x, foot, rect.right(), foot, theme::LINE_SOFT);
     c.text(

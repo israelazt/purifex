@@ -4,6 +4,7 @@
 //! the domain (`app_traces`). This only shows and asks.
 
 use purifex_domain::apps::{size_text, InstalledApp};
+use purifex_domain::cleanup_log::CleanReport;
 use purifex_domain::draw::Rect;
 use purifex_domain::view::{Action, Model};
 
@@ -48,7 +49,22 @@ fn cleanup_panel(c: &mut Canvas, m: &Model, name: &str, area: Rect, y: f32) -> f
         &format!("Restos de {name}"),
         theme::sans(14.0, theme::TEXT).bold(),
     );
-    let summary = match report {
+    c.paragraph(
+        rect.x + 46.0,
+        rect.y + 40.0,
+        rect.w - 520.0,
+        &traces_summary(m, report),
+        theme::mono(12.0, theme::TEXT_2),
+        Some(2),
+    );
+    cleanup_buttons(c, m, name, rect, report);
+    rect.h + 16.0
+}
+
+/// What the panel says about the search: going on, not done yet, nothing found, or how
+/// many traces and how big.
+fn traces_summary(m: &Model, report: Option<&CleanReport>) -> String {
+    match report {
         None if m.finding.is_some() => "Buscando lo que dejó…".to_string(),
         None => "Cuando el desinstalador termine, Purifex busca lo que dejó. No se borra nada al buscar.".to_string(),
         Some(r) if r.proposed.is_empty() => "No se encontraron restos.".to_string(),
@@ -56,15 +72,17 @@ fn cleanup_panel(c: &mut Canvas, m: &Model, name: &str, area: Rect, y: f32) -> f
             let bytes: u64 = r.proposed.iter().map(|t| t.bytes).sum();
             format!("Se encontraron {} restos ({}).", r.proposed.len(), size_text(Some(bytes / 1024)))
         }
-    };
-    c.paragraph(
-        rect.x + 46.0,
-        rect.y + 40.0,
-        rect.w - 520.0,
-        &summary,
-        theme::mono(12.0, theme::TEXT_2),
-        Some(2),
-    );
+    }
+}
+
+/// «Buscar restos» (disabled while a search goes on) and, when there is a list, «Ver restos».
+fn cleanup_buttons(
+    c: &mut Canvas,
+    m: &Model,
+    name: &str,
+    rect: Rect,
+    report: Option<&CleanReport>,
+) {
     let find = if report.is_some() {
         "Buscar otra vez"
     } else {
@@ -95,7 +113,6 @@ fn cleanup_panel(c: &mut Canvas, m: &Model, name: &str, area: Rect, y: f32) -> f
             Some(Action::OpenTraces),
         );
     }
-    rect.h + 16.0
 }
 
 fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {

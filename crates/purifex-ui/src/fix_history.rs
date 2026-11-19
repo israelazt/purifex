@@ -108,14 +108,7 @@ fn history_row(
         bar.w - 64.0 - 330.0,
     );
     let undone = is_undone(entries, entry.seq);
-    let (label, tone) = match entry.state {
-        HistoryState::Applied if undone => ("Deshecho después".to_string(), Tone::Gray),
-        HistoryState::Applied => ("Aplicado".to_string(), Tone::Green),
-        HistoryState::Undone => (
-            format!("Deshace #{}", entry.undoes.unwrap_or(0)),
-            Tone::Gray,
-        ),
-    };
+    let (label, tone) = state_label(entry, undone);
     tag(
         c,
         bar.right() - 18.0 - 140.0 - 110.0,
@@ -135,5 +128,17 @@ fn history_row(
             false,
             Some(Action::AskUndo(entry.seq)),
         );
+    }
+}
+
+/// How the state of a change is said: applied, undone later, or the undoing of another.
+fn state_label(entry: &HistoryEntry, undone: bool) -> (String, Tone) {
+    match entry.state {
+        HistoryState::Applied if undone => ("Deshecho después".to_string(), Tone::Gray),
+        HistoryState::Applied => ("Aplicado".to_string(), Tone::Green),
+        HistoryState::Undone => (
+            format!("Deshace #{}", entry.undoes.unwrap_or(0)),
+            Tone::Gray,
+        ),
     }
 }

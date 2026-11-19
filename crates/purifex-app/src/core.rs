@@ -613,10 +613,29 @@ mod tests {
         assert!(!bare.needs_tick());
     }
 
+    /// A core whose services keep the given proposals and open pages through `opener`.
+    fn core_with_candidates(
+        store: crate::testing::FakeCandidates,
+        opener: crate::testing::FakeOpener,
+    ) -> Core {
+        Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_candidates(crate::Candidates::new(Box::new(store)))
+            .with_opener(Box::new(opener)),
+        ))
+    }
+
     #[test]
     fn the_drivers_page_reads_the_proposals_and_opening_one_goes_through_the_browser() {
         use crate::testing::{FakeCandidates, FakeOpener};
-        use crate::Candidates;
         use purifex_domain::driver_candidate::{Candidate, Source};
         use purifex_domain::ports::CandidateStore;
         let mut store = FakeCandidates::default();
@@ -630,19 +649,7 @@ mod tests {
             })
             .unwrap();
         let opener = FakeOpener::default();
-        let mut c = Core::new(Box::new(
-            App::new(
-                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
-                Recorder::new(
-                    FakeSampler::new(0, 1, true),
-                    FakeClock::ticking(0),
-                    FakeFile::default(),
-                ),
-                Archive::new(FakeArchive::with(&[])),
-            )
-            .with_candidates(Candidates::new(Box::new(store)))
-            .with_opener(Box::new(opener.clone())),
-        ));
+        let mut c = core_with_candidates(store, opener.clone());
         c.tick();
         assert!(
             c.model().candidates.is_none(),

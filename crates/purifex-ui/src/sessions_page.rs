@@ -46,6 +46,14 @@ fn session_row(c: &mut Canvas, row: &SessionRow, bar: Rect, selected: bool) {
         },
         if broken { Tone::Amber } else { Tone::Green },
     );
+    row_labels(c, row, bar);
+    c.hit(bar, Action::SelectSession(row.id.clone()));
+}
+
+/// The date of the recording and what is known of it: how many samples and how long, or
+/// that it cannot be read.
+fn row_labels(c: &mut Canvas, row: &SessionRow, bar: Rect) {
+    let broken = row.problem.is_some();
     let title = row.started.map_or(row.id.clone(), |s| s.to_string());
     c.text_cut(
         bar.x + 64.0,
@@ -75,7 +83,6 @@ fn session_row(c: &mut Canvas, row: &SessionRow, bar: Rect, selected: bool) {
             style,
         );
     }
-    c.hit(bar, Action::SelectSession(row.id.clone()));
 }
 
 fn list(c: &mut Canvas, m: &Model, rect: Rect) {
@@ -276,6 +283,23 @@ fn measuring_cost(c: &mut Canvas, a: &Analysis, table: Rect) {
     );
 }
 
+/// What the right side says while there is no recording chosen (or it is being read).
+fn no_analysis(c: &mut Canvas, m: &Model, rect: Rect) -> f32 {
+    panel(c, rect);
+    let text = if m.busy {
+        "Leyendo la grabación…"
+    } else {
+        "Elige una grabación."
+    };
+    c.text(
+        rect.x + 18.0,
+        rect.y + 24.0,
+        text,
+        theme::mono(12.5, theme::TEXT_3),
+    );
+    rect.h
+}
+
 /// Draws the page in `area` and returns the height it used.
 pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
     let mut y = area.y;
@@ -311,22 +335,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
     );
     let used = match &m.analysis {
         Some(a) => detail(c, a, m.comparison.as_ref(), detail_rect),
-        None => {
-            let rect = Rect::new(detail_rect.x, y, detail_rect.w, 70.0);
-            panel(c, rect);
-            let text = if m.busy {
-                "Leyendo la grabación…"
-            } else {
-                "Elige una grabación."
-            };
-            c.text(
-                rect.x + 18.0,
-                rect.y + 24.0,
-                text,
-                theme::mono(12.5, theme::TEXT_3),
-            );
-            70.0
-        }
+        None => no_analysis(c, m, Rect::new(detail_rect.x, y, detail_rect.w, 70.0)),
     };
     y + used.max(list_rect.h) - area.y
 }

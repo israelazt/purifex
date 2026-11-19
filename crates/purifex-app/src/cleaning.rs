@@ -5,7 +5,7 @@
 //! orders the steps and refuses the ones that are not safe yet (cleaning an app
 //! that is still installed).
 
-use purifex_domain::app_traces::{names_of, propose_with, simple};
+use purifex_domain::app_traces::{names_of, propose_with, simple, Trace};
 use purifex_domain::apps::InstalledApp;
 use purifex_domain::cleanup_log::{is_restored, next_seq, CleanReport, CleanupEntry, CleanupState};
 use purifex_domain::ports::{CleanupStore, SeedProbe, TraceFinder, Uninstaller};
@@ -45,6 +45,21 @@ pub fn find<'a>(apps: &'a [InstalledApp], query: &str) -> Result<&'a InstalledAp
             ))
         }
     }
+}
+
+/// What removing a selection of traces did: the entries logged, and what could not be
+/// removed with why.
+type Removals = (Vec<CleanupEntry>, Vec<(Trace, String)>);
+
+/// With a selection only those places go, and only if the rules still propose them: what
+/// is asked for is always checked against what `propose` returned.
+fn select(proposed: Vec<Trace>, only: Option<&[String]>) -> Vec<Trace> {
+    proposed
+        .into_iter()
+        .filter(|t| {
+            only.is_none_or(|keep| keep.iter().any(|k| k.eq_ignore_ascii_case(&t.location)))
+        })
+        .collect()
 }
 
 impl Cleaning {
@@ -190,24 +205,30 @@ impl Cleaning {
         if installed {
             return Err(format!("{} sigue instalada: termina su desinstalador primero (los restos de una app en uso no se tocan)", app.name));
         }
-        // With a selection only those places go, and only if the rules still propose
-        // them: what is asked for is always checked against `propose` above.
-        let chosen: Vec<_> = proposed
-            .into_iter()
-            .filter(|t| {
-                only.is_none_or(|keep| keep.iter().any(|k| k.eq_ignore_ascii_case(&t.location)))
-            })
-            .collect();
+        let chosen = select(proposed, only);
+        let (removed, failed) = self.remove_all(&app.name, &chosen)?;
+        Ok(CleanReport {
+            app: app.name,
+            preview: false,
+            removed,
+            proposed: vec![],
+            failed,
+        })
+    }
+
+    /// Moves each trace to the quarantine and logs it. A trace that cannot be removed
+    /// (in use, needs an administrator) is reported with why, and the rest go on.
+    fn remove_all(&mut self, app: &str, traces: &[Trace]) -> Result<Removals, String> {
         let store = self.store()?;
         let mut log = store.entries()?;
         let (mut removed, mut failed) = (Vec::new(), Vec::new());
-        for trace in &chosen {
+        for trace in traces {
             let seq = next_seq(&log);
             match store.remove(trace, seq) {
                 Ok(kept) => {
                     let entry = CleanupEntry {
                         seq,
-                        app: app.name.clone(),
+                        app: app.to_string(),
                         trace: trace.clone(),
                         kept,
                         state: CleanupState::Removed,
@@ -220,13 +241,7 @@ impl Cleaning {
                 Err(why) => failed.push((trace.clone(), why)),
             }
         }
-        Ok(CleanReport {
-            app: app.name,
-            preview: false,
-            removed,
-            proposed: vec![],
-            failed,
-        })
+        Ok((removed, failed))
     }
 
     /// Puts back what removal `seq` took out.

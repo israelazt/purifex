@@ -138,42 +138,9 @@ impl Command {
             };
             match arg {
                 "--screenshot" => path = Some(value("--screenshot")?.to_string()),
-                "--page" => {
-                    page = match value("--page")? {
-                        "overview" => Page::Overview,
-                        "drivers" => Page::Drivers,
-                        "sessions" => Page::Sessions,
-                        "fixes" => Page::Fixes,
-                        "apps" => Page::Apps,
-                        other => {
-                            return Err(format!(
-                        "página desconocida: {other} (overview, drivers, sessions, fixes, apps)"
-                    ))
-                        }
-                    }
-                }
-                "--size" => {
-                    let text = value("--size")?;
-                    size = text
-                        .split_once('x')
-                        .and_then(|(w, h)| Some((w.parse::<f32>().ok()?, h.parse::<f32>().ok()?)))
-                        .filter(|(w, h)| {
-                            (400.0..=4000.0).contains(w) && (300.0..=4000.0).contains(h)
-                        })
-                        .ok_or_else(|| {
-                            format!("--size: «{text}» no es ANCHOxALTO (por ejemplo 1440x900)")
-                        })?;
-                }
-                "--scale" => {
-                    let text = value("--scale")?;
-                    scale = text
-                        .parse::<f32>()
-                        .ok()
-                        .filter(|s| (0.5..=4.0).contains(s))
-                        .ok_or_else(|| {
-                            format!("--scale: «{text}» no es un número entre 0,5 y 4")
-                        })?;
-                }
+                "--page" => page = parse_page(value("--page")?)?,
+                "--size" => size = parse_size(value("--size")?)?,
+                "--scale" => scale = parse_scale(value("--scale")?)?,
                 other => return Err(format!("opción desconocida: {other}")),
             }
         }
@@ -399,6 +366,36 @@ impl Command {
             Err(text) => Output { text, ok: false },
         }
     }
+}
+
+/// The page named by `--page`.
+fn parse_page(name: &str) -> Result<Page, String> {
+    match name {
+        "overview" => Ok(Page::Overview),
+        "drivers" => Ok(Page::Drivers),
+        "sessions" => Ok(Page::Sessions),
+        "fixes" => Ok(Page::Fixes),
+        "apps" => Ok(Page::Apps),
+        other => Err(format!(
+            "página desconocida: {other} (overview, drivers, sessions, fixes, apps)"
+        )),
+    }
+}
+
+/// `--size ANCHOxALTO`, each between 400 and 4000 (300 and 4000 for the height).
+fn parse_size(text: &str) -> Result<(f32, f32), String> {
+    text.split_once('x')
+        .and_then(|(w, h)| Some((w.parse::<f32>().ok()?, h.parse::<f32>().ok()?)))
+        .filter(|(w, h)| (400.0..=4000.0).contains(w) && (300.0..=4000.0).contains(h))
+        .ok_or_else(|| format!("--size: «{text}» no es ANCHOxALTO (por ejemplo 1440x900)"))
+}
+
+/// `--scale N`, between 0.5 and 4.
+fn parse_scale(text: &str) -> Result<f32, String> {
+    text.parse::<f32>()
+        .ok()
+        .filter(|s| (0.5..=4.0).contains(s))
+        .ok_or_else(|| format!("--scale: «{text}» no es un número entre 0,5 y 4"))
 }
 
 #[cfg(test)]

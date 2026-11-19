@@ -91,6 +91,24 @@ pub(crate) fn search_box(c: &mut Canvas, m: &Model, area: Rect, y: f32, placehol
     outer.h + 16.0
 }
 
+/// The heads of the columns of the table, and the line under them.
+fn table_head(c: &mut Canvas, rect: Rect, columns: [f32; 3]) {
+    let [class_x, version_x, state_x] = columns;
+    let label = theme::eyebrow(theme::TEXT_3);
+    let head = Rect::new(rect.x, rect.y, rect.w, 48.0);
+    c.text_in(rect.x + 16.0, head, "DISPOSITIVO Y UBICACIÓN", label);
+    c.text_in(class_x, head, "CLASE / PROVEEDOR", label);
+    c.text_in(version_x, head, "VERSIÓN DEL DRIVER", label);
+    c.text_in(state_x, head, "ESTADO", label);
+    c.line(
+        rect.x,
+        rect.y + 48.0,
+        rect.right(),
+        rect.y + 48.0,
+        theme::LINE,
+    );
+}
+
 fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     let offers = &m.offers;
     let rows = m.visible_drivers();
@@ -105,19 +123,7 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
         rect.x + 16.0 + device_w + class_w,
         rect.x + 16.0 + device_w + class_w + version_w,
     );
-    let label = theme::eyebrow(theme::TEXT_3);
-    let head = Rect::new(rect.x, rect.y, rect.w, 48.0);
-    c.text_in(rect.x + 16.0, head, "DISPOSITIVO Y UBICACIÓN", label);
-    c.text_in(class_x, head, "CLASE / PROVEEDOR", label);
-    c.text_in(version_x, head, "VERSIÓN DEL DRIVER", label);
-    c.text_in(state_x, head, "ESTADO", label);
-    c.line(
-        rect.x,
-        rect.y + 48.0,
-        rect.right(),
-        rect.y + 48.0,
-        theme::LINE,
-    );
+    table_head(c, rect, [class_x, version_x, state_x]);
     if rows.is_empty() {
         c.text(
             rect.x + 16.0,

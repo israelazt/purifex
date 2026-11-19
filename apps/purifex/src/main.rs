@@ -2,10 +2,10 @@
 //! application and prints what it returns. The decisions are not here.
 //! See `ARCHITECTURE.md`.
 
-/// Writes a line to the standard output. A closed pipe (`| head`) is not an error.
 #[cfg(windows)]
 mod shell;
 
+/// Writes a line to the standard output. A closed pipe (`| head`) is not an error.
 #[cfg(windows)]
 fn say(line: &str) {
     use std::io::Write;
@@ -14,17 +14,9 @@ fn say(line: &str) {
 
 #[cfg(windows)]
 fn main() {
-    use purifex_app::{
-        App, Archive, Candidates, Cleaning, Command, Fixer, Offering, Recorder, Scanner,
-    };
-    use purifex_platform::{
-        install_stderr_log, BrowserOpener, JsonlCandidates, JsonlHistory, LocalCleanup,
-        LocalSessionArchive, LocalSessionFile, RegisteredUninstaller, RegistryApps,
-        SetupApiInventory, SystemClock, SystemFixes, WindowsSampler, WindowsSeedProbe,
-        WindowsTraceFinder, WindowsUpdateOffers,
-    };
+    use purifex_app::Command;
 
-    install_stderr_log();
+    purifex_platform::install_stderr_log();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let command = match Command::parse(&args) {
         Ok(command) => command,
@@ -33,6 +25,24 @@ fn main() {
             std::process::exit(2);
         }
     };
+    let mut app = build_app();
+    match command {
+        Command::Mcp => serve_mcp(&mut app),
+        Command::Ui(options) => open_window(app, options),
+        other => run_command(other, &mut app),
+    }
+}
+
+/// The application with the real adapters of Windows: the only place that knows them.
+#[cfg(windows)]
+fn build_app() -> impl purifex_app::Services + 'static {
+    use purifex_app::{App, Archive, Candidates, Cleaning, Fixer, Offering, Recorder, Scanner};
+    use purifex_platform::{
+        BrowserOpener, JsonlCandidates, JsonlHistory, LocalCleanup, LocalSessionArchive,
+        LocalSessionFile, RegisteredUninstaller, RegistryApps, SetupApiInventory, SystemClock,
+        SystemFixes, WindowsSampler, WindowsSeedProbe, WindowsTraceFinder, WindowsUpdateOffers,
+    };
+
     let scanner = Scanner::new(SetupApiInventory, SystemClock::new());
     // The game's program, as it appears in the process list.
     let sampler = WindowsSampler::new(&["League of Legends.exe"]);
@@ -40,38 +50,44 @@ fn main() {
     let archive = Archive::new(LocalSessionArchive::new());
     let fixer = Fixer::new(Box::new(SystemFixes::new()), Box::new(JsonlHistory::new()));
     let offering = Offering::new(std::sync::Arc::new(WindowsUpdateOffers));
-    let mut app = App::new(scanner, recorder, archive)
+    let cleaning = Cleaning::new(
+        Box::new(WindowsTraceFinder),
+        Box::new(RegisteredUninstaller),
+        Box::new(LocalCleanup::new()),
+    )
+    .with_probe(Box::new(WindowsSeedProbe));
+    App::new(scanner, recorder, archive)
         .with_fixer(fixer)
         .with_offers(offering)
         .with_candidates(Candidates::new(Box::new(JsonlCandidates::new())))
         .with_opener(Box::new(BrowserOpener))
         .with_apps(Box::new(RegistryApps))
-        .with_cleaning(
-            Cleaning::new(
-                Box::new(WindowsTraceFinder),
-                Box::new(RegisteredUninstaller),
-                Box::new(LocalCleanup::new()),
-            )
-            .with_probe(Box::new(WindowsSeedProbe)),
-        );
-    if matches!(command, Command::Mcp) {
-        let stdin = std::io::stdin();
-        if let Err(error) = purifex_app::mcp::serve(&mut app, stdin.lock(), std::io::stdout()) {
-            purifex_domain::log_error!("mcp: {error}");
-            std::process::exit(1);
-        }
-        return;
+        .with_cleaning(cleaning)
+}
+
+/// The MCP server: it talks over the standard input and output until the client leaves.
+#[cfg(windows)]
+fn serve_mcp(app: &mut dyn purifex_app::Services) {
+    let stdin = std::io::stdin();
+    if let Err(error) = purifex_app::mcp::serve(app, stdin.lock(), std::io::stdout()) {
+        purifex_domain::log_error!("mcp: {error}");
+        std::process::exit(1);
     }
-    if let Command::Ui(options) = command {
-        if let Err(error) = shell::run(Box::new(app), options) {
-            purifex_domain::log_error!("{error}");
-            std::process::exit(1);
-        }
-        return;
+}
+
+/// The window (or the screenshot of it).
+#[cfg(windows)]
+fn open_window(app: impl purifex_app::Services + 'static, options: purifex_app::UiOptions) {
+    if let Err(error) = shell::run(Box::new(app), options) {
+        purifex_domain::log_error!("{error}");
+        std::process::exit(1);
     }
-    let output = command.run(&mut app, &mut |line| {
-        say(line);
-    });
+}
+
+/// Any other order: run it, print what it says, and exit with its status.
+#[cfg(windows)]
+fn run_command(command: purifex_app::Command, app: &mut dyn purifex_app::Services) {
+    let output = command.run(app, &mut |line| say(line));
     say(&output.text);
     std::process::exit(if output.ok { 0 } else { 1 });
 }

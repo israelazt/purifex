@@ -8,7 +8,7 @@ edition = "2021"
 license = "MIT"
 
 # Lints every crate follows (each crate has `[lints] workspace = true`). A function over
-# 60 lines or too tangled is split, not silenced: see clippy.toml for the thresholds.
+# 50 lines or too tangled is split, not silenced: see clippy.toml for the thresholds.
 [workspace.lints.clippy]
 too_many_lines = "warn"
 cognitive_complexity = "warn"

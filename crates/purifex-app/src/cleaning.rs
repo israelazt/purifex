@@ -5,8 +5,8 @@
 //! orders the steps and refuses the ones that are not safe yet (cleaning an app
 //! that is still installed).
 
-use purifex_domain::app_traces::propose;
-use purifex_domain::apps::InstalledApp;
+use purifex_domain::app_traces::{names_of, propose, simple};
+use purifex_domain::apps::{AppKind, InstalledApp};
 use purifex_domain::cleanup_log::{is_restored, next_seq, CleanReport, CleanupEntry, CleanupState};
 use purifex_domain::ports::{CleanupStore, TraceFinder, Uninstaller};
 
@@ -86,23 +86,72 @@ impl Cleaning {
         Ok(app)
     }
 
-    /// The app to clean: still installed (`true`), or one whose uninstaller was started.
-    fn resolve(&self, apps: &[InstalledApp], query: &str) -> Result<(InstalledApp, bool), String> {
+    /// Keeps what is known of an app that has just disappeared from the list, so its
+    /// traces can be looked for (the system no longer knows it).
+    pub fn remember(&mut self, app: &InstalledApp) -> Result<(), String> {
+        self.store()?.remember(app)
+    }
+
+    /// The app to clean: one still installed (`true`); or one that is gone, either
+    /// remembered (its uninstaller was started here, or it was seen to disappear) or
+    /// known only by the name the user gives, which is then searched strictly.
+    fn resolve(
+        &self,
+        apps: &[InstalledApp],
+        all: &[InstalledApp],
+        query: &str,
+    ) -> Result<(InstalledApp, bool), String> {
         if let Ok(app) = find(apps, query) {
             return Ok((app.clone(), true));
+        }
+        // A name that fits something still installed (even if several do) is never
+        // taken for an uninstalled app: its folders are in use.
+        let wanted = simple(query);
+        let overlaps = |name: &str| {
+            let n = simple(name);
+            !n.is_empty()
+                && !wanted.is_empty()
+                && (n.contains(&wanted) || (n.len() >= 4 && wanted.contains(&n)))
+        };
+        if all.iter().any(|a| overlaps(&a.name)) {
+            return Err(format!(
+                "«{query}» coincide con una app que sigue instalada: escribe su nombre completo"
+            ));
         }
         let q = query.trim().to_lowercase();
         let store = self
             .store
             .as_ref()
             .ok_or("esta versión no puede limpiar restos")?;
-        store
-            .remembered()?
-            .into_iter()
-            .rev()
-            .find(|a| a.name.to_lowercase() == q || a.id.to_lowercase() == q || a.name.to_lowercase().contains(&q))
-            .map(|a| (a, false))
-            .ok_or_else(|| format!("no hay ninguna app instalada ni desinstalada desde Purifex que se llame «{query}»"))
+        let remembered = store.remembered()?.into_iter().rev().find(|a| {
+            a.name.to_lowercase() == q
+                || a.id.to_lowercase() == q
+                || a.name.to_lowercase().contains(&q)
+        });
+        if let Some(app) = remembered {
+            return Ok((app, false));
+        }
+        // Never seen: only its name is known. The rules of the domain still apply, and
+        // a name too short or too common to be safe is refused.
+        let name = query.trim();
+        let unknown = InstalledApp {
+            id: format!("name:{name}"),
+            name: name.to_string(),
+            publisher: None,
+            version: None,
+            install_location: None,
+            uninstall: None,
+            quiet_uninstall: None,
+            size_kb: None,
+            kind: AppKind::Desktop,
+            hidden: false,
+        };
+        if names_of(&unknown).is_empty() {
+            return Err(format!(
+                "«{query}» es demasiado corto o genérico para buscar sus restos sin riesgo"
+            ));
+        }
+        Ok((unknown, false))
     }
 
     /// Looks for the traces; with `confirmed` and the app gone, removes them to the
@@ -115,7 +164,7 @@ impl Cleaning {
         query: &str,
         confirmed: bool,
     ) -> Result<CleanReport, String> {
-        let (app, installed) = self.resolve(apps, query)?;
+        let (app, installed) = self.resolve(apps, all, query)?;
         let finder = self
             .finder
             .as_ref()
@@ -339,12 +388,31 @@ mod tests {
     }
 
     #[test]
-    fn an_app_that_was_never_uninstalled_from_here_has_nothing_to_clean() {
-        let (mut c, _) = cleaning(vec![folder(DATA)]);
-        assert!(c
-            .clean(&[], &[], "Discord", true)
-            .unwrap_err()
-            .contains("no hay ninguna app"));
+    fn an_app_that_is_gone_can_be_cleaned_by_its_name_even_if_it_was_not_uninstalled_from_here() {
+        let (mut c, log) = cleaning(vec![folder(DATA)]);
+        // Uninstalled by the user outside Purifex: nothing remembered, only the name.
+        let preview = c.clean(&[], &[], "Discord", false).unwrap();
+        assert_eq!(preview.proposed.len(), 1);
+        let done = c.clean(&[], &[], "Discord", true).unwrap();
+        assert_eq!(done.removed.len(), 1);
+        assert_eq!(log.borrow().removed, [DATA]);
+    }
+
+    #[test]
+    fn a_name_that_fits_something_still_installed_is_never_cleaned_and_generic_names_are_refused() {
+        let (mut c, log) = cleaning(vec![folder(DATA), folder(r"C:\Program Files\Git")]);
+        let installed = vec![app("Git", "G"), app("Git LFS", "G")];
+        // "gi" is ambiguous between two installed apps: not taken for an uninstalled one.
+        let err = c.clean(&installed, &installed, "gi", true).unwrap_err();
+        assert!(err.contains("sigue instalada"), "{err}");
+        // The name of an installed app, in other words, is just as installed.
+        let err = c.clean(&[], &installed, "git lfs tool", true).unwrap_err();
+        assert!(err.contains("sigue instalada"), "{err}");
+        // Short or broad names cannot be searched safely.
+        for generic in ["Go", "Microsoft", "Windows", "  "] {
+            assert!(c.clean(&[], &[], generic, true).is_err(), "{generic}");
+        }
+        assert!(log.borrow().removed.is_empty(), "nothing was touched");
     }
 
     #[test]

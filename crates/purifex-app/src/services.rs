@@ -88,6 +88,8 @@ pub trait Services {
     /// Puts back what removal `seq` took out.
     fn restore_cleanup(&mut self, seq: u64) -> Result<CleanupEntry, String>;
     fn cleanup_history(&self) -> Result<Vec<CleanupEntry>, String>;
+    /// An app was seen to disappear from the list: keep what was known of it.
+    fn note_uninstalled(&mut self, app: &InstalledApp) -> Result<(), String>;
 }
 
 /// The services of the application over real (or fake) ports.
@@ -307,5 +309,9 @@ where
 
     fn cleanup_history(&self) -> Result<Vec<CleanupEntry>, String> {
         self.cleaning.history()
+    }
+
+    fn note_uninstalled(&mut self, app: &InstalledApp) -> Result<(), String> {
+        self.cleaning.remember(app)
     }
 }

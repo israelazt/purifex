@@ -47,7 +47,7 @@ fn state_tag(state: RowState) -> (String, Tone, Option<&'static str>) {
     }
 }
 
-fn search_box(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
+pub(crate) fn search_box(c: &mut Canvas, m: &Model, area: Rect, y: f32, placeholder: &str) -> f32 {
     let outer = Rect::new(area.x, y, area.w, 76.0);
     panel(c, outer);
     let input = Rect::new(outer.x + 14.0, outer.y + 14.0, outer.w - 28.0, 48.0);
@@ -72,12 +72,7 @@ fn search_box(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     let text_x = input.x + 46.0;
     let style = theme::mono(13.0, theme::TEXT);
     if m.query.is_empty() {
-        c.text_in(
-            text_x,
-            input,
-            "Filtrar por nombre, VEN_/DEV_, proveedor…",
-            theme::mono(13.0, theme::TEXT_3),
-        );
+        c.text_in(text_x, input, placeholder, theme::mono(13.0, theme::TEXT_3));
     } else {
         c.text_in(text_x, input, &m.query, style);
     }
@@ -282,7 +277,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
         return y - area.y;
     }
     y += updates_panel::draw(c, m, area, y);
-    y += search_box(c, m, area, y);
+    y += search_box(c, m, area, y, "Filtrar por nombre, VEN_/DEV_, proveedor…");
     y += filters(c, m, area, y);
     y += table(c, m, area, y);
     y - area.y

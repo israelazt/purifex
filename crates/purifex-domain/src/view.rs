@@ -100,6 +100,9 @@ pub enum Action {
     AskUninstall(String),
     /// Look for the traces of an app that was uninstalled (by name).
     FindTraces(String),
+    /// The window came back to the front: read the apps again (the user may have
+    /// uninstalled one meanwhile).
+    RefreshApps,
     /// Asks to remove those traces: the user is asked to confirm.
     AskClean(String),
     SetFilter(DriverFilter),

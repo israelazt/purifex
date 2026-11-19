@@ -17,8 +17,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetClientRect, KillTimer, LoadCursorW, PostMessageW, PostQuitMessage, SetCursor, SetTimer,
     SetWindowPos, HTCLIENT, IDC_ARROW, IDC_HAND, MINMAXINFO, SWP_NOACTIVATE, SWP_NOZORDER, WM_APP,
     WM_CHAR, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR, WM_SIZE,
-    WM_TIMER, WS_OVERLAPPEDWINDOW,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR, WM_SETFOCUS,
+    WM_SIZE, WM_TIMER, WS_OVERLAPPEDWINDOW,
 };
 
 use crate::gfx::{Drawn, Renderer};
@@ -291,6 +291,12 @@ impl<H: UiHandler> State<H> {
                 let reaction = self.handler().event(event);
                 self.react(hwnd, reaction);
                 Some(LRESULT(0))
+            }
+            WM_SETFOCUS => {
+                // The user came back to the window: the program may want to read again.
+                let reaction = self.handler().event(UiEvent::Focus);
+                self.react(hwnd, reaction);
+                None
             }
             WM_LBUTTONUP => {
                 // SAFETY: gives the mouse back (it was captured on the press).

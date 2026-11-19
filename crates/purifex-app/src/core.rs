@@ -15,6 +15,8 @@ pub struct Core {
     model: Model,
     /// There is something to read that the model does not have yet.
     pending: bool,
+    /// The apps of the list before it is read again, to see which one disappeared.
+    previous_apps: Option<Vec<purifex_domain::apps::InstalledApp>>,
 }
 
 impl Core {
@@ -27,6 +29,7 @@ impl Core {
                 ..Model::default()
             },
             pending: true,
+            previous_apps: None,
         }
     }
 
@@ -42,6 +45,10 @@ impl Core {
     pub fn apply(&mut self, action: Action) {
         match action {
             Action::Go(page) => {
+                if page != self.model.page {
+                    // The search belongs to the page it was typed in.
+                    self.model.query.clear();
+                }
                 self.model.page = page;
                 self.model.error = None;
                 // What was waiting for a confirmation, or told of a change, stays on its page.
@@ -71,8 +78,16 @@ impl Core {
             Action::AskClean(name) => self.model.confirm = Some(Confirm::Clean(name)),
             Action::FindTraces(name) => {
                 (self.model.traces, self.model.message) = (None, None);
-                self.model.finding = Some(name);
+                (self.model.uninstalled, self.model.finding) = (Some(name.clone()), Some(name));
                 self.expect_reading();
+            }
+            Action::RefreshApps => {
+                if self.model.page == Page::Apps && self.model.finding.is_none() {
+                    if let Some(old) = self.model.apps.take() {
+                        self.previous_apps = Some(old);
+                        self.expect_reading();
+                    }
+                }
             }
             Action::SetFilter(filter) => self.model.filter = filter,
             Action::SetQuery(query) => self.model.query = query,
@@ -116,6 +131,25 @@ impl Core {
                 self.model.error = Some(error);
             }
         }
+    }
+
+    /// The app that was in `old` and is no longer listed (the user uninstalled it,
+    /// here or elsewhere): remembered, shown, and its name returned to look for its
+    /// traces. Protected apps are not considered: their ids change when they update.
+    fn vanished(&mut self, old: &[purifex_domain::apps::InstalledApp]) -> Option<String> {
+        let now = self.model.apps.as_deref()?;
+        let gone = old
+            .iter()
+            .find(|a| a.protection().is_none() && !now.iter().any(|n| n.id == a.id))?
+            .clone();
+        let _ = self.services.note_uninstalled(&gone);
+        self.model.uninstalled = Some(gone.name.clone());
+        self.model.traces = None;
+        self.model.message = Some(format!(
+            "{} ya no está instalada. Estos son los restos que dejó.",
+            gone.name
+        ));
+        Some(gone.name)
     }
 
     /// Starts the uninstaller of an app; its traces are looked for afterwards.
@@ -224,7 +258,13 @@ impl Core {
         if self.model.page == Page::Apps {
             if self.model.apps.is_none() {
                 match self.services.apps() {
-                    Ok(apps) => self.model.apps = Some(apps),
+                    Ok(apps) => {
+                        let old = self.previous_apps.take();
+                        self.model.apps = Some(apps);
+                        if let Some(gone) = old.as_deref().and_then(|o| self.vanished(o)) {
+                            self.model.finding = Some(gone);
+                        }
+                    }
                     Err(error) => note("apps", error),
                 }
             }
@@ -955,5 +995,119 @@ mod tests {
             .unwrap()
             .contains("no se desinstala desde aquí"));
         assert!(log.borrow().launched.is_empty());
+    }
+
+    fn apps_core(
+        installed: &crate::testing::FakeApps,
+    ) -> (
+        Core,
+        std::rc::Rc<std::cell::RefCell<crate::testing::CleanLog>>,
+    ) {
+        use crate::testing::{CleanLog, FakeCleaning, FakeFinder};
+        use crate::Cleaning;
+        use purifex_domain::app_traces::{Candidate, TraceKind};
+        let log = std::rc::Rc::new(std::cell::RefCell::new(CleanLog::default()));
+        let found = vec![Candidate {
+            kind: TraceKind::Folder,
+            location: r"C:\Program Files\obs-studio".into(),
+            bytes: 10,
+            registered_install: false,
+        }];
+        let core = Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_apps(Box::new(installed.clone()))
+            .with_cleaning(Cleaning::new(
+                Box::new(FakeFinder(found)),
+                Box::new(FakeCleaning(log.clone())),
+                Box::new(FakeCleaning(log.clone())),
+            )),
+        ));
+        (core, log)
+    }
+
+    #[test]
+    fn coming_back_to_the_window_reads_the_apps_again_and_an_app_that_vanished_shows_its_traces() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        installed
+            .0
+            .borrow_mut()
+            .extend([fake_app("OBS Studio"), fake_app("Git")]);
+        let (mut c, log) = apps_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        assert_eq!(c.model().visible_apps().len(), 2);
+        // Nothing changed: coming back reads again and finds nothing new.
+        c.apply(Action::RefreshApps);
+        c.tick();
+        assert_eq!(c.model().uninstalled, None);
+        // The user uninstalled OBS in its own window and comes back.
+        installed.0.borrow_mut().retain(|a| a.name != "OBS Studio");
+        c.apply(Action::RefreshApps);
+        assert!(c.model().apps.is_none(), "it is read again");
+        c.tick();
+        assert_eq!(c.model().visible_apps().len(), 1, "OBS is no longer listed");
+        assert_eq!(c.model().uninstalled.as_deref(), Some("OBS Studio"));
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("ya no está instalada"));
+        assert_eq!(
+            c.model().traces.as_ref().unwrap().proposed.len(),
+            1,
+            "its traces were looked for at once"
+        );
+        assert_eq!(log.borrow().remembered.len(), 1);
+        assert!(log.borrow().removed.is_empty(), "looking never removes");
+    }
+
+    #[test]
+    fn a_protected_app_that_changes_id_when_it_updates_is_not_taken_for_an_uninstalled_one() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        let mut runtime = fake_app("Microsoft .NET Runtime 8.0.1");
+        runtime.publisher = Some("Microsoft Corporation".into());
+        installed.0.borrow_mut().push(runtime);
+        let (mut c, _) = apps_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        let mut updated = fake_app("Microsoft .NET Runtime 8.0.2");
+        updated.publisher = Some("Microsoft Corporation".into());
+        *installed.0.borrow_mut() = vec![updated];
+        c.apply(Action::RefreshApps);
+        c.tick();
+        assert_eq!(c.model().uninstalled, None);
+    }
+
+    #[test]
+    fn the_search_belongs_to_the_page_it_was_typed_in_and_looking_for_a_name_shows_the_panel() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        let (mut c, _) = apps_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Drivers));
+        c.apply(Action::SetQuery("nvidia".into()));
+        c.apply(Action::Go(Page::Apps));
+        assert_eq!(
+            c.model().query,
+            "",
+            "the drivers' search does not hide the apps"
+        );
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        c.tick();
+        assert_eq!(c.model().uninstalled.as_deref(), Some("OBS Studio"));
+        assert_eq!(c.model().traces.as_ref().unwrap().proposed.len(), 1);
     }
 }

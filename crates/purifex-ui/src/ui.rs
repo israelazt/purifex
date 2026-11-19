@@ -60,6 +60,9 @@ pub struct Ui {
     mouse: Option<(f32, f32)>,
     hits: Vec<Hit>,
     hovered: Option<usize>,
+    /// The places with a hover effect of the last picture, and the one under the pointer.
+    regions: Vec<(Rect, Option<Rect>)>,
+    hover_region: Option<usize>,
     search_box: Option<Rect>,
     search_focus: bool,
     query: String,
@@ -88,6 +91,8 @@ impl Ui {
             mouse: None,
             hits: Vec::new(),
             hovered: None,
+            regions: Vec::new(),
+            hover_region: None,
             search_box: None,
             search_focus: false,
             query: String::new(),
@@ -193,8 +198,11 @@ impl Ui {
         self.search_box = c.take_search_box();
         self.anims = c.take_anims();
         self.anims.end();
+        let c_regions = c.take_regions();
         let (list, hits) = c.finish();
         self.hits = hits;
+        self.regions = c_regions;
+        self.hover_region = self.region_at_mouse();
         self.hovered = self.hit_at_mouse();
         list
     }
@@ -203,6 +211,17 @@ impl Ui {
         self.hits.iter().rposition(|hit| {
             hit.rect.contains(x, y) && hit.clip.is_none_or(|clip| clip.contains(x, y))
         })
+    }
+
+    /// The last place with a hover effect that holds (`x`, `y`) (the one drawn on top).
+    fn region_at(&self, x: f32, y: f32) -> Option<usize> {
+        self.regions
+            .iter()
+            .rposition(|(rect, clip)| rect.contains(x, y) && clip.is_none_or(|c| c.contains(x, y)))
+    }
+
+    fn region_at_mouse(&self) -> Option<usize> {
+        self.mouse.and_then(|(x, y)| self.region_at(x, y))
     }
 
     fn hit_at_mouse(&self) -> Option<usize> {
@@ -221,6 +240,11 @@ impl Ui {
                 out.redraw = true;
             }
             UiEvent::Release => out.redraw = self.bar.release(),
+            UiEvent::Focus => {
+                if self.page == Page::Apps {
+                    out.actions.push(Action::RefreshApps);
+                }
+            }
             UiEvent::Key(Key::Down) => out.redraw = self.scroll_by(SCROLL_STEP),
             UiEvent::Key(Key::Up) => out.redraw = self.scroll_by(-SCROLL_STEP),
             UiEvent::Key(Key::PageDown) => out.redraw = self.scroll_by(self.viewport_height * 0.9),
@@ -230,12 +254,15 @@ impl Ui {
             UiEvent::Move { x, y } => {
                 self.mouse = Some((x, y));
                 let now = self.hit_at(x, y);
-                out.redraw = now != self.hovered;
-                self.hovered = now;
+                let region = self.region_at(x, y);
+                // The picture changes when the pointer goes to another button, or to
+                // another place with a hover effect (a row of a table).
+                out.redraw = now != self.hovered || region != self.hover_region;
+                (self.hovered, self.hover_region) = (now, region);
             }
             UiEvent::Leave => {
                 self.mouse = None;
-                out.redraw = self.hovered.take().is_some();
+                out.redraw = self.hovered.take().is_some() | self.hover_region.take().is_some();
             }
             UiEvent::Press { x, y } => {
                 self.mouse = Some((x, y));
@@ -284,7 +311,7 @@ impl Ui {
                 out.redraw = true;
             }
             UiEvent::Key(Key::CtrlK) => {
-                if self.page != Page::Drivers {
+                if self.page != Page::Drivers && self.page != Page::Apps {
                     out.actions.push(Action::Go(Page::Drivers));
                 }
                 self.search_focus = true;
@@ -766,5 +793,34 @@ mod tests {
             y: thumb.y - 10.0,
         });
         assert!(ui.scroll_target < 1.0, "back up a page");
+    }
+
+    #[test]
+    fn moving_over_a_row_of_a_table_redraws_once_per_row_and_not_only_over_its_button() {
+        let model = tall_model();
+        let mut ui = Ui::new();
+        frame_at(&mut ui, &model, 0);
+        let rows: Vec<Rect> = ui
+            .regions
+            .iter()
+            .map(|(r, _)| *r)
+            .filter(|r| r.w > 800.0 && r.h > 40.0 && r.h < 100.0)
+            .take(2)
+            .collect();
+        assert_eq!(rows.len(), 2, "the table has rows with a hover effect");
+        let (a, b) = (rows[0], rows[1]);
+        // Far from any button: the middle of the row.
+        let inside = |r: Rect, dx: f32| UiEvent::Move {
+            x: r.x + 400.0 + dx,
+            y: r.y + r.h / 2.0,
+        };
+        assert!(ui.event(inside(a, 0.0)).redraw, "entering a row");
+        assert!(
+            !ui.event(inside(a, 30.0)).redraw,
+            "moving inside the same row"
+        );
+        assert!(ui.event(inside(b, 0.0)).redraw, "going to the next row");
+        assert!(ui.event(UiEvent::Leave).redraw, "leaving the window");
+        assert!(!ui.event(UiEvent::Leave).redraw);
     }
 }

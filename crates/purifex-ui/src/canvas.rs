@@ -35,6 +35,9 @@ pub struct Canvas<'a> {
     dy: f32,
     /// When the page began to appear.
     entered_ms: u64,
+    /// Every place drawn with a hover effect, so the window knows when the pointer
+    /// goes from one to another (a row, not only a button) and draws again.
+    regions: Vec<(Rect, Option<Rect>)>,
 }
 
 impl<'a> Canvas<'a> {
@@ -51,6 +54,7 @@ impl<'a> Canvas<'a> {
             alpha: 1.0,
             dy: 0.0,
             entered_ms: 0,
+            regions: Vec::new(),
         }
     }
 
@@ -96,6 +100,7 @@ impl<'a> Canvas<'a> {
 
     /// How much `rect` is hovered, 0 to 1, moving smoothly (see `Anims::hover`).
     pub fn hover(&mut self, rect: Rect) -> f32 {
+        self.regions.push((rect, self.clips.last().copied()));
         let inside = self.hovered(rect);
         self.anims.hover(key_of(rect), inside)
     }
@@ -122,6 +127,11 @@ impl<'a> Canvas<'a> {
 
     pub fn take_search_box(&mut self) -> Option<Rect> {
         self.search_box.take()
+    }
+
+    /// The places that were drawn with a hover effect, each with the clip it was under.
+    pub fn take_regions(&mut self) -> Vec<(Rect, Option<Rect>)> {
+        std::mem::take(&mut self.regions)
     }
 
     pub fn finish(self) -> (DrawList, Vec<Hit>) {

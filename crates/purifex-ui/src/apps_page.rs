@@ -9,6 +9,7 @@ use purifex_domain::draw::Rect;
 use purifex_domain::view::{Action, Confirm, Model};
 
 use crate::canvas::Canvas;
+use crate::drivers_page::search_box;
 use crate::fixes_page::{confirm_height, confirmation};
 use crate::page;
 use crate::theme::{self, Tone};
@@ -322,6 +323,47 @@ fn question(m: &Model) -> Option<&'static str> {
     matches!(m.confirm, Some(Confirm::Clean(_))).then_some(CLEAN_QUESTION)
 }
 
+/// When what was typed matches no installed app, it may be one that is already gone
+/// (uninstalled before, or somewhere else): its traces can still be looked for.
+fn already_gone(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
+    let name = m.query.trim();
+    if name.chars().count() < 3
+        || !m.visible_apps().is_empty()
+        || m.uninstalled.as_deref() == Some(name)
+    {
+        return 0.0;
+    }
+    let rect = Rect::new(area.x, y, area.w, 76.0);
+    panel(c, rect);
+    c.icon("trash-2", rect.x + 18.0, rect.y + 18.0, 18.0, theme::AMBER);
+    let title = format!("No hay ninguna app instalada que se llame «{name}»");
+    c.text(
+        rect.x + 46.0,
+        rect.y + 16.0,
+        &title,
+        theme::sans(14.0, theme::TEXT).bold(),
+    );
+    c.paragraph(
+        rect.x + 46.0,
+        rect.y + 40.0,
+        rect.w - 360.0,
+        "¿Ya la desinstalaste? Puedes buscar lo que dejó (no se borra nada al buscar).",
+        theme::mono(12.0, theme::TEXT_2),
+        Some(2),
+    );
+    let label = "Buscar sus restos";
+    let w = button_width(c, label);
+    button(
+        c,
+        Rect::new(rect.right() - 16.0 - w, rect.y + 16.0, w, 44.0),
+        label,
+        "search",
+        false,
+        Some(Action::FindTraces(name.to_string())),
+    );
+    rect.h + 16.0
+}
+
 /// Draws the page in `area` and returns the height it used.
 pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
     let mut y = area.y;
@@ -358,6 +400,14 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
     if let Some(name) = &m.uninstalled {
         y += cleanup_panel(c, m, name, area, y);
     }
+    y += search_box(
+        c,
+        m,
+        area,
+        y,
+        "Filtrar por nombre o editor… (si ya la desinstalaste, escribe su nombre)",
+    );
+    y += already_gone(c, m, area, y);
     y += table(c, m, area, y);
     y - area.y
 }
@@ -497,5 +547,31 @@ mod tests {
         let (texts, _) = render(&m);
         assert!(texts.contains(&"No se encontraron restos.".to_string()));
         assert!(texts.join(" ").contains("Se quitaron 2 restos"));
+    }
+
+    #[test]
+    fn what_matches_no_installed_app_may_be_one_already_gone_whose_traces_can_be_looked_for() {
+        let mut m = model();
+        m.query = "obs studio".into();
+        let (texts, actions) = render(&m);
+        assert!(texts
+            .join(" ")
+            .contains("No hay ninguna app instalada que se llame «obs studio»"));
+        assert!(actions.contains(&Action::FindTraces("obs studio".into())));
+        // A name that matches an installed app is just a filter.
+        m.query = "discord".into();
+        let (texts, actions) = render(&m);
+        assert!(!texts.join(" ").contains("No hay ninguna app instalada"));
+        assert!(!actions.iter().any(|a| matches!(a, Action::FindTraces(_))));
+        // Too short to search safely: no button.
+        m.query = "zz".into();
+        let (_, actions) = render(&m);
+        assert!(!actions.iter().any(|a| matches!(a, Action::FindTraces(_))));
+        // Once looked for, the cleaning panel takes over.
+        m.query = "obs studio".into();
+        m.uninstalled = Some("obs studio".into());
+        let (texts, _) = render(&m);
+        assert!(texts.contains(&"Restos de obs studio".to_string()));
+        assert!(!texts.join(" ").contains("No hay ninguna app instalada"));
     }
 }

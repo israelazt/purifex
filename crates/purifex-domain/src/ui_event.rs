@@ -39,6 +39,8 @@ pub enum UiEvent {
         x: f32,
         y: f32,
     },
+    /// The window got the keyboard focus (the user came back to it).
+    Focus,
     /// The main button was let go (ends dragging the scroll bar).
     Release,
     /// Positive scrolls the content up (reading further down), in units.

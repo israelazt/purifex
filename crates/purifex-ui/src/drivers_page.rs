@@ -147,7 +147,6 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     height
 }
 
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
 fn draw_row(
     c: &mut Canvas,
     row: &DriverRow,
@@ -169,79 +168,83 @@ fn draw_row(
         bar.bottom() - 0.5,
         theme::LINE_SOFT,
     );
-    let (label, tone, icon) = state_tag(row.state());
+    device_cell(c, row, device_x, bar.y, device_w);
+    class_cell(c, row, class_x, bar.y, class_w);
+    version_cell(c, row, version_x, bar.y);
+    state_cell(c, row, state_x, bar.y, &extra);
+}
+
+/// The icon of the device, its name (with how many there are) and its instance id.
+fn device_cell(c: &mut Canvas, row: &DriverRow, x: f32, y: f32, width: f32) {
     let box_tone = match row.state() {
         RowState::MissingDriver | RowState::Fault(_) => Tone::Red,
         RowState::Healthy => Tone::Green,
         _ => Tone::Gray,
     };
-    icon_box(
-        c,
-        device_x,
-        bar.y + 12.0,
-        40.0,
-        category_icon(row.category),
-        box_tone,
-    );
-    let name_x = device_x + 54.0;
+    icon_box(c, x, y + 12.0, 40.0, category_icon(row.category), box_tone);
+    let name_x = x + 54.0;
     let name_style = theme::sans(13.5, theme::TEXT).bold();
-    let mut name_w = device_w - 70.0;
+    let mut name_w = width - 70.0;
     if row.count > 1 {
-        let extra = format!("×{}", row.count);
-        let extra_style = theme::mono(11.0, theme::ACCENT);
-        let w = c.width(&extra, &extra_style);
+        let count = format!("×{}", row.count);
+        let count_style = theme::mono(11.0, theme::ACCENT);
+        let w = c.width(&count, &count_style);
         name_w -= w + 8.0;
         let shown = c.width(&row.name, &name_style).min(name_w);
-        c.text(name_x + shown + 8.0, bar.y + 13.0, &extra, extra_style);
+        c.text(name_x + shown + 8.0, y + 13.0, &count, count_style);
     }
-    c.text_cut(name_x, bar.y + 12.0, &row.name, name_style, name_w);
+    c.text_cut(name_x, y + 12.0, &row.name, name_style, name_w);
     c.text_cut(
         name_x,
-        bar.y + 34.0,
+        y + 34.0,
         &row.instance_id,
         theme::mono(11.0, theme::TEXT_3),
-        device_w - 70.0,
+        width - 70.0,
     );
+}
+
+/// The class of the device and, below it, who provides its driver.
+fn class_cell(c: &mut Canvas, row: &DriverRow, x: f32, y: f32, width: f32) {
+    let class = if row.class.is_empty() {
+        "–"
+    } else {
+        &row.class
+    };
     c.text_cut(
-        class_x,
-        bar.y + 13.0,
-        if row.class.is_empty() {
-            "–"
-        } else {
-            &row.class
-        },
+        x,
+        y + 13.0,
+        class,
         theme::mono(12.5, theme::TEXT),
-        class_w - 16.0,
+        width - 16.0,
     );
     c.text_cut(
-        class_x,
-        bar.y + 34.0,
+        x,
+        y + 34.0,
         row.provider.as_deref().unwrap_or("–"),
         theme::mono(12.0, theme::TEXT_2),
-        class_w - 16.0,
+        width - 16.0,
     );
+}
+
+/// The version of the driver and, below it, its date and how old it is.
+fn version_cell(c: &mut Canvas, row: &DriverRow, x: f32, y: f32) {
     let version = row.version.map_or("–".to_string(), |v| v.to_string());
-    c.text(
-        version_x,
-        bar.y + 13.0,
-        &version,
-        theme::mono(12.5, theme::TEXT).bold(),
-    );
+    c.text(x, y + 13.0, &version, theme::mono(12.5, theme::TEXT).bold());
     let date = row.date.map_or("–".to_string(), |d| d.to_string());
     let date_text = match row.age_days {
         Some(days) if days >= 0 => format!("{date} · {}", age_text(days)),
         _ => date,
     };
-    c.text(
-        version_x,
-        bar.y + 34.0,
-        &date_text,
-        theme::mono(12.0, theme::TEXT_2),
-    );
-    // With something to say about a driver, two tags: the state above and it below.
-    let y = if extra.is_some() { 8.0 } else { 21.0 };
-    tag(c, state_x, bar.y + y, &label, tone, icon);
-    updates_panel::row_extra(c, &extra, state_x, bar.y + 34.0);
+    c.text(x, y + 34.0, &date_text, theme::mono(12.0, theme::TEXT_2));
+}
+
+/// The state tag; with something to say about a driver, two tags: the state above and
+/// the offer or proposal below it.
+fn state_cell(c: &mut Canvas, row: &DriverRow, x: f32, y: f32, extra: &updates_panel::Extra) {
+    let (label, tone, icon) = state_tag(row.state());
+    let tag_y = if extra.is_some() { 8.0 } else { 21.0 };
+    tag(c, x, y + tag_y, &label, tone, icon);
+    updates_panel::row_extra(c, extra, x, y + 34.0);
 }
 
 fn age_text(days: i64) -> String {

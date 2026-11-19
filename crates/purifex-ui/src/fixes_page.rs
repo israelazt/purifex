@@ -3,7 +3,7 @@
 //! last change, and the history with its "undo". Nothing is changed by a click
 //! on "Aplicar": it asks to confirm first, and only the confirmation acts.
 
-use purifex_domain::draw::Rect;
+use purifex_domain::draw::{Rect, TextStyle};
 use purifex_domain::fix::{is_undone, spec, HistoryEntry, HistoryState, Proposal};
 use purifex_domain::view::{Action, Confirm, Model};
 
@@ -65,41 +65,74 @@ pub(crate) fn confirm_height(c: &Canvas, question: &str, width: f32) -> f32 {
 const APPLY_QUESTION: &str = "Se va a cambiar este ajuste. Antes se guarda una copia del archivo y todo queda anotado en el historial, donde puedes deshacerlo. ¿Aplicar?";
 const UNDO_QUESTION: &str = "El ajuste volverá al valor que tenía antes de este cambio. ¿Deshacer?";
 
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
+/// The texts of a proposal card, wrapped to the width of the card.
+struct CardText {
+    evidence: Vec<String>,
+    undo: Vec<String>,
+    blockers: Vec<Vec<String>>,
+    style: TextStyle,
+    /// Height of one wrapped line.
+    line: f32,
+    width: f32,
+}
+
+impl CardText {
+    fn of(c: &Canvas, p: &Proposal, width: f32) -> CardText {
+        let style = theme::mono(12.5, theme::TEXT_2);
+        CardText {
+            evidence: c.wrap(&p.evidence, &style, width, None),
+            undo: c.wrap(&p.undo, &style, width, None),
+            blockers: p
+                .blockers
+                .iter()
+                .map(|b| c.wrap(b, &theme::mono(12.0, theme::AMBER), width - 26.0, None))
+                .collect(),
+            line: c.line_height(&style) + 2.0,
+            style,
+            width,
+        }
+    }
+
+    /// The height of the whole card, the footer (button or question) included.
+    fn card_height(&self, footer: f32) -> f32 {
+        let blocker_lines: usize = self.blockers.iter().map(Vec::len).sum();
+        PAD + 40.0
+            + 20.0
+            + (14.0 + self.evidence.len() as f32 * self.line)
+            + 16.0
+            + 40.0
+            + 16.0
+            + (14.0 + self.undo.len() as f32 * self.line)
+            + 16.0
+            + blocker_lines as f32 * 18.0
+            + footer
+            + PAD
+    }
+}
+
 fn proposal_card(c: &mut Canvas, m: &Model, p: &Proposal, area: Rect, y: f32) -> f32 {
     let asked = m.confirm == Some(Confirm::Apply(p.id.clone()));
-    let text_w = area.w - 2.0 * PAD;
-    let evidence_style = theme::mono(12.5, theme::TEXT_2);
-    let evidence = c.wrap(&p.evidence, &evidence_style, text_w, None);
-    let undo = c.wrap(&p.undo, &evidence_style, text_w, None);
-    let line = c.line_height(&evidence_style) + 2.0;
-    let blockers: Vec<Vec<String>> = p
-        .blockers
-        .iter()
-        .map(|b| c.wrap(b, &theme::mono(12.0, theme::AMBER), text_w - 26.0, None))
-        .collect();
-    let blocker_lines: usize = blockers.iter().map(Vec::len).sum();
+    let text = CardText::of(c, p, area.w - 2.0 * PAD);
     let footer = if asked {
-        confirm_height(c, APPLY_QUESTION, text_w) + 16.0
+        confirm_height(c, APPLY_QUESTION, text.width) + 16.0
     } else {
         56.0
     };
-    let height = PAD
-        + 40.0
-        + 20.0
-        + (14.0 + evidence.len() as f32 * line)
-        + 16.0
-        + 40.0
-        + 16.0
-        + (14.0 + undo.len() as f32 * line)
-        + 16.0
-        + blocker_lines as f32 * 18.0
-        + footer
-        + PAD;
+    let height = text.card_height(footer);
     let rect = Rect::new(area.x, y, area.w, height);
     panel(c, rect);
+    card_title(c, p, rect);
+    let cursor = rect.y + PAD + 40.0 + 20.0;
+    let cursor = text_section(c, rect, cursor, "POR QUÉ", &text.evidence, &text);
+    let cursor = change_section(c, p, rect, cursor);
+    let cursor = text_section(c, rect, cursor, "SE DESHACE", &text.undo, &text);
+    let cursor = blockers(c, rect, cursor, &text.blockers);
+    card_footer(c, p, rect, cursor, asked, text.width);
+    height + 16.0
+}
 
-    // The title and whether it can be done now.
+/// The title of the proposal and whether it can be done now.
+fn card_title(c: &mut Canvas, p: &Proposal, rect: Rect) {
     icon_box(
         c,
         rect.x + PAD,
@@ -129,17 +162,34 @@ fn proposal_card(c: &mut Canvas, m: &Model, p: &Proposal, area: Rect, y: f32) ->
         tone,
         Some(icon),
     );
+}
 
-    let label_style = theme::eyebrow(theme::TEXT_3);
-    let mut cursor = rect.y + PAD + 40.0 + 20.0;
-    c.text(rect.x + PAD, cursor, "POR QUÉ", label_style);
+/// A small heading and the lines of text under it; returns where the next section starts.
+fn text_section(
+    c: &mut Canvas,
+    rect: Rect,
+    mut cursor: f32,
+    heading: &str,
+    lines: &[String],
+    text: &CardText,
+) -> f32 {
+    c.text(rect.x + PAD, cursor, heading, theme::eyebrow(theme::TEXT_3));
     cursor += 14.0;
-    for l in &evidence {
-        c.text(rect.x + PAD, cursor, l, evidence_style);
-        cursor += line;
+    for l in lines {
+        c.text(rect.x + PAD, cursor, l, text.style);
+        cursor += text.line;
     }
-    cursor += 16.0;
-    c.text(rect.x + PAD, cursor, "CAMBIA", label_style);
+    cursor + 16.0
+}
+
+/// What the change does: the value now, an arrow, and the value after.
+fn change_section(c: &mut Canvas, p: &Proposal, rect: Rect, cursor: f32) -> f32 {
+    c.text(
+        rect.x + PAD,
+        cursor,
+        "CAMBIA",
+        theme::eyebrow(theme::TEXT_3),
+    );
     let chips_y = cursor + 18.0;
     let from = tag(
         c,
@@ -164,15 +214,12 @@ fn proposal_card(c: &mut Canvas, m: &Model, p: &Proposal, area: Rect, y: f32) ->
         Tone::Green,
         None,
     );
-    cursor += 40.0 + 16.0;
-    c.text(rect.x + PAD, cursor, "SE DESHACE", label_style);
-    cursor += 14.0;
-    for l in &undo {
-        c.text(rect.x + PAD, cursor, l, evidence_style);
-        cursor += line;
-    }
-    cursor += 16.0;
-    for lines in &blockers {
+    cursor + 40.0 + 16.0
+}
+
+/// What blocks the change now, one warning per reason.
+fn blockers(c: &mut Canvas, rect: Rect, mut cursor: f32, blockers: &[Vec<String>]) -> f32 {
+    for lines in blockers {
         c.icon(
             "triangle-alert",
             rect.x + PAD,
@@ -190,27 +237,21 @@ fn proposal_card(c: &mut Canvas, m: &Model, p: &Proposal, area: Rect, y: f32) ->
             cursor += 18.0;
         }
     }
-    // The footer: the button, or the question that follows it.
+    cursor
+}
+
+/// The footer: the button, or the question that follows it.
+fn card_footer(c: &mut Canvas, p: &Proposal, rect: Rect, cursor: f32, asked: bool, text_w: f32) {
     if asked {
         let h = confirm_height(c, APPLY_QUESTION, text_w);
-        confirmation(
-            c,
-            APPLY_QUESTION,
-            Rect::new(rect.x + PAD, cursor + 8.0, text_w, h),
-        );
-    } else {
-        let w = button_width(c, "Aplicar");
-        let action = p.blockers.is_empty().then(|| Action::AskFix(p.id.clone()));
-        button(
-            c,
-            Rect::new(rect.x + PAD, cursor + 8.0, w, 40.0),
-            "Aplicar",
-            "zap",
-            action.is_some(),
-            action,
-        );
+        let place = Rect::new(rect.x + PAD, cursor + 8.0, text_w, h);
+        confirmation(c, APPLY_QUESTION, place);
+        return;
     }
-    height + 16.0
+    let w = button_width(c, "Aplicar");
+    let action = p.blockers.is_empty().then(|| Action::AskFix(p.id.clone()));
+    let place = Rect::new(rect.x + PAD, cursor + 8.0, w, 40.0);
+    button(c, place, "Aplicar", "zap", action.is_some(), action);
 }
 
 fn history_height(c: &Canvas, m: &Model, rows: usize, width: f32) -> f32 {
@@ -224,7 +265,6 @@ fn history_height(c: &Canvas, m: &Model, rows: usize, width: f32) -> f32 {
         + 8.0
 }
 
-#[expect(clippy::too_many_lines, reason = "legacy: split")]
 fn history_panel(c: &mut Canvas, m: &Model, entries: &[HistoryEntry], area: Rect, y: f32) -> f32 {
     let height = history_height(c, m, entries.len(), area.w);
     let rect = Rect::new(area.x, y, area.w, height);
@@ -254,73 +294,83 @@ fn history_panel(c: &mut Canvas, m: &Model, entries: &[HistoryEntry], area: Rect
     }
     for (i, entry) in entries.iter().rev().enumerate() {
         let bar = Rect::new(rect.x, rect.y + 56.0 + i as f32 * 56.0, rect.w, 56.0);
-        c.line(
-            bar.x,
-            bar.bottom() - 0.5,
-            bar.right(),
-            bar.bottom() - 0.5,
-            theme::LINE_SOFT,
-        );
-        c.text_in(
-            bar.x + 18.0,
-            bar,
-            &format!("#{}", entry.seq),
-            theme::mono(12.5, theme::TEXT_3),
-        );
-        let title = spec(&entry.fix).map_or(entry.fix.as_str(), |s| s.title);
-        c.text_cut(
-            bar.x + 64.0,
-            bar.y + 10.0,
-            title,
-            theme::sans(13.5, theme::TEXT).bold(),
-            bar.w - 64.0 - 330.0,
-        );
-        c.text_cut(
-            bar.x + 64.0,
-            bar.y + 31.0,
-            &format!("{} → {}", entry.before, entry.after),
-            theme::mono(11.5, theme::TEXT_2),
-            bar.w - 64.0 - 330.0,
-        );
-        let undone = is_undone(entries, entry.seq);
-        let (label, tone) = match entry.state {
-            HistoryState::Applied if undone => ("Deshecho después".to_string(), Tone::Gray),
-            HistoryState::Applied => ("Aplicado".to_string(), Tone::Green),
-            HistoryState::Undone => (
-                format!("Deshace #{}", entry.undoes.unwrap_or(0)),
-                Tone::Gray,
-            ),
-        };
-        tag(
-            c,
-            bar.right() - 18.0 - 140.0 - 110.0,
-            bar.y + 17.0,
-            &label,
-            tone,
-            None,
-        );
-        if entry.state == HistoryState::Applied && !undone && m.confirm.is_none() {
-            let w = button_width(c, "Deshacer");
-            button(
-                c,
-                Rect::new(bar.right() - 18.0 - w, bar.y + 8.0, w, 40.0),
-                "Deshacer",
-                "undo-2",
-                false,
-                Some(Action::AskUndo(entry.seq)),
-            );
-        }
+        history_row(c, m, entries, entry, bar);
     }
     if let Some(Confirm::Undo(seq)) = &m.confirm {
         let h = confirm_height(c, UNDO_QUESTION, rect.w - 32.0);
         let text = format!("Cambio #{seq}. {UNDO_QUESTION}");
-        confirmation(
-            c,
-            &text,
-            Rect::new(rect.x + 16.0, rect.bottom() - h - 16.0, rect.w - 32.0, h),
-        );
+        let place = Rect::new(rect.x + 16.0, rect.bottom() - h - 16.0, rect.w - 32.0, h);
+        confirmation(c, &text, place);
     }
     height + 16.0
+}
+
+/// One change of the history: its number, what it changed, its state and, while it can
+/// be undone, the button to undo it.
+fn history_row(
+    c: &mut Canvas,
+    m: &Model,
+    entries: &[HistoryEntry],
+    entry: &HistoryEntry,
+    bar: Rect,
+) {
+    c.line(
+        bar.x,
+        bar.bottom() - 0.5,
+        bar.right(),
+        bar.bottom() - 0.5,
+        theme::LINE_SOFT,
+    );
+    c.text_in(
+        bar.x + 18.0,
+        bar,
+        &format!("#{}", entry.seq),
+        theme::mono(12.5, theme::TEXT_3),
+    );
+    let title = spec(&entry.fix).map_or(entry.fix.as_str(), |s| s.title);
+    c.text_cut(
+        bar.x + 64.0,
+        bar.y + 10.0,
+        title,
+        theme::sans(13.5, theme::TEXT).bold(),
+        bar.w - 64.0 - 330.0,
+    );
+    c.text_cut(
+        bar.x + 64.0,
+        bar.y + 31.0,
+        &format!("{} → {}", entry.before, entry.after),
+        theme::mono(11.5, theme::TEXT_2),
+        bar.w - 64.0 - 330.0,
+    );
+    let undone = is_undone(entries, entry.seq);
+    let (label, tone) = match entry.state {
+        HistoryState::Applied if undone => ("Deshecho después".to_string(), Tone::Gray),
+        HistoryState::Applied => ("Aplicado".to_string(), Tone::Green),
+        HistoryState::Undone => (
+            format!("Deshace #{}", entry.undoes.unwrap_or(0)),
+            Tone::Gray,
+        ),
+    };
+    tag(
+        c,
+        bar.right() - 18.0 - 140.0 - 110.0,
+        bar.y + 17.0,
+        &label,
+        tone,
+        None,
+    );
+    if entry.state == HistoryState::Applied && !undone && m.confirm.is_none() {
+        let w = button_width(c, "Deshacer");
+        let place = Rect::new(bar.right() - 18.0 - w, bar.y + 8.0, w, 40.0);
+        button(
+            c,
+            place,
+            "Deshacer",
+            "undo-2",
+            false,
+            Some(Action::AskUndo(entry.seq)),
+        );
+    }
 }
 
 fn notice(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {

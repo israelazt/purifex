@@ -335,6 +335,8 @@ mod tests {
             bytes: 2048,
             why: "lleva el nombre de la app".into(),
             user_data,
+            value: None,
+            evidence: Default::default(),
         }
     }
 

@@ -349,6 +349,8 @@ mod tests {
                     bytes: 4096,
                     why: "w".into(),
                     user_data: false,
+                    value: None,
+                    evidence: Default::default(),
                 })
                 .collect(),
             failed: vec![],

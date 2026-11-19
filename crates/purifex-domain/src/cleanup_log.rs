@@ -131,6 +131,8 @@ mod tests {
                 bytes: 10,
                 why: "x".into(),
                 user_data: true,
+                value: None,
+                evidence: Default::default(),
             },
             kept: r"C:\q\1".into(),
             state,

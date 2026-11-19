@@ -137,6 +137,8 @@ mod states {
                     bytes,
                     why: why.into(),
                     user_data: user,
+                    value: None,
+                    evidence: Default::default(),
                 };
                 model.traces = Some(CleanReport {
                     app: "Inkscape".into(),

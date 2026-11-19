@@ -14,6 +14,30 @@ pub enum TraceKind {
     File,
     /// A key of the registry, written `HKCU\Software\App`.
     RegistryKey,
+    /// One value inside a registry key that is not the app's (`MuiCache`): only that
+    /// value is the app's. `Trace.location` is the key and `Trace.value` the name.
+    RegistryValue,
+}
+
+/// What proves a trace is the app's. Without evidence nothing is proposed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Evidence {
+    /// The install folder the app registered itself.
+    RegisteredInstall,
+    /// A name identical to the app's, in a fixed place.
+    #[default]
+    NameMatch,
+    /// The app's name plus a known suffix (`kdenliverc`).
+    NamePrefix,
+    /// A value or file that contains the app's install path or one of its `.exe`.
+    PathReference,
+    /// A file-type key whose command or icon points inside the app's folder.
+    Association,
+    /// A key or file that hangs from an extension the app registered.
+    AssociatedExtension,
+    /// `<app exe>.<pid>.dmp` in `CrashDumps`.
+    CrashDump,
 }
 
 /// A place that might belong to the app, as the finder found it.
@@ -35,6 +59,12 @@ pub struct Trace {
     pub why: String,
     /// Settings or saved data of the user (not the program itself).
     pub user_data: bool,
+    /// For `RegistryValue`: the name of the value inside `location`.
+    #[serde(default)]
+    pub value: Option<String>,
+    /// What proves it is the app's. History written before this field reads as `NameMatch`.
+    #[serde(default)]
+    pub evidence: Evidence,
 }
 
 /// Why a candidate was left alone.
@@ -193,6 +223,12 @@ pub fn judge(
         bytes: candidate.bytes,
         why,
         user_data,
+        value: None,
+        evidence: if registered {
+            Evidence::RegisteredInstall
+        } else {
+            Evidence::NameMatch
+        },
     })
 }
 
@@ -246,6 +282,29 @@ pub fn traces_to_text_for(app: &str, traces: &[Trace]) -> String {
 mod tests {
     use super::*;
     use crate::apps::AppKind;
+
+    #[test]
+    fn history_written_before_values_and_evidence_still_reads() {
+        let old = r#"{"kind":"folder","location":"C:\\x\\y","bytes":3,"why":"w","user_data":true}"#;
+        let t: Trace = serde_json::from_str(old).unwrap();
+        assert_eq!(t.value, None);
+        assert_eq!(t.evidence, Evidence::NameMatch);
+    }
+
+    #[test]
+    fn a_registry_value_round_trips() {
+        let t = Trace {
+            kind: TraceKind::RegistryValue,
+            location: r"HKCU\Software\X\MuiCache".into(),
+            bytes: 0,
+            why: "w".into(),
+            user_data: false,
+            value: Some(r"C:\Apps\X\x.exe".into()),
+            evidence: Evidence::PathReference,
+        };
+        let back: Trace = serde_json::from_str(&serde_json::to_string(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+    }
 
     fn app(name: &str, publisher: &str, location: Option<&str>) -> InstalledApp {
         InstalledApp {

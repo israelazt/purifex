@@ -72,6 +72,9 @@ fn last_part(location: &str) -> &str {
 
 impl CleanupStore for LocalCleanup {
     fn remove(&mut self, trace: &Trace, seq: u64) -> Result<String, String> {
+        if trace.kind == TraceKind::RegistryValue {
+            return Err("quitar un valor del registro aún no es posible".into());
+        }
         let folder = self.base()?.join("quarantine").join(seq.to_string());
         fs::create_dir_all(&folder).map_err(|e| format!("no se pudo crear la cuarentena: {e}"))?;
         match trace.kind {
@@ -94,6 +97,7 @@ impl CleanupStore for LocalCleanup {
                 reg(&["delete", &trace.location, "/f"])?;
                 Ok(file_text)
             }
+            TraceKind::RegistryValue => unreachable!("rejected above"),
         }
     }
 
@@ -110,6 +114,9 @@ impl CleanupStore for LocalCleanup {
                 fs::rename(&entry.kept, target).map_err(|e| format!("no se pudo devolver: {e}"))
             }
             TraceKind::RegistryKey => reg(&["import", &entry.kept]),
+            TraceKind::RegistryValue => {
+                Err("devolver un valor del registro aún no es posible".into())
+            }
         }
     }
 
@@ -190,6 +197,8 @@ mod tests {
             bytes: 1,
             why: "test".into(),
             user_data: false,
+            value: None,
+            evidence: Default::default(),
         }
     }
 

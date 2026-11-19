@@ -104,3 +104,16 @@ Bucle: mensaje del sistema → `UiEvent` → `Ui::event` → `Action` → `Core:
 **Medido** (2026-11-18, ventana abierta y quieta, animaciones terminadas): 1 proceso, 48 MB, 0 % de CPU; `scan` sin ventana, 9 MB de pico. Cerrar la ventana termina el programa.
 
 `purifex ui --screenshot archivo.png [--page overview|drivers|sessions] [--size 1440x900] [--scale 2]` dibuja la misma pantalla sin abrir la ventana: es como se compara con la referencia desde un script.
+
+## Logo
+
+Archivos en `assets/` (compilados dentro del programa; no se leen del disco):
+
+| Archivo | Uso |
+|---|---|
+| `logo-dark-mode.png` | Logo **blanco** sobre transparente: el que se dibuja con el tema oscuro (barra superior). `theme::logo()` elige el archivo según el tema; hoy solo existe el oscuro |
+| `logo-light-mode.png` | Logo **negro**: para el tema claro cuando exista |
+| `purifex-icon.png` | Icono de la ventana, la barra de tareas y Alt+Tab: el logo blanco sobre un cuadrado oscuro redondeado, para que se vea igual con cualquier tema de Windows |
+| `purifex.ico` | El mismo icono en 16–256 px, **para el instalador y los accesos directos** (aún no está dentro del `.exe`: incrustarlo exigiría una dependencia de compilación) |
+
+`purifex-icon.png` y `purifex.ico` se generaron a partir de `logo-dark-mode.png`; si cambia el logo hay que regenerarlos.

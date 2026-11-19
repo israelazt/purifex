@@ -60,14 +60,12 @@ pub fn topbar(c: &mut Canvas, m: &Model, width: f32) {
     c.fill(Rect::new(0.0, 0.0, width, TOPBAR_H), 0.0, theme::BG);
     c.line(0.0, TOPBAR_H - 0.5, width, TOPBAR_H - 0.5, theme::LINE);
     // The brand.
-    let mark = Rect::new(16.0, 14.0, 24.0, 24.0);
-    c.stroke(mark, 6.0, 1.0, theme::ACCENT);
-    c.icon("zap", 20.0, 18.0, 16.0, theme::ACCENT);
+    c.image(theme::logo(), Rect::new(14.0, 10.0, 32.0, 32.0));
     let brand = theme::mono(13.0, theme::TEXT).bold().tracked(1.0);
     let bar = Rect::new(0.0, 0.0, 10.0, TOPBAR_H);
-    let used = c.text_in(50.0, bar, "PURIFEX", brand);
+    let used = c.text_in(54.0, bar, "PURIFEX", brand);
     c.text_in(
-        50.0 + used + 8.0,
+        54.0 + used + 8.0,
         bar,
         "// DIAGNÓSTICO",
         theme::mono(12.0, theme::ACCENT).bold(),
@@ -392,5 +390,26 @@ mod tests {
         sidebar(&mut c, &Model::default(), 420.0);
         let (texts, _) = texts(c);
         assert!(!texts.iter().any(|t| t == "Salud de drivers"));
+    }
+
+    #[test]
+    fn the_brand_is_the_logo_of_the_theme_and_not_an_icon() {
+        use purifex_domain::draw::Op;
+        let mut c = Canvas::new(&FakeText, None);
+        topbar(&mut c, &Model::default(), 1440.0);
+        let (list, _) = c.finish();
+        let logos: Vec<&str> = list
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::Image { name, .. } => Some(*name),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(logos, ["logo-dark-mode"], "white logo on the dark theme");
+        assert!(!list
+            .ops
+            .iter()
+            .any(|op| matches!(op, Op::Icon { name, .. } if *name == "zap")));
     }
 }

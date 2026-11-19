@@ -173,6 +173,15 @@ impl<'a> Canvas<'a> {
         }
     }
 
+    /// A picture of the program by name, stretched to `rect`.
+    pub fn image(&mut self, name: &'static str, rect: Rect) {
+        self.list.push(Op::Image {
+            name,
+            rect: self.lowered(rect),
+            opacity: self.alpha,
+        });
+    }
+
     pub fn clip(&mut self, rect: Rect) {
         self.clips.push(rect);
         self.list.push(Op::Clip { rect });

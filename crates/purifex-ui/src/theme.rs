@@ -3,6 +3,12 @@
 
 use purifex_domain::draw::{Color, Font, TextStyle};
 
+/// The logo that suits the theme: white on the dark one, black on the light one.
+/// Purifex only has the dark theme so far.
+pub fn logo() -> &'static str {
+    "logo-dark-mode"
+}
+
 pub const BG: Color = Color::rgb(7, 8, 11);
 pub const BG_SIDE: Color = Color::rgb(9, 11, 15);
 pub const PANEL: Color = Color::rgb(13, 15, 21);

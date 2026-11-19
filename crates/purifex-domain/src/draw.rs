@@ -173,6 +173,13 @@ pub enum Op {
         size: f32,
         color: Color,
     },
+    /// A picture of the program by name (`logo-dark-mode`), stretched to `rect`,
+    /// `opacity` from 0 to 1.
+    Image {
+        name: &'static str,
+        rect: Rect,
+        opacity: f32,
+    },
     /// What is drawn until the matching [`Op::Unclip`] is cut to `rect`.
     Clip {
         rect: Rect,

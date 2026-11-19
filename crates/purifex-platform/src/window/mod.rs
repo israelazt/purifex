@@ -33,6 +33,7 @@ const CAPTION: u32 = 0x000b_0807;
 const CAPTION_TEXT: u32 = 0x00f2_f2f2;
 const BORDER: u32 = 0x0026_201e;
 
+mod icon;
 mod state;
 
 use state::State;
@@ -155,6 +156,7 @@ pub fn run<H: UiHandler>(
             let _ = DwmSetWindowAttribute(hwnd, attribute, &value as *const _ as *const c_void, 4);
         }
 
+        icon::set(hwnd);
         let _ = ShowWindow(hwnd, SW_SHOW);
         // The first picture goes before anything is read; then a tick, if the
         // program has something to read.

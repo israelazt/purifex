@@ -4,6 +4,7 @@
 //! is asked to, so a window nobody touches costs nothing.
 
 mod capture;
+mod images;
 mod text;
 
 use std::collections::HashMap;
@@ -17,12 +18,13 @@ use windows::Win32::Graphics::Direct2D::Common::{
     D2D1_FIGURE_END_CLOSED, D2D1_FIGURE_END_OPEN, D2D1_PIXEL_FORMAT, D2D_RECT_F, D2D_SIZE_U,
 };
 use windows::Win32::Graphics::Direct2D::{
-    D2D1CreateFactory, ID2D1Factory, ID2D1HwndRenderTarget, ID2D1PathGeometry, ID2D1RenderTarget,
-    ID2D1SolidColorBrush, ID2D1StrokeStyle, D2D1_ANTIALIAS_MODE_ALIASED, D2D1_CAP_STYLE_ROUND,
-    D2D1_DASH_STYLE_SOLID, D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_FACTORY_TYPE_SINGLE_THREADED,
-    D2D1_FEATURE_LEVEL_DEFAULT, D2D1_HWND_RENDER_TARGET_PROPERTIES, D2D1_LINE_JOIN_ROUND,
-    D2D1_PRESENT_OPTIONS_NONE, D2D1_RENDER_TARGET_PROPERTIES, D2D1_RENDER_TARGET_TYPE_DEFAULT,
-    D2D1_RENDER_TARGET_USAGE_NONE, D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES,
+    D2D1CreateFactory, ID2D1Bitmap, ID2D1Factory, ID2D1HwndRenderTarget, ID2D1PathGeometry,
+    ID2D1RenderTarget, ID2D1SolidColorBrush, ID2D1StrokeStyle, D2D1_ANTIALIAS_MODE_ALIASED,
+    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, D2D1_CAP_STYLE_ROUND, D2D1_DASH_STYLE_SOLID,
+    D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_FACTORY_TYPE_SINGLE_THREADED, D2D1_FEATURE_LEVEL_DEFAULT,
+    D2D1_HWND_RENDER_TARGET_PROPERTIES, D2D1_LINE_JOIN_ROUND, D2D1_PRESENT_OPTIONS_NONE,
+    D2D1_RENDER_TARGET_PROPERTIES, D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1_RENDER_TARGET_USAGE_NONE,
+    D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES,
 };
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 use windows_numerics::{Matrix3x2, Vector2};
@@ -49,6 +51,9 @@ pub struct Renderer {
     stroke: ID2D1StrokeStyle,
     text: TextEngine,
     icons: HashMap<&'static str, ID2D1PathGeometry>,
+    /// The pictures already decoded, by name (they belong to this target).
+    /// `None` = it could not be decoded (said once, not at every picture).
+    pictures: HashMap<&'static str, Option<ID2D1Bitmap>>,
 }
 
 fn rect_f(r: Rect) -> D2D_RECT_F {
@@ -132,6 +137,7 @@ impl Renderer {
             stroke,
             text: TextEngine::new()?,
             icons: HashMap::new(),
+            pictures: HashMap::new(),
         })
     }
 
@@ -183,6 +189,22 @@ impl Renderer {
     pub fn set_dpi(&self, dpi: f32) {
         // SAFETY: a plain setter.
         unsafe { self.target.SetDpi(dpi, dpi) };
+    }
+
+    /// A picture of the program as a bitmap of this target, decoded the first time.
+    fn picture(&mut self, name: &'static str) -> Option<ID2D1Bitmap> {
+        if let Some(found) = self.pictures.get(name) {
+            return found.clone();
+        }
+        let bitmap = match images::decode(&self.target, images::bytes(name)?) {
+            Ok(bitmap) => Some(bitmap),
+            Err(error) => {
+                purifex_domain::log_error!("{name}: {error}");
+                None
+            }
+        };
+        self.pictures.insert(name, bitmap.clone());
+        bitmap
     }
 
     /// The outline of an icon as a Direct2D geometry, built once.
@@ -324,6 +346,21 @@ impl Renderer {
                             self.target
                                 .DrawGeometry(&geometry, &self.brush, 2.0, &self.stroke);
                             self.target.SetTransform(&Matrix3x2::identity());
+                        }
+                    }
+                    Op::Image {
+                        name,
+                        rect,
+                        opacity,
+                    } => {
+                        if let Some(bitmap) = self.picture(name) {
+                            self.target.DrawBitmap(
+                                &bitmap,
+                                Some(&rect_f(*rect)),
+                                opacity.clamp(0.0, 1.0),
+                                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                                None,
+                            );
                         }
                     }
                     Op::Clip { rect } => {

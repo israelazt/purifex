@@ -3,9 +3,10 @@
 //! it registered (and the keys of Explorer that hang from them), and the keys named
 //! after its programs. It only reads and proposes; the rules of the domain decide.
 
-use purifex_domain::app_traces::{Candidate, TraceKind};
+use purifex_domain::app_traces::{simple, Candidate, TraceKind};
 use purifex_domain::reference::path_refers_to;
 use purifex_domain::seeds::{extensions_into, Seeds};
+use purifex_domain::trace_rules::is_toast_of_extension;
 use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
 use crate::registry::{Key, View};
@@ -90,9 +91,9 @@ fn key_candidate(label: &str, path: &str, text: Option<String>) -> Candidate {
 
 /// The values of the fixed keys whose name or text points into the app's folder.
 pub fn find_values(hives: &Hives, seeds: &Seeds) -> Vec<Candidate> {
-    let Some(folder) = &seeds.folder else {
+    if seeds.folder.is_none() && seeds.extensions.is_empty() {
         return Vec::new();
-    };
+    }
     let mut found = Vec::new();
     for (label, root, base) in hives.each() {
         for (rel, machine_too) in VALUE_KEYS {
@@ -103,10 +104,13 @@ pub fn find_values(hives: &Hives, seeds: &Seeds) -> Vec<Candidate> {
             let Some(key) = Key::open(root, &path, View::Bits64) else {
                 continue;
             };
+            let toasts = rel.to_lowercase().ends_with("applicationassociationtoasts");
             for (name, text) in key.values() {
-                let refers = path_refers_to(&name, folder)
-                    || text.as_deref().is_some_and(|t| path_refers_to(t, folder));
-                if refers {
+                let in_folder = seeds.folder.as_deref().is_some_and(|folder| {
+                    path_refers_to(&name, folder)
+                        || text.as_deref().is_some_and(|t| path_refers_to(t, folder))
+                });
+                if in_folder || (toasts && is_toast_of_extension(seeds, &name)) {
                     found.push(Candidate {
                         kind: TraceKind::RegistryValue,
                         location: format!(r"{label}\{path}"),
@@ -277,6 +281,30 @@ pub fn find_program_keys(hives: &Hives, names: &[String], seeds: &Seeds) -> Vec<
             }
         }
     }
+    found.extend(find_tile_keys(hives, names));
+    found
+}
+
+/// Tiles of the start menu named like the app: `...\Start\TileProperties\W~{id}\<name>`.
+fn find_tile_keys(hives: &Hives, names: &[String]) -> Vec<Candidate> {
+    let tiles = format!(r"{}\{CURRENT_VERSION}\Start\TileProperties", hives.hkcu);
+    let Some(parent) = Key::open(HKEY_CURRENT_USER, &tiles, View::Bits64) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for group in parent.subkeys().into_iter().filter(|g| g.starts_with("W~")) {
+        let path = format!(r"{tiles}\{group}");
+        let Some(inside) = Key::open(HKEY_CURRENT_USER, &path, View::Bits64) else {
+            continue;
+        };
+        for sub in inside
+            .subkeys()
+            .into_iter()
+            .filter(|s| names.contains(&simple(s)))
+        {
+            found.push(key_candidate("HKCU", &format!(r"{path}\{sub}"), None));
+        }
+    }
     found
 }
 
@@ -321,6 +349,16 @@ mod tests {
         );
         set(&format!(r"{cv}\Notifications\Settings\fake"), "x", "1");
         set(&format!(r"{cv}\App Paths\fake.exe"), "", &exe);
+        set(
+            &format!(r"{cv}\Start\TileProperties\W~{{ABC}}\FakeApp"),
+            "x",
+            "1",
+        );
+        set(
+            &format!(r"{cv}\ApplicationAssociationToasts"),
+            &format!("Fake_{ext}"),
+            "0",
+        );
         let mui = r"Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache";
         set(mui, &format!("{exe}.FriendlyAppName"), "Fake");
         set(
@@ -350,6 +388,18 @@ mod tests {
             .collect()
     }
 
+    /// Everything the finders propose for the fake app, with the seeds they used and the
+    /// extensions they found by themselves.
+    fn search_all(hives: &Hives, folder: &str) -> (Vec<Candidate>, Seeds, Vec<String>) {
+        let given = Seeds::new(Some(folder), &["fake.exe".into()], &[]);
+        let discovered = discover_extensions(hives, &given);
+        let seeds = Seeds::new(Some(folder), &["fake.exe".into()], &discovered);
+        let mut found = find_values(hives, &seeds);
+        found.extend(find_associations(hives, &seeds));
+        found.extend(find_program_keys(hives, &["fakeapp".into()], &seeds));
+        (found, seeds, discovered)
+    }
+
     /// What the finder proposes in a scratch branch of HKCU, judged by the domain with the
     /// scratch prefix swapped for the real one: so the layout of the fixed list and the
     /// rules agree.
@@ -370,12 +420,7 @@ mod tests {
         let hk = format!(r"HKCU\{scratch}");
         plant(&hk, &folder, &ext, &progid, id);
 
-        let seeds = Seeds::new(Some(&folder), &["fake.exe".into()], &[]);
-        let discovered = discover_extensions(&hives, &seeds);
-        let seeds = Seeds::new(Some(&folder), &["fake.exe".into()], &discovered);
-        let mut found = find_values(&hives, &seeds);
-        found.extend(find_associations(&hives, &seeds));
-        found.extend(find_program_keys(&hives, &["fakeapp".into()], &seeds));
+        let (found, seeds, discovered) = search_all(&hives, &folder);
 
         let _ = delete_key_tree(&hk);
 
@@ -385,11 +430,12 @@ mod tests {
             "the extension was not given but is found"
         );
         let ends = judged_ends(&found, &seeds, &scratch);
-        assert_eq!(found.len(), 8, "{found:#?}");
+        assert_eq!(found.len(), 10, "{found:#?}");
         for want in [
             (ext, Evidence::AssociatedExtension),
             (progid, Evidence::Association),
             ("fake".to_string(), Evidence::NameMatch),
+            ("FakeApp".to_string(), Evidence::NameMatch),
             ("fake.exe".to_string(), Evidence::NameMatch),
             ("MuiCache".to_string(), Evidence::PathReference),
         ] {
@@ -399,8 +445,8 @@ mod tests {
             ends.iter()
                 .filter(|(_, e)| *e == Evidence::AssociatedExtension)
                 .count(),
-            4,
-            "the extension, FileExts, RecentDocs and OpenSavePidlMRU: {ends:?}"
+            5,
+            "the extension, FileExts, RecentDocs, OpenSavePidlMRU and the toast: {ends:?}"
         );
         let value = found.iter().find(|c| c.value.is_some()).unwrap();
         assert!(value

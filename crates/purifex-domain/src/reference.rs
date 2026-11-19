@@ -13,10 +13,35 @@ pub fn path_refers_to(text: &str, folder: &str) -> bool {
         return false;
     }
     let text = normalise(text);
-    let found = text.match_indices(tail).any(|(at, _)| {
+    let by_drive = text.match_indices(tail).any(|(at, _)| {
         before_is_drive(&text[..at], drive) && boundary_after(&text[at + tail.len()..])
     });
-    found
+    by_drive || by_known_folder(&text, tail)
+}
+
+/// Windows writes some paths with the id of a known folder instead of the drive:
+/// `{6D809377-...}\Kdenlive\bin\kdenlive.exe` is `C:\Program Files\Kdenlive\bin\kdenlive.exe`.
+/// Only folders of the machine, whose place does not depend on the user.
+const KNOWN_FOLDERS: [(&str, &str); 3] = [
+    ("{6d809377-6af0-444b-8957-a3773f02200e}", r"\program files\"),
+    (
+        "{7c5a40ef-a0fb-4bfc-874a-c0f2e0b9fa8e}",
+        r"\program files (x86)\",
+    ),
+    ("{62ab5d82-fdc1-4dc3-a9dd-070d1d495d97}", r"\programdata\"),
+];
+
+/// `tail` (the folder without its drive) written as a known folder and what is inside it.
+fn by_known_folder(text: &str, tail: &str) -> bool {
+    KNOWN_FOLDERS.iter().any(|(id, folder)| {
+        let Some(inside) = tail.strip_prefix(folder) else {
+            return false;
+        };
+        let needle = format!(r"{id}\{inside}");
+        text.match_indices(&needle).any(|(at, _)| {
+            !alnum_before(&text[..at], 0) && boundary_after(&text[at + needle.len()..])
+        })
+    })
 }
 
 /// `text` contains a path that ends in the program `exe` (`…\bin\kdenlive.exe`).
@@ -126,6 +151,37 @@ mod tests {
             r"\Device\HarddiskVolume3\Program Files\Kdenlive\k.exe",
             DIR
         ));
+    }
+
+    #[test]
+    fn a_path_written_with_the_id_of_program_files_refers_to_the_folder_inside_it() {
+        let id = "{6D809377-6AF0-444B-8957-A3773F02200E}";
+        assert!(path_refers_to(
+            &format!(r"{id}\Kdenlive\bin\kdenlive.exe"),
+            DIR
+        ));
+        assert!(path_refers_to(&format!(r"{id}\Kdenlive"), DIR));
+        assert!(
+            !path_refers_to(&format!(r"{id}\Kdenlive2\bin\k.exe"), DIR),
+            "a longer name"
+        );
+        assert!(
+            !path_refers_to(&format!(r"X{id}\Kdenlive\k.exe"), DIR),
+            "a stray prefix"
+        );
+        let x86 = "{7C5A40EF-A0FB-4BFC-874A-C0F2E0B9FA8E}";
+        assert!(
+            !path_refers_to(&format!(r"{x86}\Kdenlive\k.exe"), DIR),
+            "the other Program Files"
+        );
+        assert!(path_refers_to(
+            &format!(r"{x86}\Old\o.exe"),
+            r"C:\Program Files (x86)\Old"
+        ));
+        assert!(
+            !path_refers_to(&format!(r"{id}\Kdenlive\k.exe"), r"C:\Games\Kdenlive"),
+            "a folder that is not in Program Files has no such form"
+        );
     }
 
     #[test]

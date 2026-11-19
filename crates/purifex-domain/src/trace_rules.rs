@@ -65,7 +65,7 @@ struct Ctx<'a> {
 /// A rule answers `None` when the candidate is not its case.
 type Rule = fn(&Ctx) -> Option<Found>;
 
-const KEY_RULES: [Rule; 3] = [classes_key, explorer_extension_key, program_key];
+const KEY_RULES: [Rule; 4] = [classes_key, explorer_extension_key, program_key, tile_key];
 const FILE_RULES: [Rule; 4] = [
     settings_file,
     crash_dump,
@@ -170,10 +170,26 @@ fn value_evidence(seeds: &Seeds, lower_key: &str, candidate: &Candidate) -> Opti
     if !VALUE_KEYS.iter().any(|k| key.ends_with(k)) {
         return None;
     }
+    if key.ends_with(TOASTS) && is_toast_of_extension(seeds, value) {
+        return Some(Evidence::AssociatedExtension);
+    }
     let folder = seeds.folder.as_deref()?;
     let data = candidate.text.as_deref().unwrap_or("");
     let refers = path_refers_to(value, folder) || path_refers_to(data, folder);
     refers.then_some(Evidence::PathReference)
+}
+
+/// The key where Windows remembers the toasts of file-type associations.
+const TOASTS: &str = r"\microsoft\windows\currentversion\applicationassociationtoasts";
+
+/// A value of the toasts key is named `<ProgId>_<extension>` (`Kdenlive_.kdenlive`): the
+/// app's if its extension is one the app registered.
+pub fn is_toast_of_extension(seeds: &Seeds, name: &str) -> bool {
+    let lower = name.to_lowercase();
+    seeds
+        .extensions
+        .iter()
+        .any(|ext| lower.ends_with(&format!("_{ext}")))
 }
 
 // ---- registry keys ------------------------------------------------------------
@@ -244,6 +260,27 @@ fn program_key(c: &Ctx) -> Option<Found> {
         )
     })
 }
+
+/// A tile of the start menu: a key named like the app inside a `W~{id}` group of the tiles.
+fn tile_key(c: &Ctx) -> Option<Found> {
+    let (tiles, group) = c.parent.rsplit_once('\\')?;
+    if !tiles.ends_with(TILES) || !group.starts_with("w~") {
+        return None;
+    }
+    let ours = names_of(c.app).contains(&simple(c.name));
+    ours.then(|| {
+        (
+            Evidence::NameMatch,
+            format!(
+                "mosaico del menú Inicio con el nombre de la app: {}",
+                c.name
+            ),
+        )
+    })
+}
+
+/// Where the start menu keeps its tiles (below HKCU Software).
+const TILES: &str = r"hkcu\software\microsoft\windows\currentversion\start\tileproperties";
 
 // ---- files --------------------------------------------------------------------
 
@@ -530,6 +567,55 @@ mod tests {
             None,
         );
         assert_eq!(judge(&named, &[]), Err(Refusal::SystemPlace));
+    }
+
+    #[test]
+    fn a_toast_of_the_apps_extension_and_a_start_tile_with_its_name_are_taken() {
+        let cv = r"HKCU\Software\Microsoft\Windows\CurrentVersion";
+        let toast = |name: &str| {
+            cand(
+                TraceKind::RegistryValue,
+                &format!(r"{cv}\ApplicationAssociationToasts"),
+                Some(name),
+                None,
+            )
+        };
+        assert_eq!(
+            evidence(&toast("Kdenlive_.kdenlive")),
+            Evidence::AssociatedExtension
+        );
+        assert_eq!(
+            evidence(&toast("kdenlive_.KDENLIVE")),
+            Evidence::AssociatedExtension
+        );
+        for other in [
+            "Kdenlive_.txt",
+            "txtfile_.txt",
+            "Kdenlive",
+            "Kdenlive_.kdenlive2",
+        ] {
+            assert!(judge(&toast(other), &[]).is_err(), "{other}");
+        }
+        let tile = |name: &str| {
+            cand(
+                TraceKind::RegistryKey,
+                &format!(r"{cv}\Start\TileProperties\W~{{6D80}}\{name}"),
+                None,
+                None,
+            )
+        };
+        assert_eq!(evidence(&tile("Kdenlive")), Evidence::NameMatch);
+        assert!(
+            judge(&tile("Photos"), &[]).is_err(),
+            "a tile of another app"
+        );
+        let direct = cand(
+            TraceKind::RegistryKey,
+            &format!(r"{cv}\Start\TileProperties\Kdenlive"),
+            None,
+            None,
+        );
+        assert!(judge(&direct, &[]).is_err(), "only inside a W~ group");
     }
 
     #[test]

@@ -208,3 +208,19 @@ Cada tarea termina con **pruebas, `tools/check.ps1`, clippy de Linux, commit, pu
 
 **Falta de este plan:** la Fase 6 (permisos de administrador) y la comparación final con Revo (criterio B).
 
+
+### Criterio B: comparación con Revo (2026-11-19, Kdenlive real, solo lectura)
+
+Revo Uninstaller mostró **18 archivos y carpetas · 19 elementos del registro**. `purifex apps traces Kdenlive` da ahora **7 archivos y carpetas · 14 entradas del registro** (205 MB), con la evidencia de cada una y sin proponer nada que no sea de Kdenlive.
+
+**Cubierto (todo el contenido de la tabla de §1 salvo lo que sigue):** las dos claves de `Classes`, `FileExts`, `RecentDocs`, `OpenSavePidlMRU`, `Notifications\Settings`, `PushNotifications\Backup`, `Start\TileProperties\W~{…}\Kdenlive`, los valores de `MuiCache`, `AppCompatFlags\…\Store` (2), `FeatureUsage\AppSwitched` y `Search\JumplistData` (estos dos con la ruta escrita con el id de la carpeta «Archivos de programa», `{6D809377-…}\Kdenlive\bin\kdenlive.exe`, que ahora se reconoce), `ApplicationAssociationToasts` (`Kdenlive_.kdenlive`), `kdenliverc`, `kdenlivestaterc`, `stalefiles\kdenlive`, los 2 volcados y los 2 accesos recientes.
+
+**Diferencia con las cifras de Revo, y por qué:**
+
+| Qué falta | Cuántos | Motivo |
+|---|---|---|
+| `FileExts\.kdenlive\OpenWithList` y `OpenWithProgids` | 2 | Son hijas de la clave `FileExts\.kdenlive` que sí proponemos: se quitan con ella (borrado del árbol). Revo las cuenta aparte. Con ellas: 16. |
+| `CloudStore\…\appmetadata$kdenlive` (×2) y `…appleveltileinfo$w~{…}kdenlivebinkdenlive.exe` | 3 | Datos de Windows sincronizados con la cuenta, con nombres de lista con GUID y formas privadas de Windows. No hay una regla de evidencia estable (nombre + sufijo) que garantice que solo sea de la app, y borrarlos puede reaparecer por la sincronización. **Decisión pendiente** (con ellas: 19, igual que Revo). |
+| `IE\LowRegistry\Audio\PolicyConfig\PropertyStore\…` | 2 claves que coinciden por contenido | La coincidencia es por datos binarios, no por una ruta: sin evidencia verificable no se propone. |
+| Valores que apuntan a `C:\Users\…\Downloads\kdenlive-26.08.2.exe` (`MuiCache`, `AppSwitched`, `Store`) | 3 | Es el instalador que descargó el usuario, un archivo suyo fuera de la carpeta de la app: no es de la app. No se propone. |
+| Archivos: 18 de Revo frente a 7 | – | Revo cuenta cada archivo dentro de las carpetas; Purifex mueve cada elemento una vez (la carpeta entera con su contenido). No es una diferencia de lo que se encuentra. |

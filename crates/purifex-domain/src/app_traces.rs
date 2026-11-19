@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::apps::InstalledApp;
+use crate::seeds::{seeds_of, Seeds};
+use crate::trace_rules::judge_by_evidence;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -48,6 +50,11 @@ pub struct Candidate {
     pub bytes: u64,
     /// The finder found it as the install folder the app itself registered.
     pub registered_install: bool,
+    /// For a registry value: its name (`location` is the key).
+    pub value: Option<String>,
+    /// What the trace contains, read by the finder: the data of a value, the command
+    /// or icon of a file-type key, the target of a shortcut.
+    pub text: Option<String>,
 }
 
 /// A trace that may be removed, and why.
@@ -160,15 +167,31 @@ fn same_publisher(a: &InstalledApp, b: &InstalledApp) -> bool {
 }
 
 /// Decides whether `candidate` is a trace of `app` that may be removed. `others` are
-/// the apps still installed.
+/// the apps still installed. The seeds are the ones the registry entry alone gives.
 pub fn judge(
     app: &InstalledApp,
     others: &[InstalledApp],
     candidate: &Candidate,
 ) -> Result<Trace, Refusal> {
+    judge_with(app, others, &seeds_of(app), candidate)
+}
+
+/// `judge` with the seeds observed for the app (its folder, programs and extensions).
+pub fn judge_with(
+    app: &InstalledApp,
+    others: &[InstalledApp],
+    seeds: &Seeds,
+    candidate: &Candidate,
+) -> Result<Trace, Refusal> {
     let location = candidate.location.trim().trim_end_matches('\\');
     if !is_absolute(location) {
         return Err(Refusal::NotAbsolute);
+    }
+    if let Some(decided) = judge_by_evidence(app, others, seeds, candidate, location) {
+        return decided;
+    }
+    if candidate.kind == TraceKind::RegistryValue {
+        return Err(Refusal::NotTheApps);
     }
     let lower = location.to_lowercase();
     if SYSTEM_PREFIXES
@@ -239,18 +262,38 @@ pub fn propose(
     others: &[InstalledApp],
     candidates: &[Candidate],
 ) -> Vec<Trace> {
+    propose_with(app, others, &seeds_of(app), candidates)
+}
+
+pub fn propose_with(
+    app: &InstalledApp,
+    others: &[InstalledApp],
+    seeds: &Seeds,
+    candidates: &[Candidate],
+) -> Vec<Trace> {
     let mut traces: Vec<Trace> = candidates
         .iter()
-        .filter_map(|c| judge(app, others, c).ok())
+        .filter_map(|c| judge_with(app, others, seeds, c).ok())
         .collect();
-    traces.sort_by(|a, b| b.bytes.cmp(&a.bytes).then(a.location.cmp(&b.location)));
-    traces.dedup_by(|b, a| a.location.eq_ignore_ascii_case(&b.location));
-    let parents: Vec<String> = traces.iter().map(|t| t.location.to_lowercase()).collect();
+    traces.sort_by(|a, b| {
+        b.bytes
+            .cmp(&a.bytes)
+            .then(a.location.cmp(&b.location))
+            .then(a.value.cmp(&b.value))
+    });
+    traces.dedup_by(|b, a| a.location.eq_ignore_ascii_case(&b.location) && a.value == b.value);
+    // Whole places (not single values) that are proposed: what is inside is not listed apart.
+    let parents: Vec<String> = traces
+        .iter()
+        .filter(|t| t.kind != TraceKind::RegistryValue)
+        .map(|t| t.location.to_lowercase())
+        .collect();
     traces.retain(|t| {
         let l = t.location.to_lowercase();
+        let is_value = t.kind == TraceKind::RegistryValue;
         !parents
             .iter()
-            .any(|p| *p != l && l.starts_with(&format!("{p}\\")))
+            .any(|p| l.starts_with(&format!("{p}\\")) || (is_value && *p == l))
     });
     traces
 }
@@ -327,6 +370,8 @@ mod tests {
             location: location.into(),
             bytes: 1000,
             registered_install: false,
+            value: None,
+            text: None,
         }
     }
 

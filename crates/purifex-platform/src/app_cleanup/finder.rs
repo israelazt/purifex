@@ -93,6 +93,8 @@ fn candidate_at(path: &Path, registered: bool) -> Option<Candidate> {
         location: path.to_string_lossy().into_owned(),
         bytes,
         registered_install: registered,
+        value: None,
+        text: None,
     })
 }
 
@@ -142,6 +144,8 @@ impl TraceFinder for WindowsTraceFinder {
                         location: format!(r"{label}\{path}\{sub}"),
                         bytes: 0,
                         registered_install: false,
+                        value: None,
+                        text: None,
                     });
                 }
             }

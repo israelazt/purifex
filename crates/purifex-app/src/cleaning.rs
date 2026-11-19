@@ -285,6 +285,8 @@ mod tests {
             location: location.into(),
             bytes: 100,
             registered_install: false,
+            value: None,
+            text: None,
         }
     }
 

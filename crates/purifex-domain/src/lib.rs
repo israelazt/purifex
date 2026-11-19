@@ -34,6 +34,7 @@ pub mod session_header;
 pub mod session_id;
 pub mod session_list;
 pub mod text;
+pub mod trace_rules;
 pub mod ui_event;
 pub mod version;
 pub mod view;

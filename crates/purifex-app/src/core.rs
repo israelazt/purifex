@@ -889,6 +889,8 @@ mod tests {
             location: r"C:\Users\u\AppData\Roaming\Discord".into(),
             bytes: 10,
             registered_install: false,
+            value: None,
+            text: None,
         }];
         let mut c = Core::new(Box::new(
             App::new(
@@ -1016,6 +1018,8 @@ mod tests {
             location: r"C:\Program Files\obs-studio".into(),
             bytes: 10,
             registered_install: false,
+            value: None,
+            text: None,
         }];
         let core = Core::new(Box::new(
             App::new(
@@ -1131,6 +1135,8 @@ mod tests {
                 location: format!(r"C:\ProgramData\{n}"),
                 bytes: 10,
                 registered_install: false,
+                value: None,
+                text: None,
             })
             .to_vec();
         let core = Core::new(Box::new(

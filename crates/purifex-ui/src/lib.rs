@@ -12,6 +12,7 @@ mod compare_panel;
 mod dialog;
 mod drivers_filters;
 pub mod drivers_page;
+mod fix_history;
 pub mod fixes_page;
 mod overview_cards;
 pub mod overview_page;

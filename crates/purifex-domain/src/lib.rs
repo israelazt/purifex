@@ -11,6 +11,7 @@ pub mod device;
 pub mod device_category;
 pub mod diagnosis;
 pub mod draw;
+pub mod driver_candidate;
 pub mod drivers_view;
 pub mod fix;
 pub mod icons;

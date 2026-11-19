@@ -49,7 +49,11 @@ Instalación solo con confirmación, **punto de restauración** y copia del driv
 6. **Nivel 2** (NVIDIA primero: es la tarjeta de este PC).
 7. **Instalación** con restauración y deshacer, en VM.
 
-## Preguntas abiertas
+## Decisiones (2026-11-18)
 
-- ¿Solo «trae tu propia IA» (MCP), o también llamada directa a API con consentimiento?
-- ¿Se permite instalar candidatos de nivel 3 desde Purifex, o solo abrir la página oficial verificada? (Recomiendo lo segundo al principio.)
+- La IA se conecta **solo por MCP** (trae tu propia IA). Purifex no llama a ninguna API de IA.
+- Un candidato de nivel 3 (`Source::Suggested`) **nunca se instala desde Purifex**: como mucho se abre su página oficial, y solo si pasa las reglas de dirección (https, dominio de la lista, sin usuario/puerto/letras parecidas). Implementado en `domain::driver_candidate::judge`.
+
+## Avance
+
+- Fase 1 hecha: `crates/purifex-domain/src/driver_candidate.rs` (`Candidate`, `Source`, `Checks`, `Verdict`, `Risk`, `judge`, `risk_of`), 9 pruebas.

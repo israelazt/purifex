@@ -298,6 +298,40 @@ pub fn propose_with(
     traces
 }
 
+/// How many traces of each kind, and their size.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Counts {
+    /// Files and folders.
+    pub files: usize,
+    /// Registry keys and values.
+    pub registry: usize,
+    pub bytes: u64,
+}
+
+impl Counts {
+    pub fn of(traces: &[Trace]) -> Counts {
+        let mut c = Counts::default();
+        for t in traces {
+            match t.kind {
+                TraceKind::Folder | TraceKind::File => c.files += 1,
+                TraceKind::RegistryKey | TraceKind::RegistryValue => c.registry += 1,
+            }
+            c.bytes += t.bytes;
+        }
+        c
+    }
+
+    /// `Archivos y carpetas: 18 · Registro: 19 · 83 KB`
+    pub fn to_text(&self) -> String {
+        format!(
+            "Archivos y carpetas: {} · Registro: {} · {}",
+            self.files,
+            self.registry,
+            crate::apps::size_text(Some(self.bytes.div_ceil(1024)))
+        )
+    }
+}
+
 pub fn traces_to_text(app: &InstalledApp, traces: &[Trace]) -> String {
     traces_to_text_for(&app.name, traces)
 }
@@ -310,14 +344,18 @@ pub fn traces_to_text_for(app: &str, traces: &[Trace]) -> String {
     let mut out = format!("Restos de {app} (nada se ha borrado):\n");
     for t in traces {
         let mark = if t.user_data { "  [datos tuyos]" } else { "" };
+        let place = match &t.value {
+            Some(v) => format!("{}  [valor: {v}]", t.location),
+            None => t.location.clone(),
+        };
         let _ = writeln!(
             out,
-            "• {}  {}{mark}\n    por qué: {}",
-            t.location,
+            "• {place}  {}{mark}\n    por qué: {}",
             crate::apps::size_text(Some(t.bytes / 1024)),
             t.why
         );
     }
+    let _ = writeln!(out, "\n{}", Counts::of(traces).to_text());
     out
 }
 
@@ -332,6 +370,39 @@ mod tests {
         let t: Trace = serde_json::from_str(old).unwrap();
         assert_eq!(t.value, None);
         assert_eq!(t.evidence, Evidence::NameMatch);
+    }
+
+    fn counted(kind: TraceKind, bytes: u64, value: Option<&str>) -> Trace {
+        Trace {
+            kind,
+            location: r"HKCU\Software\X".into(),
+            bytes,
+            why: "w".into(),
+            user_data: false,
+            value: value.map(String::from),
+            evidence: Evidence::NameMatch,
+        }
+    }
+
+    #[test]
+    fn counts_split_files_from_registry_and_the_text_says_so() {
+        let traces = [
+            counted(TraceKind::Folder, 2048, None),
+            counted(TraceKind::File, 1024, None),
+            counted(TraceKind::RegistryKey, 0, None),
+            counted(TraceKind::RegistryValue, 0, Some("v")),
+            counted(TraceKind::RegistryValue, 0, Some("w")),
+        ];
+        let c = Counts::of(&traces);
+        assert_eq!((c.files, c.registry, c.bytes), (2, 3, 3072));
+        assert_eq!(c.to_text(), "Archivos y carpetas: 2 · Registro: 3 · 3 KB");
+        let text = traces_to_text_for("X", &traces);
+        assert!(text.contains("[valor: v]"));
+        assert!(text.contains("Archivos y carpetas: 2 · Registro: 3"));
+        assert_eq!(
+            Counts::of(&[]).to_text(),
+            "Archivos y carpetas: 0 · Registro: 0 · –"
+        );
     }
 
     #[test]

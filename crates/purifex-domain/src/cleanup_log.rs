@@ -89,6 +89,12 @@ Para quitarlos (a cuarentena, con deshacer): purifex apps clean \"{}\" --yes",
             let _ = writeln!(out, "no se pudo quitar {}: {why}", t.location);
         }
         if !self.removed.is_empty() {
+            let removed: Vec<Trace> = self.removed.iter().map(|e| e.trace.clone()).collect();
+            let _ = writeln!(
+                out,
+                "Quitado: {}",
+                crate::app_traces::Counts::of(&removed).to_text()
+            );
             out.push_str("Se pueden devolver con `purifex apps restore N`.");
         }
         out

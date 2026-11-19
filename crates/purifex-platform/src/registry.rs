@@ -2,10 +2,10 @@
 //! read text and number values. Nothing here writes or deletes.
 
 use windows::core::{HSTRING, PWSTR};
-use windows::Win32::Foundation::ERROR_SUCCESS;
+use windows::Win32::Foundation::{ERROR_MORE_DATA, ERROR_NO_MORE_ITEMS, ERROR_SUCCESS};
 use windows::Win32::System::Registry::{
-    RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, KEY_READ, KEY_WOW64_32KEY,
-    KEY_WOW64_64KEY, REG_DWORD, REG_EXPAND_SZ, REG_SZ, REG_VALUE_TYPE,
+    RegCloseKey, RegEnumKeyExW, RegEnumValueW, RegOpenKeyExW, RegQueryValueExW, HKEY, KEY_READ,
+    KEY_WOW64_32KEY, KEY_WOW64_64KEY, REG_DWORD, REG_EXPAND_SZ, REG_SZ, REG_VALUE_TYPE,
 };
 
 /// Which view of the registry: the 64-bit one or the 32-bit one (`WOW6432Node`).
@@ -62,6 +62,43 @@ impl Key {
             names.push(String::from_utf16_lossy(&buffer[..length as usize]));
         }
         names
+    }
+
+    /// The values of the key: each name with its text when it is a text value of up to
+    /// 8 KiB (`None` for numbers, binaries and longer ones). At most 20 000.
+    pub fn values(&self) -> Vec<(String, Option<String>)> {
+        let mut found = Vec::new();
+        let mut name = vec![0u16; 16_384];
+        let mut data = vec![0u8; 8 * 1024];
+        for index in 0..20_000u32 {
+            let mut name_len = name.len() as u32;
+            let mut size = data.len() as u32;
+            let mut kind = 0u32;
+            // SAFETY: the buffers are as long as the lengths say.
+            let status = unsafe {
+                RegEnumValueW(
+                    self.0,
+                    index,
+                    Some(PWSTR(name.as_mut_ptr())),
+                    &mut name_len,
+                    None,
+                    Some(&mut kind),
+                    Some(data.as_mut_ptr()),
+                    Some(&mut size),
+                )
+            };
+            if status == ERROR_NO_MORE_ITEMS {
+                break;
+            }
+            let label = String::from_utf16_lossy(&name[..name_len as usize]);
+            let text = (status == ERROR_SUCCESS && (kind == REG_SZ.0 || kind == REG_EXPAND_SZ.0))
+                .then(|| crate::decode::utf16_string(&data[..size as usize]))
+                .flatten();
+            if status == ERROR_SUCCESS || status == ERROR_MORE_DATA {
+                found.push((label, text));
+            }
+        }
+        found
     }
 
     fn raw(&self, name: &str) -> Option<(REG_VALUE_TYPE, Vec<u8>)> {

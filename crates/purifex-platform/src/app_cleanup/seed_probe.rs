@@ -8,21 +8,14 @@ use std::path::Path;
 use purifex_domain::apps::InstalledApp;
 use purifex_domain::ports::SeedProbe;
 use purifex_domain::seeds::{extensions_into, seeds_of, Seeds};
-use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
-use crate::registry::{Key, View};
+use super::find_registry::{commands_of, registered_extensions, Hives};
 
 /// Looks at no more than this many entries of the folder, and this many levels down.
 const MAX_ENTRIES: usize = 400;
 const MAX_DEPTH: usize = 2;
 
 pub struct WindowsSeedProbe;
-
-/// Where the file types are registered: the machine's and the user's.
-const CLASSES: [(HKEY, &str, View); 2] = [
-    (HKEY_LOCAL_MACHINE, r"SOFTWARE\Classes", View::Bits64),
-    (HKEY_CURRENT_USER, r"Software\Classes", View::Bits64),
-];
 
 impl SeedProbe for WindowsSeedProbe {
     fn observe(&self, app: &InstalledApp) -> Seeds {
@@ -34,7 +27,10 @@ impl SeedProbe for WindowsSeedProbe {
         if let Some(icon) = &app.display_icon {
             exes.extend(exe_of_icon(icon));
         }
-        let extensions = extensions_into(&folder, &registered_extensions(), commands_of);
+        let hives = Hives::real();
+        let extensions = extensions_into(&folder, &registered_extensions(&hives), |progid| {
+            commands_of(&hives, progid)
+        });
         Seeds::new(Some(&folder), &exes, &extensions)
     }
 }
@@ -78,40 +74,6 @@ fn exe_of_icon(icon: &str) -> Option<String> {
     let path = icon.trim().trim_start_matches('"');
     let end = path.to_lowercase().find(".exe")? + 4;
     path[..end].rsplit(['\\', '/']).next().map(String::from)
-}
-
-/// Every extension registered in `Classes`, with the ProgId it names (or itself when
-/// the extension carries its own commands).
-fn registered_extensions() -> Vec<(String, String)> {
-    let mut pairs = Vec::new();
-    for (root, path, view) in CLASSES {
-        let Some(classes) = Key::open(root, path, view) else {
-            continue;
-        };
-        for name in classes.subkeys().into_iter().filter(|n| n.starts_with('.')) {
-            let progid = Key::open(root, &format!(r"{path}\{name}"), view)
-                .and_then(|k| k.text(""))
-                .filter(|p| !p.is_empty())
-                .unwrap_or_else(|| name.clone());
-            pairs.push((name, progid));
-        }
-    }
-    pairs
-}
-
-/// What a ProgId runs and shows: its open command and its icon (user's and machine's).
-fn commands_of(progid: &str) -> Vec<String> {
-    let mut texts = Vec::new();
-    for (root, path, view) in CLASSES {
-        for sub in [r"shell\open\command", "DefaultIcon"] {
-            if let Some(text) =
-                Key::open(root, &format!(r"{path}\{progid}\{sub}"), view).and_then(|k| k.text(""))
-            {
-                texts.push(text);
-            }
-        }
-    }
-    texts
 }
 
 #[cfg(test)]

@@ -14,6 +14,9 @@ use purifex_domain::seeds::seeds_of;
 use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
 use super::find_files::{find_files, UserPlaces};
+use super::find_registry::{
+    discover_extensions, find_associations, find_program_keys, find_values, Hives,
+};
 use crate::registry::{Key, View};
 
 const REPARSE_POINT: u32 = 0x400;
@@ -121,7 +124,15 @@ impl TraceFinder for WindowsTraceFinder {
             found.extend(candidate_at(Path::new(location), true));
         }
         // What is recognised by reference to the app's folder or programs needs no name.
-        found.extend(find_files(&UserPlaces::real(), &names, &seeds_of(app)));
+        let hives = Hives::real();
+        let mut seeds = seeds_of(app);
+        seeds.extensions.extend(discover_extensions(&hives, &seeds));
+        seeds.extensions.sort();
+        seeds.extensions.dedup();
+        found.extend(find_files(&UserPlaces::real(), &names, &seeds));
+        found.extend(find_values(&hives, &seeds));
+        found.extend(find_associations(&hives, &seeds));
+        found.extend(find_program_keys(&hives, &names, &seeds));
         if names.is_empty() {
             return Ok(found);
         }

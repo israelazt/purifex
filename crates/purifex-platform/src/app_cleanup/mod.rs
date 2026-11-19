@@ -3,6 +3,7 @@
 //! quarantine that can give back whatever was removed.
 
 mod find_files;
+mod find_registry;
 mod finder;
 mod launcher;
 mod lnk;

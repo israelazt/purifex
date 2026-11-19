@@ -113,6 +113,74 @@ fn registry_roots() -> [(&'static str, HKEY, &'static str); 3] {
     ]
 }
 
+/// The install folder the app registered, as a candidate (if it is still there).
+fn registered_folder(app: &InstalledApp) -> Vec<Candidate> {
+    app.install_location
+        .as_deref()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .and_then(|location| candidate_at(Path::new(location), true))
+        .into_iter()
+        .collect()
+}
+
+/// The seeds to look with, and the values that point into the app's folder. Besides
+/// the app's own seeds: the extensions it registered in `Classes` (even if they were
+/// not seen before it was uninstalled), and the programs seen in those values
+/// (`...\bin\kdenlive.exe`), whose crash dumps are looked for even when the app was
+/// uninstalled elsewhere.
+fn observed_seeds(app: &InstalledApp, hives: &Hives) -> (Seeds, Vec<Candidate>) {
+    let mut seeds = seeds_of(app);
+    seeds.extensions.extend(discover_extensions(hives, &seeds));
+    let values = find_values(hives, &seeds);
+    let mut exes = seeds.exes.clone();
+    exes.extend(exes_in_values(&values, seeds.folder.as_deref()));
+    let seeds = Seeds::new(seeds.folder.as_deref(), &exes, &seeds.extensions);
+    (seeds, values)
+}
+
+/// Folders, files and shortcuts in the usual places named exactly like the app.
+fn places_named(names: &[String]) -> Vec<Candidate> {
+    if names.is_empty() {
+        return Vec::new();
+    }
+    roots()
+        .iter()
+        .filter_map(|root| fs::read_dir(root).ok())
+        .flat_map(|read| read.flatten().take(10_000))
+        .filter(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let stem = name.strip_suffix(".lnk").unwrap_or(&name).to_string();
+            names.contains(&simple(&stem))
+        })
+        .filter_map(|entry| candidate_at(&entry.path(), false))
+        .collect()
+}
+
+/// Registry keys named exactly like the app, under `Software` of each hive.
+fn keys_named(names: &[String]) -> Vec<Candidate> {
+    if names.is_empty() {
+        return Vec::new();
+    }
+    registry_roots()
+        .into_iter()
+        .filter_map(|(label, root, path)| {
+            Key::open(root, path, View::Bits64).map(|parent| (label, path, parent))
+        })
+        .flat_map(|(label, path, parent)| {
+            parent
+                .subkeys()
+                .into_iter()
+                .filter(|sub| names.contains(&simple(sub)))
+                .map(move |sub| Candidate {
+                    kind: TraceKind::RegistryKey,
+                    location: format!(r"{label}\{path}\{sub}"),
+                    ..Default::default()
+                })
+        })
+        .collect()
+}
+
 impl TraceFinder for WindowsTraceFinder {
     fn candidates(&self, app: &InstalledApp) -> Result<Vec<Candidate>, String> {
         self.search(app).map(|f| f.candidates)
@@ -120,25 +188,8 @@ impl TraceFinder for WindowsTraceFinder {
 
     fn search(&self, app: &InstalledApp) -> Result<Found, String> {
         let names = names_of(app);
-        let mut found = Vec::new();
-        if let Some(location) = app
-            .install_location
-            .as_deref()
-            .map(str::trim)
-            .filter(|l| !l.is_empty())
-        {
-            found.extend(candidate_at(Path::new(location), true));
-        }
-        // What is recognised by reference to the app's folder or programs needs no name.
         let hives = Hives::real();
-        let mut seeds = seeds_of(app);
-        seeds.extensions.extend(discover_extensions(&hives, &seeds));
-        let values = find_values(&hives, &seeds);
-        // Programs seen in what points into the folder (`...in\kdenlive.exe`) are the
-        // programs whose crash dumps to look for, even for an app uninstalled elsewhere.
-        let mut exes = seeds.exes.clone();
-        exes.extend(exes_in_values(&values, seeds.folder.as_deref()));
-        let seeds = Seeds::new(seeds.folder.as_deref(), &exes, &seeds.extensions);
+        let (seeds, values) = observed_seeds(app, &hives);
         let (files, complete) = find_files(&UserPlaces::real(), &names, &seeds, FILES_BUDGET);
         if !complete {
             purifex_domain::log_warn!(
@@ -146,46 +197,17 @@ impl TraceFinder for WindowsTraceFinder {
                 app.name
             );
         }
-        found.extend(files);
-        found.extend(values);
-        found.extend(find_associations(&hives, &seeds));
-        found.extend(find_program_keys(&hives, &names, &seeds));
-        if names.is_empty() {
-            return Ok(Found {
-                seeds,
-                candidates: found,
-            });
-        }
-        for root in roots() {
-            let Ok(read) = fs::read_dir(&root) else {
-                continue;
-            };
-            for entry in read.flatten().take(10_000) {
-                let name = entry.file_name().to_string_lossy().into_owned();
-                let stem = name.strip_suffix(".lnk").unwrap_or(&name);
-                if names.contains(&simple(stem)) {
-                    found.extend(candidate_at(&entry.path(), false));
-                }
-            }
-        }
-        for (label, root, path) in registry_roots() {
-            let Some(parent) = Key::open(root, path, View::Bits64) else {
-                continue;
-            };
-            for sub in parent.subkeys() {
-                if names.contains(&simple(&sub)) {
-                    found.push(Candidate {
-                        kind: TraceKind::RegistryKey,
-                        location: format!(r"{label}\{path}\{sub}"),
-                        ..Default::default()
-                    });
-                }
-            }
-        }
-        Ok(Found {
-            seeds,
-            candidates: found,
-        })
+        let candidates = [
+            registered_folder(app),
+            files,
+            values,
+            find_associations(&hives, &seeds),
+            find_program_keys(&hives, &names, &seeds),
+            places_named(&names),
+            keys_named(&names),
+        ]
+        .concat();
+        Ok(Found { seeds, candidates })
     }
 }
 

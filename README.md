@@ -20,6 +20,7 @@ Antes de cada commit: `powershell -File tools/check.ps1` (formato, clippy sin av
 | `purifex sessions [--json]` | Lista las grabaciones, la más nueva primero |
 | `purifex analyze [nombre] [--json]` | Analiza una grabación (por defecto, la última) |
 | `purifex compare [antes después] [--json]` | Compara dos partidas (por defecto, las dos últimas): qué mejoró, qué empeoró y qué quedó igual |
+| `purifex fixes` · `purifex fix apply ID [--yes]` · `purifex fix undo N [--yes]` · `purifex history` | Arreglos: se proponen solo con una partida medida que los justifique, se explican, se anotan y se deshacen. Sin `--yes` solo dicen qué harían |
 | `purifex ui [--screenshot ARCHIVO.png]` | Abre la interfaz (o la guarda como imagen) |
 | `purifex help` | La ayuda |
 

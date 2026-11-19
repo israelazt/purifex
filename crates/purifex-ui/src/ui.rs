@@ -10,7 +10,7 @@ use purifex_domain::view::{Action, Model, Page};
 
 use crate::canvas::{Canvas, Hit};
 use crate::theme::{self, PAGE_PAD, SIDEBAR_W, TOPBAR_H};
-use crate::{drivers_page, overview_page, sessions_page, shell};
+use crate::{drivers_page, fixes_page, overview_page, sessions_page, shell};
 
 /// What an event asks of the window: draw again, and these actions.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -110,6 +110,7 @@ impl Ui {
             Page::Overview => overview_page::draw(&mut c, model, area),
             Page::Drivers => drivers_page::draw(&mut c, model, area),
             Page::Sessions => sessions_page::draw(&mut c, model, area),
+            Page::Fixes => fixes_page::draw(&mut c, model, area),
         };
         c.unclip();
         self.content_height = used + 28.0 + 24.0;

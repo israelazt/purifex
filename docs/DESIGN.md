@@ -23,7 +23,7 @@ Referencia: `design/screen.png`. Este documento dice **qué se toma de ella, qu�
 La referencia es un *mockup* con un lenguaje de «kernel / Ring0 / bypass de telemetría / inyección» que **Purifex no puede ni debe prometer**. Se adopta el aspecto, no esos mensajes:
 
 - **Textos veraces.** Cada cifra y cada etiqueta sale de un dato medido (`scan`, `watch`). Nada de «DMA Ring-0», «bypass de telemetría», «WHQL Root 2025» ni cifras de ejemplo. Si un dato no existe todavía, la tarjeta dice «sin datos», no inventa.
-- **Sin acciones que aún no existen.** «Inyectar», «Actualizar» y «Desplegar parches» no se dibujan hasta que haya instalación real (bloques 4–6 del plan). Lo que sí hay: **Reescanear** y consultar partidas. Las secciones futuras (Arreglos, Historial) aparecen apagadas con la insignia «pronto».
+- **Sin acciones que aún no existen.** «Inyectar», «Actualizar» y «Desplegar parches» no se dibujan hasta que haya instalación real (bloques 4–6 del plan). Lo que sí hay: **Reescanear** y consultar partidas. Los botones que cambian algo (Aplicar, Deshacer) piden una confirmación en línea antes de actuar.
 - **Latencia DPC en µs → tiempo en DPC/interrupciones en %**, que es lo que Purifex mide de verdad (p95 de la partida).
 - **Sin barra de ventana propia:** la ventana usa el marco nativo de Windows, con la barra de título oscura (Windows 11).
 - **Nombres en español** y sin jerga innecesaria («Controladores» no «Firmware & Drivers» salvo que sea firmware).
@@ -35,8 +35,7 @@ La referencia es un *mockup* con un lenguaje de «kernel / Ring0 / bypass de tel
 | Estado general | `gauge` | 4 tarjetas (DPC, drivers, limitante principal, GPU), pistas del diagnóstico, consola de eventos, principios |
 | Drivers | `layers` | Buscador, filtros por categoría con contador, tabla de dispositivos (agrupados), reescaneo |
 | Partidas | `gamepad-2` | Lista de grabaciones y, al elegir una, sus indicadores y pistas |
-| Arreglos | `sliders-horizontal` | Apagada («pronto») |
-| Historial | `history` | Apagada («pronto») |
+| Arreglos | `sliders-horizontal` | Lo que Purifex propone (con la medición que lo justifica, qué cambia, cómo se deshace y qué lo bloquea), la confirmación en línea y el historial de cambios con «Deshacer» |
 
 ## Sistema de diseño
 

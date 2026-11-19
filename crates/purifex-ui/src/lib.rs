@@ -8,6 +8,7 @@
 pub mod canvas;
 mod compare_panel;
 pub mod drivers_page;
+pub mod fixes_page;
 mod overview_cards;
 pub mod overview_page;
 mod overview_panels;

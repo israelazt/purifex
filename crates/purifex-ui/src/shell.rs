@@ -130,7 +130,7 @@ fn row(
 struct NavItem<'a> {
     icon: &'static str,
     label: &'a str,
-    /// `None` for the ones that are coming: they cannot be clicked.
+    /// `None` for one that is not available yet: it is shown dimmed and cannot be clicked.
     page: Option<Page>,
     badge: Option<(String, Tone)>,
 }
@@ -241,6 +241,12 @@ pub fn sidebar(c: &mut Canvas, m: &Model, height: f32) {
         .sessions
         .as_ref()
         .map(|s| (s.len().to_string(), Tone::Gray));
+    // The number of fixes on offer, once they have been read.
+    let fixes_badge = m
+        .fixes
+        .as_ref()
+        .filter(|f| !f.is_empty())
+        .map(|f| (f.len().to_string(), Tone::Amber));
     let items = [
         NavItem {
             icon: "gauge",
@@ -263,14 +269,8 @@ pub fn sidebar(c: &mut Canvas, m: &Model, height: f32) {
         NavItem {
             icon: "sliders-horizontal",
             label: "Arreglos",
-            page: None,
-            badge: None,
-        },
-        NavItem {
-            icon: "history",
-            label: "Historial",
-            page: None,
-            badge: None,
+            page: Some(Page::Fixes),
+            badge: fixes_badge,
         },
     ];
     for item in &items {
@@ -337,7 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn the_sidebar_has_a_click_place_for_each_page_and_none_for_the_ones_that_are_coming() {
+    fn the_sidebar_has_a_click_place_for_each_page() {
         let mut c = Canvas::new(&FakeText, None);
         sidebar(&mut c, &Model::default(), 900.0);
         let (texts, hits) = texts(c);
@@ -347,7 +347,8 @@ mod tests {
             [
                 Action::Go(Page::Overview),
                 Action::Go(Page::Drivers),
-                Action::Go(Page::Sessions)
+                Action::Go(Page::Sessions),
+                Action::Go(Page::Fixes)
             ]
         );
         for expected in [
@@ -355,12 +356,12 @@ mod tests {
             "Drivers",
             "Partidas",
             "Arreglos",
-            "Historial",
             "NAVEGACIÓN",
         ] {
             assert!(texts.iter().any(|t| t == expected), "{expected}");
         }
-        assert!(texts.iter().any(|t| t == "PRONTO"));
+        // Nothing is shown as "coming soon": the history is part of the fixes page.
+        assert!(!texts.iter().any(|t| t == "PRONTO" || t == "Historial"));
     }
 
     #[test]

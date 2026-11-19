@@ -4,6 +4,9 @@ Objetivo: llevar a otros proyectos lo que ya funciona aquí (la interfaz nativa,
 
 Principio rector: **Purifex es el primer cliente de la librería, no su víctima.** Cada paso deja a Purifex igual (mismas capturas, mismas pruebas, CI en verde) y la librería sale como consecuencia, no como un rediseño.
 
+
+**Decisión de 2026-11-18: repositorios separados desde el principio** (el trabajo va a ser público y se usará como portafolio). Eso cambia el orden: la librería **no** vive primero dentro de Purifex; se crea su repositorio pronto y Purifex pasa a consumirla. Lo que se conserva: Purifex sigue siendo el primer cliente y **no se rompe** (mismas capturas, mismas pruebas, CI en verde en cada paso).
+
 ---
 
 ## 1. Inventario medido
@@ -85,18 +88,20 @@ Cada tarea cierra con **pruebas, `tools/check.ps1`, clippy de Linux, commit, pus
 - 0.7 Registro de iconos extensible.
 **Aceptación de la fase:** capturas idénticas, 0 cambios de comportamiento, CPU en reposo 0 %.
 
-### Fase 1 · Crates de la librería dentro del mismo repositorio
-- 1.1 Crear `libs/fex-core`, `libs/fex-ui`, `libs/fex-win` como miembros del workspace; **mover** (con `git mv`, conservando historial) el código ya desacoplado; Purifex pasa a depender de ellos por ruta.
-- 1.2 **Generalizar los guardianes**: la lista de dependencias permitidas por crate se lee de un archivo de configuración (`architecture.toml`); `fex-guards` expone las pruebas; Purifex las usa desde ahí. Añadir un guardián nuevo: **ningún crate de `libs/` menciona `purifex`** (texto ni dependencias).
-- 1.3 Ejemplos mínimos que compilan y se capturan: `hello_window` (ventana + una tarjeta), `dialog_demo` (diálogo animado con casillas), `scroll_demo` (lista larga con barra y teclado).
-- 1.4 Documentación: `README` por crate, guía «cómo montar una app nueva sobre la librería», lista de decisiones (este plan).
-**Aceptación:** Purifex compila y pasa **solo** usando los crates de `libs/`; los ejemplos funcionan en la ventana real.
+### Fase 1 · Repositorio `fexarium-ui` (público) y traslado con historial
+- 1.1 **Preparar el repositorio vacío con todo lo de «presentable»** (ver §8): licencia, README, `.gitignore`, CI de Windows y Linux, plantillas de issues, descripción y etiquetas.
+- 1.2 **Trasladar con historial**: clonar Purifex, `git filter-repo --path <los archivos de la librería>` y subir el resultado a `fexarium-ui`, de modo que cada archivo conserva sus commits y su autoría (el historial *es* parte del portafolio).
+- 1.3 Reestructurar en los crates `fex-core`, `fex-ui`, `fex-win`, `fex-guards` (§2); `fex-ui` y `fex-core` compilan y pasan clippy en Linux.
+- 1.4 **Generalizar los guardianes** (`architecture.toml` por proyecto) y añadir el que prohíbe la palabra «purifex» y cualquier dependencia de `purifex-*` dentro de la librería.
+- 1.5 Tres **ejemplos** que compilan y se capturan: `hello_window`, `dialog_demo` (diálogo animado con casillas) y `scroll_demo` (lista larga con barra y teclado).
+- 1.6 Primera etiqueta **`v0.1.0`**.
+**Aceptación:** la librería compila y pasa su CI sola, sin Purifex; los ejemplos funcionan en la ventana real.
 
-### Fase 2 · Sacar a repositorio propio
-- 2.1 Extraer `libs/` a `fexarium-ui` conservando el historial (`git filter-repo --path libs/`); versión **0.1.0**; etiquetas.
-- 2.2 CI propio: Windows (todo) y Linux (`fex-core`, `fex-ui`, `fex-guards`), clippy `-D warnings`, comparación de capturas de los ejemplos.
-- 2.3 Purifex consume la librería por **dependencia de git con etiqueta** (no por ruta). Un `Cargo.toml` con `[patch]` opcional para desarrollar ambos a la vez.
-- 2.4 Procedimiento documentado: cambiar la librería → etiqueta nueva → subir la versión en Purifex.
+### Fase 2 · Purifex pasa a consumir la librería
+- 2.1 En Purifex, sustituir el código trasladado por la dependencia **de git con etiqueta** (`fexarium-ui = { git = "…", tag = "v0.1.0" }`); borrar lo duplicado.
+- 2.2 **Desarrollo conjunto sin esperar etiquetas:** repositorios hermanos en el disco y un `.cargo/config.toml` local (no versionado) con `[patch."https://github.com/israelazt/fexarium-ui"]` apuntando a la copia local. El CI de Purifex siempre usa la etiqueta.
+- 2.3 Procedimiento documentado: cambio en la librería → etiqueta nueva → subir la versión en Purifex → ambos CI en verde.
+**Aceptación:** capturas de Purifex idénticas a las de referencia de la Fase 0; sin código duplicado entre repos.
 
 ### Fase 3 · Segundo proyecto como prueba de verdad
 - 3.1 Crear el proyecto nuevo con la skill `fexarium-rust` ya apuntando a la librería (la skill genera dependencias en lugar de copiar código).
@@ -115,13 +120,14 @@ Cada tarea cierra con **pruebas, `tools/check.ps1`, clippy de Linux, commit, pus
 
 | Fase | Esfuerzo | Riesgo | Se puede parar aquí |
 |---|---|---|---|
-| 0 · Preparar | **L** (la mayor parte del trabajo) | Medio (refactor grande) | Sí: Purifex queda mejor diseñado aunque no haya librería |
-| 1 · Crates internos | M | Bajo | Sí: ya hay librería reutilizable por ruta |
-| 2 · Repositorio propio | S | Bajo | Sí |
+| 0 · Preparar dentro de Purifex | **L** (la mayor parte del trabajo) | Medio (refactor grande) | Sí: Purifex queda mejor diseñado aunque no haya librería |
+| 1 · Repositorio de la librería con historial | M | Medio (dos repos que evolucionan juntos) | Sí: ya hay librería pública reutilizable |
+| 2 · Purifex consume la librería | S–M | Bajo | Sí |
 | 3 · Segundo proyecto | M–L | Medio (la API cambiará) | — |
 | 4 · Mantenimiento | S continuo | Bajo | — |
+| **P · Presentación pública** (§8) | M, **en paralelo** a todo | Bajo | Se hace por repositorio, empezando por Purifex |
 
-Lo que no depende del orden: **la Fase 0.1 (capturas de referencia) va primero**, siempre.
+Lo que no depende del orden: **la Fase 0.1 (capturas de referencia) va primero**, siempre. Y **la Fase P para Purifex puede empezar hoy**: no depende de la librería.
 
 ---
 
@@ -143,13 +149,36 @@ F. **Documentación:** un `README` por crate, tres ejemplos que compilan y una g
 | **Abstracción prematura** (la forma de una sola app) | Fases 0–2 sin prometer estabilidad (`0.x`); congelar `1.0` solo tras un segundo/tercer proyecto |
 | Los genéricos (`Canvas<A>`) complican el código | Alias de tipo en cada app (`type Canvas = fex_ui::Canvas<Action>`); se prueba en la Fase 0 antes de mover nada |
 | Refactor grande rompe lo visual | 0.1 primero; capturas de referencia por cada paso |
-| Mantener dos repositorios | Monorepo interno primero (Fase 1); repo propio solo cuando haya un segundo consumidor |
+| Dos repositorios que evolucionan a la vez (por decisión de publicarlos por separado) | Etiquetas semver, `[patch]` local para desarrollar juntos, CI de cada repo contra la etiqueta, y el traslado se hace **tarde dentro de la Fase 1** (después de la Fase 0, cuando la API ya está desacoplada) |
 | **Renderizador solo Windows** | El límite ya es un trait (`UiHandler` + lista de dibujo): otro backend (p. ej. otro sistema) es posible después sin tocar `fex-ui` |
 | Licencias | Lucide es ISC (la licencia va con el crate); las fuentes (Segoe UI Variable, Cascadia Mono) son **del sistema**, no se redistribuyen |
 | Deriva entre Purifex y la librería | Dependencia por etiqueta + `[patch]` local para desarrollar; CI de Purifex prueba contra la librería |
 
 **Decisiones que necesito de ti**
-1. **Nombre y visibilidad** del repositorio (propongo `fexarium-ui`; ¿público o privado? Si es público, ¿licencia MIT/Apache-2.0?).
-2. **¿Monorepo interno primero?** (recomiendo sí: Fases 0–1 dentro de Purifex y repo propio en la Fase 2.)
-3. **¿Cuál es el segundo proyecto?** Ayuda a elegir qué priorizar de la API (p. ej. si necesita tablas, formularios, gráficas…).
-4. **Alcance multiplataforma:** ¿solo Windows por ahora (recomendado), o hay que dejar prevista otra plataforma?
+1. **Nombre del repositorio de la librería** (propongo `fexarium-ui`) y **licencia** (recomiendo `MIT OR Apache-2.0`, la combinación habitual en Rust).
+2. **Idioma de los README:** inglés para alcance en LinkedIn (con una versión en español), o solo español. Recomiendo **inglés como principal** y español como segundo archivo.
+3. **¿Cuál es el segundo proyecto?** Decide qué priorizar de la API (tablas, formularios, gráficas…).
+4. **Alcance multiplataforma:** solo Windows por ahora (recomendado).
+5. **Correo de los commits:** hoy es el personal; para repositorios públicos puede usarse el de GitHub (`<id>+israelazt@users.noreply.github.com`) a partir de ahora. Reescribir el historial ya publicado es opcional y delicado: no lo recomiendo salvo que quieras ocultarlo.
+
+---
+
+## 8. Presentación pública (LinkedIn / portafolio)
+
+Lo que convierte un buen repositorio en uno que se **entiende en 30 segundos**. Se aplica a cada repositorio (`purifex`, `fexarium-ui`, y la plantilla/skill si se publica).
+
+**Estado de hoy (comprobado):** `purifex` es público pero **sin licencia, sin descripción, sin etiquetas, sin capturas y con el README desactualizado** (37 líneas; no menciona la interfaz, el desinstalador, los diálogos ni el servidor MCP). Sin licencia, por defecto **nadie puede reutilizar el código legalmente**. No hay rutas ni datos personales en los archivos versionados.
+
+**Checklist por repositorio**
+1. **Licencia** (`LICENSE-MIT` y `LICENSE-APACHE`), y la de Lucide (ISC) donde se usan sus iconos.
+2. **README que cuenta una historia:** una frase de qué es; **capturas o un GIF corto** (el diálogo animado, la lista de restos, la barra); qué lo hace distinto (nativo, 0 % de CPU en reposo, sin telemetría, sin proceso residente); **cifras medidas** (1 proceso, ~48 MB frente a 16 procesos y 936 MB de la primera versión web); cómo compilar; arquitectura en un diagrama.
+3. **`ARCHITECTURE.md` y registro de decisiones** (ya hay base: capas, guardianes, planes). Es lo que más impresiona a un revisor técnico.
+4. **Insignias** del CI (Windows y Linux), versión y licencia.
+5. **Descripción, temas (topics) y imagen social** del repositorio (con el logo); fijar los repositorios en el perfil de GitHub.
+6. **Releases:** cada etiqueta publica un `.zip` con `purifex.exe`, su **hash SHA-256** y las notas de versión. Aviso: un `.exe` sin firmar muestra la advertencia de SmartScreen; hay que explicarlo en el README (la firma de código es de pago).
+7. **`CONTRIBUTING`, plantillas de issues y `SECURITY.md`** (cómo reportar un fallo).
+8. **Avisos legales y de responsabilidad:** Purifex **borra y mueve archivos y claves de registro**: dejar claro que se usa bajo responsabilidad propia, que hay vista previa, cuarentena y deshacer, y que se probó con apps de mentira. «League of Legends» es marca de Riot Games: añadir *«no afiliado ni respaldado por Riot Games»*. En la documentación pública, comparar con herramientas como Revo Uninstaller **sin copiar su marca ni su código** («inspirado en herramientas de desinstalación con limpieza de restos»).
+9. **Revisar lo que no es tuyo antes de publicar más:** `design/screen.png` es una referencia de diseño; **confirmar su origen y permiso** antes de dejarla en un repositorio público (si no es tuya, quitarla del historial o sustituirla por capturas propias). Los iconos son Lucide (ISC, con su licencia); las fuentes son del sistema y no se distribuyen.
+10. **Sin datos personales:** ya se comprueba; mantener un chequeo en el CI (rutas de usuario, correos, tokens) para que no entren.
+
+**Contenido para LinkedIn (sin código):** lo que se puede contar con evidencia propia — de una app web de 936 MB a una nativa de 48 MB y 0 % de CPU; cómo se decidió que la IA solo proponga y el código verifique; cómo se probó el desinstalador (apps de mentira, cuarentena con deshacer); y la comparación honesta con Revo (18 archivos y 19 claves frente a 2 carpetas) como punto de partida de la limpieza profunda. Los números salen de las mediciones y pruebas ya documentadas.

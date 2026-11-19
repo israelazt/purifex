@@ -25,6 +25,10 @@ pub enum Command {
     Fixes {
         json: bool,
     },
+    /// The apps installed.
+    Apps {
+        json: bool,
+    },
     /// The MCP server for the user's AI (talks over the standard input and output).
     Mcp,
     /// What Windows Update offers (goes out to the network).
@@ -95,6 +99,7 @@ impl Command {
             Some("sessions") => return Self::parse_sessions(args),
             Some("analyze") => return Self::parse_analyze(args),
             Some("compare") => return Self::parse_compare(args),
+            Some("apps") => return Self::parse_flags(args, |json| Self::Apps { json }),
             Some("mcp") => return Ok(Self::Mcp),
             Some("updates") => return Self::parse_flags(args, |json| Self::Updates { json }),
             Some("fixes") => return Self::parse_flags(args, |json| Self::Fixes { json }),
@@ -319,6 +324,7 @@ impl Command {
                 | Self::Analyze { json: true, .. }
                 | Self::Compare { json: true, .. }
                 | Self::Updates { json: true }
+                | Self::Apps { json: true }
                 | Self::Fixes { json: true }
                 | Self::FixApply { json: true, .. }
                 | Self::FixUndo { json: true, .. }
@@ -349,6 +355,10 @@ impl Command {
                 .map(|r| Outcome::Comparison(Box::new(r)))
                 .map_err(|e| format!("No se pudo comparar: {e}")),
             Self::Updates { .. } => crate::updates_wait::run(services, progress),
+            Self::Apps { .. } => services
+                .apps()
+                .map(Outcome::Apps)
+                .map_err(|e| format!("No se pudieron leer las apps: {e}")),
             Self::Fixes { .. } => services
                 .fixes()
                 .map(Outcome::Fixes)

@@ -36,6 +36,11 @@ pub trait UrlOpener {
     fn open(&self, url: &str) -> Result<(), String>;
 }
 
+/// The apps installed in the computer. Reading it changes nothing.
+pub trait AppInventory {
+    fn apps(&self) -> Result<Vec<crate::apps::InstalledApp>, String>;
+}
+
 /// The clock: today's day, and a monotonic time to measure how long things take.
 pub trait Clock {
     fn today(&self) -> Date;

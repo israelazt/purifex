@@ -11,6 +11,7 @@ Uso:
                                   Analiza una grabación (por defecto, la última)
   purifex compare [ANTES DESPUÉS] [--json]
                                   Compara dos partidas (por defecto, las dos últimas)
+  purifex apps [--json]           Apps instaladas (solo lista)
   purifex mcp                     Servidor MCP para tu IA (lo lanza tu cliente de IA, no se usa a mano)
   purifex updates [--json]        Drivers que ofrece Windows Update (solo lista; no instala)
   purifex fixes [--json]          Arreglos que se proponen, con la medición que los justifica

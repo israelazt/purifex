@@ -2,6 +2,7 @@
 //! server (the MCP one) can use the data itself.
 
 use purifex_domain::analysis::Analysis;
+use purifex_domain::apps::{apps_to_text, InstalledApp};
 use purifex_domain::compare::ComparisonReport;
 use purifex_domain::driver_offers::{offers_to_text, OfferReport};
 use purifex_domain::fix::{history_to_text, proposals_to_text, FixReport, HistoryEntry, Proposal};
@@ -19,6 +20,7 @@ pub enum Outcome {
     Analysis(Box<Analysis>),
     Comparison(Box<ComparisonReport>),
     Offers(OfferReport),
+    Apps(Vec<InstalledApp>),
     Fixes(Vec<Proposal>),
     Fix(Box<FixReport>),
     History(Vec<HistoryEntry>),
@@ -38,6 +40,7 @@ impl Outcome {
             Self::Analysis(analysis) => analysis.to_text(),
             Self::Comparison(report) => report.to_text(),
             Self::Offers(offers) => offers_to_text(offers),
+            Self::Apps(apps) => apps_to_text(apps),
             Self::Fixes(proposals) => proposals_to_text(proposals),
             Self::Fix(report) => report.to_text(),
             Self::History(entries) => history_to_text(entries),
@@ -58,6 +61,7 @@ impl Outcome {
             Self::Offers(report) => {
                 return serde_json::to_string_pretty(report).unwrap_or_else(|_| "{}".into())
             }
+            Self::Apps(apps) => serde_json::json!({ "apps": apps }),
             Self::Fixes(proposals) => serde_json::json!({ "fixes": proposals }),
             Self::Fix(report) => return report.to_json(),
             Self::History(entries) => serde_json::json!({ "history": entries }),

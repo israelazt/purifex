@@ -29,6 +29,8 @@ windows = { workspace = true, features = [
     "Win32_System_Com",
     # Windows Update Agent: what Windows Update offers (read only).
     "Win32_System_UpdateAgent",
+    # The registry (read only): the installed apps.
+    "Win32_System_Registry",
     # ShellExecute: opens a web page in the browser.
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",

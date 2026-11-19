@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 pub mod analysis;
+pub mod apps;
 pub mod compare;
 pub mod date;
 pub mod device;

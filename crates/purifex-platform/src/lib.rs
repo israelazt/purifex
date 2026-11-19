@@ -7,6 +7,8 @@ pub mod decode;
 pub mod nt_layout;
 
 #[cfg(windows)]
+mod apps_registry;
+#[cfg(windows)]
 mod browser;
 #[cfg(windows)]
 mod candidates_file;
@@ -23,6 +25,8 @@ mod log_console;
 #[cfg(windows)]
 mod nt_query;
 #[cfg(windows)]
+mod registry;
+#[cfg(windows)]
 mod sampler;
 #[cfg(windows)]
 mod session_archive;
@@ -33,6 +37,8 @@ mod window;
 #[cfg(windows)]
 mod windows_update;
 
+#[cfg(windows)]
+pub use apps_registry::RegistryApps;
 #[cfg(windows)]
 pub use browser::BrowserOpener;
 #[cfg(windows)]

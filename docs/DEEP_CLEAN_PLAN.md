@@ -213,7 +213,11 @@ Cada tarea termina con **pruebas, `tools/check.ps1`, clippy de Linux, commit, pu
 - **Prueba real:** `purifex ui --find-traces Kdenlive --screenshot …` abre Apps con los restos de Kdenlive ya buscados (7 archivos, 14 del registro, 2 que piden administrador, con el botón).
 - **Límite:** el reinicio solo se ofrece en el diálogo de restos, no desde la orden de terminal (allí basta con abrir la terminal como administrador).
 
-**Falta de este plan:** solo la decisión sobre `CloudStore`.
+**Falta de este plan:** solo la decisión sobre `CloudStore` (3 entradas; recomendación: dejarlas fuera, porque no hay evidencia estable de que sean solo de la app y la sincronización de la cuenta puede devolverlas). Todas las fases (1 a 7) y el criterio B están hechas; CI en verde en `c89a3cd`.
+
+**Lección de la Fase 6:** un módulo de `purifex-platform` que usa `windows` debe ir tras `#[cfg(windows)]`; `tools/check.ps1` ahora también lintea el objetivo Linux, igual que el CI.
+
+**Siguiente (planes aún sin empezar, a pedido):** UNINSTALLER_PLAN (MSIX, servicios/tareas/inicio/firewall, punto de restauración, deshacer desde la interfaz, búsqueda de apps), DRIVERS_PLAN fases 5–7, FASE1 arreglo 2/elevación/bloque 7, COMPONENT_LIBRARY_PLAN fases 0–4.
 
 
 ### Criterio B: comparación con Revo (2026-11-19, Kdenlive real, solo lectura)

@@ -95,6 +95,8 @@ pub struct Model {
     pub finding: Option<String>,
     /// What the quarantine holds (read on the apps page).
     pub quarantine: Option<QuarantineInfo>,
+    /// Whether the program runs as an administrator (read on the apps page).
+    pub elevated: Option<bool>,
     /// The window with the list of traces is open.
     pub traces_open: bool,
     /// Traces of the list the user unchecked (all start checked), by `Trace::key`.

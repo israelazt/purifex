@@ -15,8 +15,8 @@ use purifex_domain::drivers_view::DriversView;
 use purifex_domain::fix::{FixReport, HistoryEntry, Proposal};
 use purifex_domain::overview::Overview;
 use purifex_domain::ports::{
-    AppInventory, Clock, PerformanceSampler, SessionArchive, SessionFile, SystemInventory,
-    UrlOpener,
+    AppInventory, Clock, Elevation, PerformanceSampler, SessionArchive, SessionFile,
+    SystemInventory, UrlOpener,
 };
 use purifex_domain::quarantine::{PurgeReport, QuarantineInfo};
 use purifex_domain::report::{ScanReport, Scope};
@@ -100,6 +100,10 @@ pub trait Services {
     fn empty_quarantine(&mut self, confirmed: bool) -> Result<PurgeReport, String>;
     /// Lets go of what has been in the quarantine for seven days.
     fn expire_quarantine(&mut self) -> Result<PurgeReport, String>;
+    /// Whether the program runs as an administrator.
+    fn is_elevated(&self) -> bool;
+    /// Starts the program again as an administrator, looking for the traces of `resume`.
+    fn restart_elevated(&mut self, resume: Option<&str>) -> Result<(), String>;
     /// An app was seen to disappear from the list: keep what was known of it.
     fn note_uninstalled(&mut self, app: &InstalledApp) -> Result<(), String>;
 }
@@ -115,6 +119,7 @@ pub struct App<I, C, S, C2, F, A> {
     opener: Option<Box<dyn UrlOpener>>,
     inventory: Option<Box<dyn AppInventory>>,
     cleaning: Cleaning,
+    elevation: Option<Box<dyn Elevation>>,
 }
 
 impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
@@ -129,12 +134,20 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
             opener: None,
             inventory: None,
             cleaning: Cleaning::default(),
+            elevation: None,
         }
     }
 
     /// What uninstalls apps and cleans what they leave (none until given).
     pub fn with_cleaning(mut self, cleaning: Cleaning) -> Self {
         self.cleaning = cleaning;
+        self
+    }
+
+    /// What tells whether the program is an administrator and restarts it as one (none
+    /// until given: it then says it is not, and cannot restart).
+    pub fn with_elevation(mut self, elevation: Box<dyn Elevation>) -> Self {
+        self.elevation = Some(elevation);
         self
     }
 
@@ -338,6 +351,18 @@ where
 
     fn expire_quarantine(&mut self) -> Result<PurgeReport, String> {
         self.cleaning.expire_quarantine()
+    }
+
+    fn is_elevated(&self) -> bool {
+        self.elevation.as_ref().is_some_and(|e| e.is_elevated())
+    }
+
+    fn restart_elevated(&mut self, resume: Option<&str>) -> Result<(), String> {
+        let elevation = self
+            .elevation
+            .as_ref()
+            .ok_or("esta versión no sabe reiniciarse como administrador")?;
+        elevation.restart_elevated(resume)
     }
 
     fn note_uninstalled(&mut self, app: &InstalledApp) -> Result<(), String> {

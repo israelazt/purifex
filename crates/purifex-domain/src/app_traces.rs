@@ -104,6 +104,16 @@ impl Trace {
     pub fn is_registry(&self) -> bool {
         matches!(self.kind, TraceKind::RegistryKey | TraceKind::RegistryValue)
     }
+
+    /// Whether Windows lets only an administrator remove it: anything in the registry of the
+    /// machine (`HKLM`), and what is inside Program Files. (The rest the user may remove.)
+    pub fn needs_admin(&self) -> bool {
+        let lower = self.location.to_lowercase();
+        lower.starts_with(r"hklm\")
+            || lower
+                .get(1..)
+                .is_some_and(|rest| rest.starts_with(r":\program files"))
+    }
 }
 
 /// Why a candidate was left alone.
@@ -381,6 +391,32 @@ mod tests {
         let t: Trace = serde_json::from_str(old).unwrap();
         assert_eq!(t.value, None);
         assert_eq!(t.evidence, Evidence::NameMatch);
+    }
+
+    #[test]
+    fn the_registry_of_the_machine_and_program_files_need_an_administrator_and_the_rest_does_not() {
+        let at = |kind: TraceKind, location: &str| Trace {
+            kind,
+            location: location.into(),
+            ..Default::default()
+        };
+        for admin in [
+            at(TraceKind::RegistryKey, r"HKLM\SOFTWARE\Classes\.kdenlive"),
+            at(TraceKind::RegistryValue, r"hklm\software\x"),
+            at(TraceKind::Folder, r"C:\Program Files\Kdenlive"),
+            at(TraceKind::File, r"D:\Program Files (x86)\Old\o.dll"),
+        ] {
+            assert!(admin.needs_admin(), "{}", admin.location);
+        }
+        for user in [
+            at(TraceKind::RegistryKey, r"HKCU\Software\Kdenlive"),
+            at(TraceKind::Folder, r"C:\Users\u\AppData\Local\kdenlive"),
+            at(TraceKind::Folder, r"C:\ProgramData\Kdenlive"),
+            at(TraceKind::File, r"C:\Games\Program Files\x"),
+            at(TraceKind::File, "x"),
+        ] {
+            assert!(!user.needs_admin(), "{}", user.location);
+        }
     }
 
     #[test]

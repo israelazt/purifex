@@ -787,8 +787,30 @@ mod tests {
         apps_page_holding(vec![])
     }
 
+    #[test]
+    fn the_apps_page_reads_whether_the_program_is_an_administrator() {
+        use crate::testing::FakeElevation;
+        assert_eq!(apps_page().core.model().elevated, Some(false));
+        let admin = apps_page_with(
+            vec![],
+            FakeElevation {
+                elevated: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(admin.core.model().elevated, Some(true));
+    }
+
     /// The apps page of a computer whose quarantine already holds these removals.
     fn apps_page_holding(held: Vec<purifex_domain::cleanup_log::CleanupEntry>) -> AppsFixture {
+        apps_page_with(held, crate::testing::FakeElevation::default())
+    }
+
+    /// The apps page of a computer that is (or is not) running as an administrator.
+    fn apps_page_with(
+        held: Vec<purifex_domain::cleanup_log::CleanupEntry>,
+        elevation: crate::testing::FakeElevation,
+    ) -> AppsFixture {
         use crate::testing::{CleanLog, FakeApps, FakeCleaning, FakeFinder};
         use crate::Cleaning;
         use purifex_domain::app_traces::Candidate;
@@ -823,7 +845,8 @@ mod tests {
                     Box::new(FakeCleaning(log.clone())),
                 )
                 .with_clock(Box::new(FakeClock::ticking(0))),
-            ),
+            )
+            .with_elevation(Box::new(elevation)),
         ));
         core.tick();
         core.apply(Action::Go(Page::Apps));

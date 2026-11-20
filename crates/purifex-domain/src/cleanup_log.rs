@@ -82,6 +82,11 @@ pub struct CleanReport {
 }
 
 impl CleanReport {
+    /// How many of the proposed traces only an administrator can remove.
+    pub fn needing_admin(&self) -> usize {
+        self.proposed.iter().filter(|t| t.needs_admin()).count()
+    }
+
     /// The traces the window lists, in the order it lists them: files and folders first,
     /// then the registry, each biggest first. At most `TRACES_LISTED`; when both kinds exist
     /// the registry keeps some room. What does not fit is only removed by taking all.

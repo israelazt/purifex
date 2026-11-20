@@ -396,6 +396,28 @@ impl purifex_domain::ports::CleanupStore for FakeCleaning {
 /// What each fake quarantine copy weighs.
 pub const PURGE_BYTES: u64 = 1024;
 
+/// A program that is (or is not) an administrator, and remembers what it was asked to
+/// restart for; the person can say no.
+#[derive(Clone, Default)]
+pub struct FakeElevation {
+    pub elevated: bool,
+    pub refuses: bool,
+    pub restarted: Rc<RefCell<Vec<Option<String>>>>,
+}
+
+impl purifex_domain::ports::Elevation for FakeElevation {
+    fn is_elevated(&self) -> bool {
+        self.elevated
+    }
+    fn restart_elevated(&self, resume: Option<&str>) -> Result<(), String> {
+        if self.refuses {
+            return Err("no se dio el permiso de administrador".into());
+        }
+        self.restarted.borrow_mut().push(resume.map(String::from));
+        Ok(())
+    }
+}
+
 /// Installed apps that a test can change (an uninstaller finishing removes one).
 #[derive(Clone, Default)]
 pub struct FakeApps(pub Rc<RefCell<Vec<purifex_domain::apps::InstalledApp>>>);

@@ -451,6 +451,40 @@ mod tests {
     }
 
     #[test]
+    fn what_only_an_administrator_can_remove_is_said_while_the_program_is_not_one() {
+        let report = CleanReport {
+            app: "Kdenlive".into(),
+            proposed: vec![
+                Trace {
+                    kind: TraceKind::RegistryKey,
+                    location: r"HKLM\SOFTWARE\Classes\.kdenlive".into(),
+                    ..Default::default()
+                },
+                trace(r"C:\Users\u\AppData\Local\kdenlive", false),
+            ],
+            ..Default::default()
+        };
+        let mut m = model_with(report);
+        m.elevated = Some(false);
+        let v = view(&m).unwrap();
+        let with_note = v
+            .rows
+            .iter()
+            .filter(|r| r.detail.contains("requiere administrador"))
+            .count();
+        assert_eq!(with_note, 1);
+        assert!(v
+            .body
+            .contains("1 de estos restos solo los quita un administrador"));
+        m.elevated = Some(true);
+        let v = view(&m).unwrap();
+        assert!(v.rows.iter().all(|r| !r.detail.contains("administrador")));
+        assert!(!v.body.contains("administrador"));
+        m.elevated = None;
+        assert!(!view(&m).unwrap().body.contains("administrador"));
+    }
+
+    #[test]
     fn emptying_the_quarantine_says_what_goes_and_that_it_cannot_be_put_back() {
         let mut m = Model {
             confirm: Some(Confirm::EmptyQuarantine),

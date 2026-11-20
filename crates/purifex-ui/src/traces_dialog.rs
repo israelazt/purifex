@@ -21,7 +21,7 @@ pub(crate) fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
         icon: "trash-2",
         tone: Tone::Amber,
         title: format!("Restos de {name}"),
-        body: traces_body(report),
+        body: traces_body(m, report),
         more: report.proposed.len().saturating_sub(rows.len()),
         rows,
         aside: Some(Btn {
@@ -59,10 +59,16 @@ pub(crate) fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
 }
 
 /// What the window says above the list; when the search was cut short, that too.
-fn traces_body(report: &CleanReport) -> String {
+fn traces_body(m: &Model, report: &CleanReport) -> String {
     let mut body = "Esto es lo que quedó después de desinstalar. Marca lo que quieras quitar, o elimina todo de una vez sin elegir.".to_string();
     if report.incomplete {
         body.push_str(" La búsqueda se cortó por tiempo y puede faltar algo: pulsa «Buscar otra vez» para completarla.");
+    }
+    let admin = report.needing_admin();
+    if admin > 0 && m.elevated == Some(false) {
+        body.push_str(&format!(
+            " {admin} de estos restos solo los quita un administrador: sin él se quitan los demás y estos se quedan."
+        ));
     }
     body
 }
@@ -81,7 +87,7 @@ fn trace_rows(m: &Model, report: &CleanReport) -> Vec<Row> {
             Row {
                 heading,
                 label: t.location.clone(),
-                detail: row_detail(t),
+                detail: row_detail(t, m.elevated == Some(false)),
                 size: if t.bytes > 0 {
                     size_text(Some(t.bytes / 1024))
                 } else {
@@ -114,11 +120,16 @@ fn group_heading(report: &CleanReport, registry: bool) -> String {
     }
 }
 
-/// What proves the trace is the app's, and for a registry value which value it is.
-fn row_detail(t: &Trace) -> String {
+/// What proves the trace is the app's, which value it is if it is a registry value, and
+/// that it needs an administrator when the program is not one.
+fn row_detail(t: &Trace, without_admin: bool) -> String {
     let proof = t.evidence.label();
-    match &t.value {
+    let mut detail = match &t.value {
         Some(value) => format!("{proof} · valor: {value}"),
         None => proof.to_string(),
+    };
+    if without_admin && t.needs_admin() {
+        detail.push_str(" · requiere administrador");
     }
+    detail
 }

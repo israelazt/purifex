@@ -101,6 +101,17 @@ pub trait CleanupStore {
     fn quarantine_bytes(&self) -> Result<u64, String>;
 }
 
+/// What the program may do about its own permissions. Removing some traces (the registry
+/// of the machine, Program Files) needs an administrator; the program runs without one and
+/// only asks to start again with it when the person agrees.
+pub trait Elevation {
+    /// Whether the program is running as an administrator.
+    fn is_elevated(&self) -> bool;
+    /// Starts the program again as an administrator (Windows asks the person) opening on the
+    /// apps page and looking for the traces of `resume`. `Err` if the person said no.
+    fn restart_elevated(&self, resume: Option<&str>) -> Result<(), String>;
+}
+
 /// The clock: today's day, and a monotonic time to measure how long things take.
 pub trait Clock {
     fn today(&self) -> Date;

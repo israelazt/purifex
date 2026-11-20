@@ -51,7 +51,13 @@ pub fn traces_to_text_for(app: &str, traces: &[Trace]) -> String {
     }
     let mut out = format!("Restos de {app} (nada se ha borrado):\n");
     for t in traces {
-        let mark = if t.user_data { "  [datos tuyos]" } else { "" };
+        let user = if t.user_data { "  [datos tuyos]" } else { "" };
+        let admin = if t.needs_admin() {
+            "  [requiere administrador]"
+        } else {
+            ""
+        };
+        let mark = format!("{user}{admin}");
         let place = match &t.value {
             Some(v) => format!("{}  [valor: {v}]", t.location),
             None => t.location.clone(),
@@ -65,6 +71,13 @@ pub fn traces_to_text_for(app: &str, traces: &[Trace]) -> String {
         );
     }
     let _ = writeln!(out, "\n{}", Counts::of(traces).to_text());
+    let admin = traces.iter().filter(|t| t.needs_admin()).count();
+    if admin > 0 {
+        let _ = writeln!(
+            out,
+            "{admin} de estos restos solo los quita un administrador: abre Purifex como administrador para quitarlos."
+        );
+    }
     out
 }
 

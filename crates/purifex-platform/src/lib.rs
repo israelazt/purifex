@@ -16,6 +16,7 @@ mod browser;
 mod candidates_file;
 #[cfg(windows)]
 mod clock;
+mod elevation;
 #[cfg(windows)]
 mod fixes;
 #[cfg(windows)]
@@ -49,6 +50,8 @@ pub use browser::BrowserOpener;
 pub use candidates_file::JsonlCandidates;
 #[cfg(windows)]
 pub use clock::SystemClock;
+
+pub use elevation::WindowsElevation;
 #[cfg(windows)]
 pub use fixes::{JsonlHistory, SystemFixes};
 #[cfg(windows)]

@@ -40,7 +40,8 @@ fn build_app() -> impl purifex_app::Services + 'static {
     use purifex_platform::{
         BrowserOpener, JsonlCandidates, JsonlHistory, LocalCleanup, LocalSessionArchive,
         LocalSessionFile, RegisteredUninstaller, RegistryApps, SetupApiInventory, SystemClock,
-        SystemFixes, WindowsSampler, WindowsSeedProbe, WindowsTraceFinder, WindowsUpdateOffers,
+        SystemFixes, WindowsElevation, WindowsSampler, WindowsSeedProbe, WindowsTraceFinder,
+        WindowsUpdateOffers,
     };
 
     let scanner = Scanner::new(SetupApiInventory, SystemClock::new());
@@ -64,6 +65,7 @@ fn build_app() -> impl purifex_app::Services + 'static {
         .with_opener(Box::new(BrowserOpener))
         .with_apps(Box::new(RegistryApps))
         .with_cleaning(cleaning)
+        .with_elevation(Box::new(WindowsElevation))
 }
 
 /// The MCP server: it talks over the standard input and output until the client leaves.

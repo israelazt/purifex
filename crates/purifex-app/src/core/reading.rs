@@ -69,6 +69,9 @@ impl Core {
             self.find_traces_of(&name, errors);
         }
         self.read_quarantine();
+        if self.model.elevated.is_none() {
+            self.model.elevated = Some(self.services.is_elevated());
+        }
     }
 
     /// What the quarantine holds, after letting go of what has been there for seven days

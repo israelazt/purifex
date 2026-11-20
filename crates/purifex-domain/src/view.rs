@@ -49,6 +49,9 @@ pub enum Confirm {
     CleanAll(String),
     /// Delete for good what the quarantine holds.
     EmptyQuarantine,
+    /// Start the program again as an administrator, to look again for the traces of the
+    /// app with this name.
+    RestartAsAdmin(String),
 }
 
 /// Which devices the drivers table lists.
@@ -138,6 +141,9 @@ pub enum Action {
     CloseTraces,
     /// Asks to empty the quarantine: the user is asked to confirm, it cannot be undone.
     AskEmptyQuarantine,
+    /// Asks to restart as an administrator (to remove what needs it): the user is asked
+    /// to confirm, and Windows asks once more.
+    AskRestartAsAdmin(String),
     SetFilter(DriverFilter),
     SetQuery(String),
     SelectSession(String),

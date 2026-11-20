@@ -59,6 +59,9 @@ pub struct Reaction {
     /// Call [`UiHandler::tick`] soon: there is work to do (the last picture
     /// showed that something is being read, and now it is read).
     pub tick: bool,
+    /// Close the window: the program has started again somewhere else (as an
+    /// administrator) and this one has nothing left to do.
+    pub quit: bool,
 }
 
 /// What the window needs from the program to run: a picture when it must draw,

@@ -77,6 +77,9 @@ pub struct Screenshot {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct UiOptions {
     pub screenshot: Option<Screenshot>,
+    /// Open on the apps page already looking for the traces of this app (how the program
+    /// starts again as an administrator).
+    pub find_traces: Option<String>,
 }
 
 /// What the program should write, and whether it went well.
@@ -131,6 +134,7 @@ impl Command {
     fn parse_ui<'a>(mut args: impl Iterator<Item = &'a str>) -> Result<Self, String> {
         let (mut path, mut page, mut size, mut scale) =
             (None, Page::Overview, (1440.0, 900.0), 1.0f32);
+        let mut find_traces = None;
         while let Some(arg) = args.next() {
             let mut value = |name: &str| {
                 args.next()
@@ -141,6 +145,7 @@ impl Command {
                 "--page" => page = parse_page(value("--page")?)?,
                 "--size" => size = parse_size(value("--size")?)?,
                 "--scale" => scale = parse_scale(value("--scale")?)?,
+                "--find-traces" => find_traces = Some(value("--find-traces")?.to_string()),
                 other => return Err(format!("opción desconocida: {other}")),
             }
         }
@@ -151,7 +156,10 @@ impl Command {
             height: size.1,
             scale,
         });
-        Ok(Self::Ui(UiOptions { screenshot }))
+        Ok(Self::Ui(UiOptions {
+            screenshot,
+            find_traces,
+        }))
     }
 
     /// An order whose only option is `--json`.
@@ -640,6 +648,16 @@ mod tests {
                 scale: 2.0
             })
         );
+    }
+
+    #[test]
+    fn the_window_can_open_looking_for_the_traces_of_an_app() {
+        let Command::Ui(options) = Command::parse(&["ui", "--find-traces", "OBS Studio"]).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(options.find_traces.as_deref(), Some("OBS Studio"));
+        assert!(Command::parse(&["ui", "--find-traces"]).is_err());
     }
 
     #[test]

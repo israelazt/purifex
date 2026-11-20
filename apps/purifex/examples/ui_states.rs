@@ -104,6 +104,10 @@ mod states {
             "blocked" | "confirm" | "history" | "undo" => fixes_state(ready, state),
             "apps" => apps_state(ready, extra),
             "kdenlive" => kdenlive_state(ready),
+            "kdenlive-admin" => Model {
+                elevated: Some(false),
+                ..kdenlive_state(ready)
+            },
             "offers" => offers_state(ready),
             _ => ready,
         }

@@ -34,6 +34,7 @@ pub(crate) fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
             primary: false,
             action: Some(Action::SelectTraces(!all_checked)),
         }),
+        corner: restart_button(m, report),
         buttons: vec![
             Btn {
                 label: "Cerrar".into(),
@@ -56,6 +57,16 @@ pub(crate) fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
         ],
         cancel: Action::CloseTraces,
     }
+}
+
+/// The way out for the traces that only an administrator can remove.
+fn restart_button(m: &Model, report: &CleanReport) -> Option<Btn> {
+    (report.needing_admin() > 0 && m.elevated == Some(false)).then(|| Btn {
+        label: "Reiniciar como administrador".into(),
+        icon: "shield-check",
+        primary: false,
+        action: Some(Action::AskRestartAsAdmin(report.app.clone())),
+    })
 }
 
 /// What the window says above the list; when the search was cut short, that too.

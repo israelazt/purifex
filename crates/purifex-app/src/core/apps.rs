@@ -79,6 +79,15 @@ impl Core {
         }
     }
 
+    /// Starts the program again as an administrator after the person confirmed (Windows
+    /// asks too). If they said no, nothing changes and the window stays as it was.
+    pub(super) fn restarted_as_admin(&mut self, name: &str) {
+        match self.services.restart_elevated(Some(name)) {
+            Ok(()) => self.quit = true,
+            Err(error) => self.model.error = Some(error),
+        }
+    }
+
     /// Deletes for good what the quarantine holds, after the person confirmed.
     pub(super) fn quarantine_emptied(&mut self) {
         match self.services.empty_quarantine(true) {

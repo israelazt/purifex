@@ -8,7 +8,7 @@ use purifex_app::{Core, Screenshot, Services, UiOptions};
 use purifex_domain::draw::DrawList;
 use purifex_domain::ports::TextMetrics;
 use purifex_domain::ui_event::{Reaction, UiEvent, UiHandler};
-use purifex_domain::view::Action;
+use purifex_domain::view::{Action, Page};
 use purifex_ui::Ui;
 
 /// The application and the interface, as the window sees them.
@@ -45,6 +45,7 @@ impl UiHandler for Handler {
         Reaction {
             redraw: out.redraw || acted,
             tick: self.core.needs_tick(),
+            quit: self.core.wants_quit(),
         }
     }
 
@@ -55,6 +56,7 @@ impl UiHandler for Handler {
         Reaction {
             redraw: changed,
             tick: self.core.needs_tick(),
+            quit: false,
         }
     }
 
@@ -69,10 +71,23 @@ pub fn run(services: Box<dyn Services>, options: UiOptions) -> Result<(), String
         core: Core::new(services),
         ui: Ui::new(),
     };
+    if let Some(name) = options.find_traces {
+        resume_traces(&mut handler.core, name);
+    }
     match options.screenshot {
         Some(shot) => save(&mut handler, &shot),
         None => purifex_platform::run_window("Purifex", 1440.0, 900.0, &mut handler),
     }
+}
+
+/// Opens the apps page and looks for the traces of `name`: where the program, restarted as
+/// an administrator, picks up what the person was doing.
+fn resume_traces(core: &mut Core, name: String) {
+    core.apply(Action::Go(Page::Apps));
+    while core.needs_tick() {
+        core.tick();
+    }
+    core.apply(Action::FindTraces(name));
 }
 
 /// Reads what the page needs, then draws it to a file.

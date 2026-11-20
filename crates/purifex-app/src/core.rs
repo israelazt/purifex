@@ -28,6 +28,8 @@ pub struct Core {
     model: Model,
     /// There is something to read that the model does not have yet.
     pending: bool,
+    /// The program started again as an administrator: the window closes.
+    quit: bool,
     /// The apps of the list before it is read again, to see which one disappeared.
     previous_apps: Option<Vec<purifex_domain::apps::InstalledApp>>,
     /// The app whose uninstaller was started here, when it was last looked for in the
@@ -49,12 +51,18 @@ impl Core {
             pending: true,
             previous_apps: None,
             watching: None,
+            quit: false,
             expired_checked: false,
         }
     }
 
     pub fn model(&self) -> &Model {
         &self.model
+    }
+
+    /// Whether the window should close (the program restarted as an administrator).
+    pub fn wants_quit(&self) -> bool {
+        self.quit
     }
 
     /// Whether `tick` has something to do.
@@ -80,6 +88,7 @@ impl Core {
             Action::OpenTraces => self.open_traces(),
             Action::CloseTraces => self.close_traces(),
             Action::AskEmptyQuarantine => self.ask(Confirm::EmptyQuarantine),
+            Action::AskRestartAsAdmin(name) => self.ask(Confirm::RestartAsAdmin(name)),
             Action::FindTraces(name) => self.find_traces(name),
             Action::RefreshApps => self.refresh_apps(),
             Action::SetFilter(filter) => self.model.filter = filter,
@@ -103,6 +112,7 @@ impl Core {
             Confirm::Clean(name) => return self.cleaned(&name, false),
             Confirm::CleanAll(name) => return self.cleaned(&name, true),
             Confirm::EmptyQuarantine => return self.quarantine_emptied(),
+            Confirm::RestartAsAdmin(name) => return self.restarted_as_admin(&name),
         };
         match result {
             Ok(report) => {
@@ -785,6 +795,43 @@ mod tests {
 
     fn apps_page() -> AppsFixture {
         apps_page_holding(vec![])
+    }
+
+    #[test]
+    fn restarting_as_an_administrator_asks_first_and_then_closes_the_window() {
+        use crate::testing::FakeElevation;
+        let elevation = FakeElevation::default();
+        let restarted = elevation.restarted.clone();
+        let mut core = apps_page_with(vec![], elevation).core;
+        core.apply(Action::AskRestartAsAdmin("Discord".into()));
+        assert_eq!(
+            core.model().confirm,
+            Some(Confirm::RestartAsAdmin("Discord".into()))
+        );
+        assert!(
+            restarted.borrow().is_empty(),
+            "nothing until it is confirmed"
+        );
+        core.apply(Action::CancelConfirm);
+        assert!(!core.wants_quit() && restarted.borrow().is_empty());
+        core.apply(Action::AskRestartAsAdmin("Discord".into()));
+        core.apply(Action::Confirm);
+        assert_eq!(*restarted.borrow(), [Some("Discord".to_string())]);
+        assert!(core.wants_quit());
+    }
+
+    #[test]
+    fn if_the_person_refuses_the_administrator_prompt_the_window_stays() {
+        use crate::testing::FakeElevation;
+        let refusing = FakeElevation {
+            refuses: true,
+            ..Default::default()
+        };
+        let mut core = apps_page_with(vec![], refusing).core;
+        core.apply(Action::AskRestartAsAdmin("Discord".into()));
+        core.apply(Action::Confirm);
+        assert!(!core.wants_quit());
+        assert!(core.model().error.as_deref().unwrap().contains("permiso"));
     }
 
     #[test]

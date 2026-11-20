@@ -55,6 +55,9 @@ pub struct DialogView {
     pub more: usize,
     /// A link-like button at the left of the buttons (select all / none).
     pub aside: Option<Btn>,
+    /// A button in the top right corner, beside the title (a way out of what the dialog
+    /// warns about, which does not fit among the buttons).
+    pub corner: Option<Btn>,
     pub buttons: Vec<Btn>,
     /// What Escape does.
     pub cancel: Action,
@@ -72,6 +75,7 @@ fn confirm_view(title: String, body: &str, yes: &str, icon: &'static str) -> Dia
         rows: vec![],
         more: 0,
         aside: None,
+        corner: None,
         buttons: vec![
             Btn {
                 label: "Cancelar".into(),
@@ -111,6 +115,12 @@ pub fn view(m: &Model) -> Option<DialogView> {
             &empty_quarantine_body(m),
             "Vaciar para siempre",
             "trash-2",
+        )),
+        (Some(Confirm::RestartAsAdmin(name)), _) => Some(confirm_view(
+            "¿Reiniciar Purifex como administrador?".to_string(),
+            &format!("Windows te lo preguntará una vez. Purifex se cierra, se abre de nuevo con permisos de administrador y vuelve a buscar los restos de {name} para que puedas quitarlos todos."),
+            "Reiniciar",
+            "shield-check",
         )),
         (Some(Confirm::Uninstall(id)), _) => {
             let name = m
@@ -243,6 +253,11 @@ pub fn draw(c: &mut Canvas, v: &DialogView, t: f32, width: f32, height: f32) {
 /// The icon, the title and the paragraph of the dialog; returns where the paragraph ends.
 fn heading_and_body(c: &mut Canvas, v: &DialogView, rect: Rect) -> f32 {
     icon_box(c, rect.x + 24.0, rect.y + 24.0, 40.0, v.icon, v.tone);
+    if let Some(b) = &v.corner {
+        let w = button_width(c, &b.label);
+        let place = Rect::new(rect.right() - 24.0 - w, rect.y + 22.0, w, 44.0);
+        button(c, place, &b.label, b.icon, false, b.action.clone());
+    }
     c.text(
         rect.x + 78.0,
         rect.y + 32.0,
@@ -476,8 +491,15 @@ mod tests {
         assert!(v
             .body
             .contains("1 de estos restos solo los quita un administrador"));
+        let corner = v.corner.as_ref().unwrap();
+        assert_eq!(corner.label, "Reiniciar como administrador");
+        assert_eq!(
+            corner.action,
+            Some(Action::AskRestartAsAdmin("Kdenlive".into()))
+        );
         m.elevated = Some(true);
         let v = view(&m).unwrap();
+        assert!(v.corner.is_none());
         assert!(v.rows.iter().all(|r| !r.detail.contains("administrador")));
         assert!(!v.body.contains("administrador"));
         m.elevated = None;

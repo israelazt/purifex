@@ -174,7 +174,7 @@ Cada tarea termina con **pruebas, `tools/check.ps1`, clippy de Linux, commit, pu
 | Un valor con la ruta de la app pero que Windows necesita | Lista fija de claves (cachés y listas de uso), evidencia por ruta con límites, vista previa y deshacer |
 | Quitar de más en `Classes` | Solo con evidencia de asociación y comando dentro de la carpeta de la app; prueba con `.txt` |
 | La app ya no tiene carpeta ni `.exe` al buscar | Semillas capturadas **antes** de desinstalar (3.1); para apps desinstaladas por fuera, solo por nombre y con menos evidencia (se avisa) |
-| HKLM sin permisos | Fase 6; mientras tanto se informa por resto |
+| HKLM sin permisos | Fase 6 hecha: se marca por resto y se ofrece reiniciar como administrador |
 | Lentitud al recorrer `Classes`/Recent | Presupuesto, topes y búsqueda perezosa solo al pedir restos |
 | Coincidencias de nombres cortos/genéricos | Semilla mínima de 3 letras no genéricas (ya); ruta con límites |
 
@@ -206,7 +206,14 @@ Cada tarea termina con **pruebas, `tools/check.ps1`, clippy de Linux, commit, pu
 - **7.3 Espacio:** el panel «Cuarentena» y `purifex apps quarantine [--json]` dicen cuántos restos guarda, cuánto ocupan, desde cuándo y cuántos caducan. Medido en este PC: 2 restos, 4 MB (de pruebas anteriores, sin fecha: no caducan solos).
 - El campo `restores` del registro pasa a llamarse `settles` (con alias, los registros antiguos se leen igual).
 
-**Falta de este plan:** la Fase 6 (permisos de administrador) y la comparación final con Revo (criterio B).
+### Fase 6 hecha (2026-11-19)
+
+- **6.1 Detectar:** el puerto `Elevation` (`is_elevated`, `restart_elevated`) tiene su adaptador de Windows (`WindowsElevation`: el token del proceso y `ShellExecuteExW` con `runas`). `Trace::needs_admin` dice que necesitan administrador las rutas de `HKLM` y lo que está dentro de `Program Files`. El diálogo marca esas filas («requiere administrador») y avisa de cuántas son mientras el programa no es administrador; `purifex apps traces` las marca igual. No se avisa si ya lo es ni antes de haberlo leído.
+- **6.2 Reiniciar:** el botón «Reiniciar como administrador» (esquina del diálogo) pide una confirmación propia y después Windows pregunta (UAC). Si la persona dice que no, nada cambia y la ventana sigue. Si dice que sí, el programa se abre de nuevo con `ui --find-traces "<app>"`, en la página de Apps y ya buscando los restos de esa app, y la ventana anterior se cierra (`Reaction.quit`). El nombre se pasa entre comillas y se rechaza si podría salirse de ellas.
+- **Prueba real:** `purifex ui --find-traces Kdenlive --screenshot …` abre Apps con los restos de Kdenlive ya buscados (7 archivos, 14 del registro, 2 que piden administrador, con el botón).
+- **Límite:** el reinicio solo se ofrece en el diálogo de restos, no desde la orden de terminal (allí basta con abrir la terminal como administrador).
+
+**Falta de este plan:** solo la decisión sobre `CloudStore`.
 
 
 ### Criterio B: comparación con Revo (2026-11-19, Kdenlive real, solo lectura)

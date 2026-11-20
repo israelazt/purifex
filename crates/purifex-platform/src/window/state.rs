@@ -16,7 +16,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     GetClientRect, KillTimer, LoadCursorW, PostMessageW, PostQuitMessage, SetCursor, SetTimer,
     SetWindowPos, HTCLIENT, IDC_ARROW, IDC_HAND, MINMAXINFO, SWP_NOACTIVATE, SWP_NOZORDER, WM_APP,
-    WM_CHAR, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN,
+    WM_CHAR, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN,
     WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR, WM_SETFOCUS,
     WM_SIZE, WM_TIMER, WS_OVERLAPPEDWINDOW,
 };
@@ -77,6 +77,13 @@ impl<H: UiHandler> State<H> {
                 let _ = InvalidateRect(Some(hwnd), None, false);
             }
         }
+        if reaction.quit {
+            // SAFETY: asks a live window to close; closing ends the message loop.
+            unsafe {
+                let _ = PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
+            }
+            return;
+        }
         if reaction.tick {
             // SAFETY: paints at once what was invalidated (so the picture that says
             // "reading" is on screen before the wait), then posts a message to a
@@ -130,7 +137,7 @@ impl<H: UiHandler> State<H> {
                     hwnd,
                     Reaction {
                         redraw: true,
-                        tick: false,
+                        ..Reaction::default()
                     },
                 );
             }
@@ -233,7 +240,7 @@ impl<H: UiHandler> State<H> {
             hwnd,
             Reaction {
                 redraw: true,
-                tick: false,
+                ..Reaction::default()
             },
         );
         HANDLED

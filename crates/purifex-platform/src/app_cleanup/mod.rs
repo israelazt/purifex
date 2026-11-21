@@ -5,6 +5,7 @@
 mod backup;
 mod find_files;
 mod find_registry;
+mod find_services;
 mod finder;
 mod launcher;
 mod lnk;

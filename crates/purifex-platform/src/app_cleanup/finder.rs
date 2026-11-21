@@ -17,6 +17,7 @@ use super::find_files::{find_files, UserPlaces};
 use super::find_registry::{
     discover_extensions, exes_in_values, find_associations, find_program_keys, find_values, Hives,
 };
+use super::find_services::find_services;
 use crate::registry::{Key, View};
 
 const REPARSE_POINT: u32 = 0x400;
@@ -205,6 +206,7 @@ impl TraceFinder for WindowsTraceFinder {
             find_program_keys(&hives, &names, &seeds),
             places_named(&names),
             keys_named(&names),
+            find_services(&seeds),
         ]
         .concat();
         Ok(Found {

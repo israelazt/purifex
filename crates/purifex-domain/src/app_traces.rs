@@ -41,6 +41,8 @@ pub enum Evidence {
     AssociatedExtension,
     /// `<app exe>.<pid>.dmp` in `CrashDumps`.
     CrashDump,
+    /// A service of Windows whose program is inside the app's folder.
+    ServicePath,
 }
 
 impl Evidence {
@@ -54,6 +56,7 @@ impl Evidence {
             Evidence::Association => "asociación de archivo",
             Evidence::AssociatedExtension => "extensión de archivo de la app",
             Evidence::CrashDump => "volcado de error",
+            Evidence::ServicePath => "servicio cuyo programa está en la carpeta de la app",
         }
     }
 }

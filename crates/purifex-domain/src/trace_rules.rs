@@ -65,7 +65,13 @@ struct Ctx<'a> {
 /// A rule answers `None` when the candidate is not its case.
 type Rule = fn(&Ctx) -> Option<Found>;
 
-const KEY_RULES: [Rule; 4] = [classes_key, explorer_extension_key, program_key, tile_key];
+const KEY_RULES: [Rule; 5] = [
+    classes_key,
+    explorer_extension_key,
+    program_key,
+    tile_key,
+    service_key,
+];
 const FILE_RULES: [Rule; 4] = [
     settings_file,
     crash_dump,
@@ -137,6 +143,7 @@ fn why_of(evidence: Evidence) -> &'static str {
         Evidence::NamePrefix => "archivo de ajustes con el nombre de la app",
         Evidence::NameMatch => "lleva el nombre de la app",
         Evidence::RegisteredInstall => "la carpeta de instalación que registró la app",
+        Evidence::ServicePath => "servicio de Windows cuyo programa está en la carpeta de la app",
     }
 }
 
@@ -146,7 +153,11 @@ fn seed_shared(others: &[InstalledApp], app: &InstalledApp, seeds: &Seeds, e: Ev
     let Some(folder) = seeds.folder.as_deref() else {
         return false;
     };
-    if !matches!(e, Evidence::PathReference | Evidence::Association) {
+    let rests_on_folder = matches!(
+        e,
+        Evidence::PathReference | Evidence::Association | Evidence::ServicePath
+    );
+    if !rests_on_folder {
         return false;
     }
     others.iter().filter(|o| o.id != app.id).any(|o| {
@@ -218,6 +229,30 @@ fn classes_key(c: &Ctx) -> Option<Found> {
             Evidence::Association,
             format!(
                 "tipo de archivo cuyo comando está en la carpeta de la app: {}",
+                c.name
+            ),
+        )
+    })
+}
+
+/// The key where Windows keeps its services, one child per service.
+const SERVICES_KEY: &str = r"hklm\system\currentcontrolset\services";
+
+/// A service whose program (`ImagePath`, read by the finder into `text`) is inside the
+/// app's folder: what an uninstaller that did not finish leaves registered, and Windows
+/// keeps trying to start. Only the direct children of the services key, and only through
+/// the folder: a name alone proves nothing here.
+fn service_key(c: &Ctx) -> Option<Found> {
+    if c.parent != SERVICES_KEY {
+        return None;
+    }
+    let folder = c.seeds.folder.as_deref()?;
+    let text = c.candidate.text.as_deref()?;
+    path_refers_to(text, folder).then(|| {
+        (
+            Evidence::ServicePath,
+            format!(
+                "servicio de Windows cuyo programa está en la carpeta de la app: {}",
                 c.name
             ),
         )
@@ -419,6 +454,51 @@ mod tests {
 
     fn evidence(c: &Candidate) -> Evidence {
         judge(c, &[]).unwrap().evidence
+    }
+
+    const SERVICES: &str = r"HKLM\SYSTEM\CurrentControlSet\Services";
+
+    #[test]
+    fn a_service_whose_program_is_in_the_apps_folder_is_proposed_and_only_through_the_folder() {
+        let service = |name: &str, image: &str, parent: &str| {
+            cand(
+                TraceKind::RegistryKey,
+                &format!(r"{parent}\{name}"),
+                None,
+                Some(image),
+            )
+        };
+        let own = service(
+            "KdenliveHelper",
+            r#""C:\Program Files\Kdenlive\bin\helper.exe" -service"#,
+            SERVICES,
+        );
+        let t = judge(&own, &[]).unwrap();
+        assert_eq!(t.evidence, Evidence::ServicePath);
+        assert!(t.needs_admin());
+        // The name is the app's but the program is somewhere else: not proved.
+        let by_name = service(
+            "Kdenlive",
+            r"C:\Windows\System32\svchost.exe -k x",
+            SERVICES,
+        );
+        assert!(judge(&by_name, &[]).is_err());
+        // A folder of another app that only starts like this one.
+        let other = service("Other", r"C:\Program Files\Kdenlive2\x.exe", SERVICES);
+        assert!(judge(&other, &[]).is_err());
+        // The same text under any other key is not a service.
+        let elsewhere = service(
+            "KdenliveHelper",
+            r"C:\Program Files\Kdenlive\x.exe",
+            r"HKLM\SOFTWARE\Foo",
+        );
+        assert!(judge(&elsewhere, &[]).is_err());
+        // Another installed app lives in that folder: it is not taken.
+        let shared = InstalledApp {
+            install_location: Some(DIR.into()),
+            ..app("Other app", None)
+        };
+        assert!(judge(&own, &[shared]).is_err());
     }
 
     const MUI: &str =

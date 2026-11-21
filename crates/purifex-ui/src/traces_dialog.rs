@@ -150,7 +150,10 @@ fn trace_rows(m: &Model, report: &CleanReport) -> Vec<Row> {
             Row {
                 heading,
                 label: t.location.clone(),
-                detail: row_detail(t, m.elevated == Some(false)),
+                detail: match m.stuck.iter().find(|(key, _)| *key == t.key()) {
+                    Some((_, why)) => format!("no se pudo quitar: {why}"),
+                    None => row_detail(t, m.elevated == Some(false)),
+                },
                 size: if t.bytes > 0 {
                     size_text(Some(t.bytes / 1024))
                 } else {

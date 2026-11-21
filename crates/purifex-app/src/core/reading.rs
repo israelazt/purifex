@@ -120,7 +120,9 @@ impl Core {
         self.model.unchecked = report
             .listed()
             .into_iter()
-            .filter(|t| t.evidence.is_guess())
+            .filter(|t| {
+                t.evidence.is_guess() || self.model.stuck.iter().any(|(k, _)| *k == t.key())
+            })
             .map(|t| t.key())
             .collect();
         let counts = Counts::of(&report.proposed).to_text();

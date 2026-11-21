@@ -79,7 +79,11 @@ impl Core {
             self.model.traces.as_ref().map(|r| {
                 r.listed()
                     .into_iter()
-                    .filter(|t| !t.evidence.is_guess() || !self.model.unchecked.contains(&t.key()))
+                    .filter(|t| {
+                        let key = t.key();
+                        let stuck = self.model.stuck.iter().any(|(k, _)| *k == key);
+                        !stuck && (!t.evidence.is_guess() || !self.model.unchecked.contains(&key))
+                    })
                     .map(|t| t.key())
                     .collect()
             })
@@ -100,6 +104,12 @@ impl Core {
             Ok(report) => {
                 (self.model.traces_open, self.model.unchecked) = (false, Vec::new());
                 let (done, failed) = (report.removed.len(), report.failed.len());
+                // What failed now is added to what failed before for this app: it stays left alone.
+                for (t, why) in &report.failed {
+                    let key = t.key();
+                    self.model.stuck.retain(|(k, _)| *k != key);
+                    self.model.stuck.push((key, why.clone()));
+                }
                 self.model.message = Some(format!(
                     "Se quitaron {done} restos de {name} a la cuarentena{}. Para devolverlos: purifex apps restore N.",
                     if failed > 0 { format!(" ({failed} no se pudieron quitar)") } else { String::new() }

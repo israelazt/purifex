@@ -81,6 +81,9 @@ impl Core {
     }
 
     pub(super) fn find_traces(&mut self, name: String) {
+        if self.model.uninstalled.as_deref() != Some(&name) {
+            self.model.stuck.clear();
+        }
         (self.model.traces, self.model.message) = (None, None);
         (self.model.uninstalled, self.model.finding) = (Some(name.clone()), Some(name));
         self.expect_reading();

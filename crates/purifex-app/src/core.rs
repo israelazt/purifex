@@ -1939,4 +1939,36 @@ mod tests {
         assert!(c.model().error.as_deref().unwrap().contains("explorer.exe"));
         assert_eq!(*processes.closed.borrow(), [10]);
     }
+
+    #[test]
+    fn what_could_not_be_removed_comes_back_unchecked_with_why_and_everything_leaves_it_alone() {
+        use crate::testing::FakeApps;
+        let (mut c, log) = two_traces_core(&FakeApps::default());
+        log.borrow_mut().stuck = vec![r"C:\ProgramData\OBS Studio".into()];
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        c.tick();
+        c.apply(Action::AskCleanAll("OBS Studio".into()));
+        c.apply(Action::Confirm);
+        assert_eq!(c.model().stuck.len(), 1);
+        assert!(c.model().stuck[0].1.contains("en uso"));
+        // Looking again lists it unchecked, and asking for everything does not try it again.
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        c.tick();
+        assert_eq!(c.model().unchecked, [c.model().stuck[0].0.clone()]);
+        let tried = log.borrow().removed.len();
+        c.apply(Action::AskCleanAll("OBS Studio".into()));
+        c.apply(Action::Confirm);
+        assert_eq!(
+            log.borrow().removed.len(),
+            tried + 1,
+            "only the one that was not stuck"
+        );
+        assert_eq!(c.model().stuck.len(), 1, "it is still remembered");
+        // Another app starts clean.
+        c.apply(Action::FindTraces("Other App".into()));
+        assert!(c.model().stuck.is_empty());
+    }
 }

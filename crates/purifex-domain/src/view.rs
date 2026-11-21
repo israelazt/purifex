@@ -143,6 +143,9 @@ pub struct Model {
     pub traces_open: bool,
     /// Traces of the list the user unchecked (all start checked), by `Trace::key`.
     pub unchecked: Vec<String>,
+    /// What the last removal could not take, by `Trace::key`, with why. It starts unchecked and
+    /// «everything» leaves it alone, so the same list does not come back to fail again.
+    pub stuck: Vec<(String, String)>,
     /// What an apps action did, in a sentence.
     pub message: Option<String>,
     /// Something is being read: the picture says so before the wait.

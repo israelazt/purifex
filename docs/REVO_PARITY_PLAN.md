@@ -123,17 +123,26 @@ y entrada de inicio de una app de prueba: salen a la cuarentena y vuelven):
   (`shell`) y manejadores (`ContextMenuHandlers`) del menú contextual que ejecutan o cargan un programa
   de la carpeta, solo en los sitios fijos. La búsqueda ejecuta estos pasos en paralelo: 0,8 s en
   este PC (1,6 s en serie).
+- **Borrado al reiniciar** (`d5191b1`, `253b45d`): lo que un programa tiene abierto no se puede mover a
+  la cuarentena. Se detecta de verdad (abrir sin compartir falla solo si hay otro manejador abierto) y
+  el panel «Restos de X en uso» ofrece «Borrar al reiniciar (N)» con una advertencia: Windows lo borra
+  en el próximo arranque y **no se puede devolver**; hace falta administrador. Solo se entrega lo que las
+  reglas aún proponen para una app que ya no está y que sigue abierto; cada uno queda en el registro
+  (estado `Scheduled`) sin copia. Sin administrador no se programa nada y la oferta se queda.
 - Hallazgo de seguridad que destapó una prueba: otra app instalada en la misma carpeta ahora bloquea
   también servicios y tareas.
 
 Falta de R3: bibliotecas de tipos (TypeLib), otros sitios de Windows (SharedDLLs, Installer),
-escanear a todos los usuarios, los tres modos, el borrado al reiniciar y la lista como árbol.
+escanear a todos los usuarios, los tres modos y la lista como árbol.
 
 Notas:
 - Las tareas siempre se marcan «requiere administrador»: las de máquina las crea un instalador con
   permisos y no hay forma barata de saber de antemano cuáles puede borrar el usuario.
 - Una ruta con acentos dentro de una tarea puede no reconocerse (`schtasks` escribe en la página de
   códigos de la consola): no se ha medido.
+- El borrado al reiniciar con administrador no se ha probado de verdad (programaría el borrado de
+  archivos reales): sí el orden (archivos antes que su carpeta), la detección de «en uso» y el rechazo
+  sin administrador.
 - Servicios no se probaron con uno real (crear uno pide administrador): sí el buscador sobre una
   rama de prueba del registro y la regla del dominio.
 

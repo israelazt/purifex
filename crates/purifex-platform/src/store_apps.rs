@@ -12,12 +12,20 @@ pub struct StorePackages;
 
 impl AppInventory for StorePackages {
     fn apps(&self) -> Result<Vec<InstalledApp>, String> {
+        init_com();
         let manager = PackageManager::new().map_err(|e| format!("paquetes de la Tienda: {e}"))?;
         let packages = manager
             .FindPackagesByUserSecurityId(&HSTRING::new())
             .map_err(|e| format!("paquetes de la Tienda: {e}"))?;
         Ok(packages.into_iter().filter_map(|p| app_of(&p)).collect())
     }
+}
+
+/// The package manager is a Windows Runtime object: the thread that uses it needs COM. It is
+/// harmless if the thread already has it (the answer is ignored on purpose).
+fn init_com() {
+    // SAFETY: initialises COM for the calling thread before the first call that needs it.
+    let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
 }
 
 /// Removes the packages of the Store for the current user, the way Windows' own list of apps
@@ -46,8 +54,7 @@ impl Uninstaller for StoreUninstaller {
 
 /// Removes the package for the current user and waits for the system to finish.
 fn remove(full_name: &str) -> Result<(), String> {
-    // SAFETY: initialises COM for this thread, once, before the first call that needs it.
-    let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+    init_com();
     let manager = PackageManager::new().map_err(|e| e.to_string())?;
     let result = manager
         .RemovePackageWithOptionsAsync(&HSTRING::from(full_name), RemovalOptions::None)
@@ -102,6 +109,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "uses the real package manager: tools/check.ps1 runs it on this computer"]
     fn the_store_packages_of_this_computer_can_be_listed() {
         // It depends on the computer: what matters is that the call works and every
         // package it returns is a store app with a name and an id.
@@ -122,6 +130,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "uses the real package manager: tools/check.ps1 runs it on this computer"]
     fn removing_a_package_that_is_not_installed_fails_with_windows_own_reason() {
         // Nothing of this computer is touched: the package does not exist.
         let error = remove("Purifex.NoExiste_1.0.0.0_x64__0000000000000").unwrap_err();

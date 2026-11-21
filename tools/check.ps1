@@ -13,4 +13,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 cargo clippy --target x86_64-unknown-linux-gnu -p purifex-domain -p purifex-app -p purifex-platform -p purifex-ui --all-targets -- -D warnings
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 cargo test --workspace
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+# The tests that use the real package manager depend on the machine, so CI skips them.
+cargo test -p purifex-platform --lib store_apps -- --ignored
 exit $LASTEXITCODE

@@ -8,10 +8,12 @@ use crate::apps::InstalledApp;
 use crate::reference::path_refers_to;
 use crate::seeds::Seeds;
 
+mod system;
+
 /// Keys (below `HKCU\Software` or `HKLM\SOFTWARE`) that only hold caches and usage
 /// lists of Windows: one *value* of them may be the app's. Lowercase, with the hive
 /// stripped.
-const VALUE_KEYS: [&str; 8] = [
+const VALUE_KEYS: [&str; 10] = [
     r"\microsoft\windows\shell\muicache",
     r"\microsoft\windows nt\currentversion\appcompatflags\compatibility assistant\store",
     r"\microsoft\windows nt\currentversion\appcompatflags\layers",
@@ -20,6 +22,9 @@ const VALUE_KEYS: [&str; 8] = [
     r"\microsoft\windows\currentversion\explorer\featureusage\showjumpview",
     r"\microsoft\windows\currentversion\search\jumplistdata",
     r"\microsoft\windows\currentversion\applicationassociationtoasts",
+    // What starts with Windows: one value is one program (the 32-bit view ends the same way).
+    r"\microsoft\windows\currentversion\run",
+    r"\microsoft\windows\currentversion\runonce",
 ];
 
 /// Keys of Explorer with one child per file extension.
@@ -70,9 +75,9 @@ const KEY_RULES: [Rule; 5] = [
     explorer_extension_key,
     program_key,
     tile_key,
-    service_key,
+    system::service_key,
 ];
-const TASK_RULES: [Rule; 1] = [task_action];
+const TASK_RULES: [Rule; 1] = [system::task_action];
 const FILE_RULES: [Rule; 4] = [
     settings_file,
     crash_dump,
@@ -235,46 +240,6 @@ fn classes_key(c: &Ctx) -> Option<Found> {
             Evidence::Association,
             format!(
                 "tipo de archivo cuyo comando está en la carpeta de la app: {}",
-                c.name
-            ),
-        )
-    })
-}
-
-/// The key where Windows keeps its services, one child per service.
-const SERVICES_KEY: &str = r"hklm\system\currentcontrolset\services";
-
-/// A service whose program (`ImagePath`, read by the finder into `text`) is inside the
-/// app's folder: what an uninstaller that did not finish leaves registered, and Windows
-/// keeps trying to start. Only the direct children of the services key, and only through
-/// the folder: a name alone proves nothing here.
-fn service_key(c: &Ctx) -> Option<Found> {
-    if c.parent != SERVICES_KEY {
-        return None;
-    }
-    let folder = c.seeds.folder.as_deref()?;
-    let text = c.candidate.text.as_deref()?;
-    path_refers_to(text, folder).then(|| {
-        (
-            Evidence::ServicePath,
-            format!(
-                "servicio de Windows cuyo programa está en la carpeta de la app: {}",
-                c.name
-            ),
-        )
-    })
-}
-
-/// A scheduled task whose action (`text`: the commands it runs, read by the finder) runs a
-/// program inside the app's folder: the updater or the starter that an uninstaller left.
-fn task_action(c: &Ctx) -> Option<Found> {
-    let folder = c.seeds.folder.as_deref()?;
-    let text = c.candidate.text.as_deref()?;
-    path_refers_to(text, folder).then(|| {
-        (
-            Evidence::TaskAction,
-            format!(
-                "tarea programada que ejecuta un programa de la app: {}",
                 c.name
             ),
         )
@@ -572,10 +537,35 @@ mod tests {
     }
 
     #[test]
+    fn what_starts_with_windows_is_taken_when_it_runs_a_program_of_the_apps_folder() {
+        let command = r#""C:\Program Files\Kdenlive\update.exe" /silent"#;
+        for key in [
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce",
+            r"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run",
+        ] {
+            let c = cand(
+                TraceKind::RegistryValue,
+                key,
+                Some("KdenliveUpdater"),
+                Some(command),
+            );
+            assert_eq!(evidence(&c), Evidence::PathReference, "{key}");
+        }
+        let other = cand(
+            TraceKind::RegistryValue,
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            Some("Otra"),
+            Some(r"C:\Program Files\Kdenlive2\a.exe"),
+        );
+        assert_eq!(judge(&other, &[]), Err(Refusal::NotTheApps));
+    }
+
+    #[test]
     fn a_value_in_a_key_off_the_list_or_of_another_app_is_left_alone() {
         let name = r"C:\Program Files\Kdenlive\bin\k.exe";
         for key in [
-            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Policies\Run",
             r"HKCU\Software\Whatever",
             r"HKLM\SYSTEM\CurrentControlSet\Services\x",
         ] {

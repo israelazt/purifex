@@ -38,7 +38,7 @@ impl Hives {
 
 /// Keys of Windows that only hold caches and usage lists, with the hives they live in
 /// (`true`: also machine-wide). One value of them may be the app's.
-const VALUE_KEYS: [(&str, bool); 8] = [
+const VALUE_KEYS: [(&str, bool); 12] = [
     (
         r"Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache",
         false,
@@ -70,6 +70,14 @@ const VALUE_KEYS: [(&str, bool); 8] = [
     (
         r"Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts",
         false,
+    ),
+    // What starts with Windows, for the user and for the machine (both views of it).
+    (r"Microsoft\Windows\CurrentVersion\Run", true),
+    (r"Microsoft\Windows\CurrentVersion\RunOnce", true),
+    (r"WOW6432Node\Microsoft\Windows\CurrentVersion\Run", true),
+    (
+        r"WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce",
+        true,
     ),
 ];
 
@@ -454,6 +462,45 @@ mod tests {
             .as_deref()
             .unwrap()
             .ends_with("fake.exe.FriendlyAppName"));
+    }
+
+    #[test]
+    fn what_starts_with_windows_from_the_apps_folder_is_found_and_other_programs_are_not() {
+        use purifex_domain::app_traces::judge_with;
+        use purifex_domain::apps::InstalledApp;
+
+        use super::super::quarantine::reg;
+        let id = std::process::id();
+        let scratch = format!(r"Software\PurifexRunTest{id}");
+        let run = format!(r"HKCU\{scratch}\Microsoft\Windows\CurrentVersion\Run");
+        let add = |name: &str, command: &str| {
+            reg(&["add", &run, "/v", name, "/d", command, "/f"]).unwrap();
+        };
+        add(
+            "PurifexUpdater",
+            r#""C:\Programas\PurifexApp\update.exe" /silent"#,
+        );
+        add("OtraApp", r#""C:\Programas\PurifexApp2\a.exe""#);
+        let hives = Hives {
+            hkcu: scratch.clone(),
+            hklm: None,
+        };
+        let seeds = Seeds::new(Some(r"C:\Programas\PurifexApp"), &[], &[]);
+        let found = find_values(&hives, &seeds);
+        let _ = reg(&["delete", &format!(r"HKCU\{scratch}"), "/f"]);
+        assert_eq!(found.len(), 1, "{found:#?}");
+        assert_eq!(found[0].value.as_deref(), Some("PurifexUpdater"));
+        // In its real place the rules of the domain take it as a value of the app.
+        let mut real = found[0].clone();
+        real.location = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run".into();
+        let app = InstalledApp {
+            id: "x".into(),
+            name: "PurifexApp".into(),
+            ..Default::default()
+        };
+        let trace = judge_with(&app, &[], &seeds, &real).unwrap();
+        assert_eq!(trace.evidence, Evidence::PathReference);
+        assert_eq!(trace.value.as_deref(), Some("PurifexUpdater"));
     }
 
     #[test]

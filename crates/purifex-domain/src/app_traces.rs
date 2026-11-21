@@ -277,6 +277,15 @@ fn judge_inner(
     if !placed {
         return Err(Refusal::NotAbsolute);
     }
+    // The packages of the Store belong to Windows: it removes the folder of a package that was
+    // uninstalled, and not even an administrator may delete it, so it is never proposed.
+    if location
+        .to_lowercase()
+        .split('\\')
+        .any(|part| part == "windowsapps")
+    {
+        return Err(Refusal::SystemPlace);
+    }
     if let Some(decided) = judge_by_evidence(app, others, seeds, candidate, location) {
         return decided;
     }
@@ -471,6 +480,16 @@ mod tests {
             judge(&discord, &[], &folder(r"C:\Program Files\DiscordPTB")),
             Err(Refusal::NotTheApps)
         );
+    }
+
+    #[test]
+    fn the_folder_of_a_store_package_is_never_proposed_even_when_the_app_registered_it() {
+        let mut package = app("Clipchamp", "Microsoft Corp.", None);
+        package.install_location =
+            Some(r"C:\Program Files\WindowsApps\Clipchamp.Clipchamp_4.7_x64__abc".into());
+        let mut c = folder(r"C:\Program Files\WindowsApps\Clipchamp.Clipchamp_4.7_x64__abc");
+        c.registered_install = true;
+        assert_eq!(judge(&package, &[], &c), Err(Refusal::SystemPlace));
     }
 
     #[test]

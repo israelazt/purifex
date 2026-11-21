@@ -77,22 +77,34 @@ Hecho:
 
 Queda para R2: la copia previa, que hoy no forma parte del flujo.
 
-## R2 · Red de seguridad: copia antes de tocar nada
+## R2 · Red de seguridad: copia antes de tocar nada (hecho 2026-11-20)
 
-Revo copia antes de limpiar. Hoy solo existe la cuarentena de lo borrado.
+Hecho:
+- **Punto de restauración** (`1cafb9c`): puerto `RestorePoints` con `SRSetRestorePointW`. Se pide
+  antes de lanzar cada desinstalador. Sin administrador no se crea y el desinstalador sigue; el
+  mensaje dice cuál de las dos cosas pasó. Windows guarda como mucho uno cada 24 h, y el mensaje lo
+  dice con esas palabras («se pidió», no «se creó»).
+- **Copia del registro** (`6536f46`): antes de desinstalar se exporta la clave `Uninstall` de la app
+  a `%LOCALAPPDATA%\Purifexackups\<hora>-<app>egistro.reg`. Las apps de la Tienda no tienen
+  esa clave y se saltan. Si la copia falla se anota en el registro de errores y el desinstalador
+  sigue.
+- **Copias en pantalla** (`1686860`): el panel «Copias del registro de apps desinstaladas» de la
+  página de Apps lista las tres más recientes de apps que ya no están, con «Registrar de nuevo»
+  (`reg import`). Solo importa un archivo que está en `backups.jsonl`, y nunca si la clave ya existe.
 
-1. **Puerto `RestorePoints`** y adaptador (`Checkpoint-Computer` / `SRClient.CreateRestorePoint`).
-   Pide administrador: se ofrece con el reinicio que ya existe. Windows limita a un punto cada
-   24 h por defecto: la app lo dice y sigue sin él si el usuario lo acepta.
-2. **Copia del registro previa:** antes de desinstalar, exportar a `.reg` las claves de la app
-   (`Uninstall`, `Software\<Editor>\<App>`), no solo las que luego se borren.
-3. **Página «Copias de seguridad»:** todas las operaciones (no solo la última app): fecha, app,
-   qué se guardó, tamaño, y botones «Devolver todo», «Devolver solo el registro», «Borrar copia».
-4. **Ajuste:** «Crear punto de restauración antes de desinstalar» (activado por defecto si hay
-   administrador; si no, se avisa una vez).
+Cambios respecto a lo planeado:
+- **No hay página «Copias de seguridad»**: un panel en la página de Apps basta mientras haya pocas.
+  Una página aparte tendría sentido con R7 (lotes) y R6 (monitor), que producen muchas más.
+- **No hay ajuste «Crear punto de restauración»**: Purifex aún no tiene página de ajustes y el
+  punto solo se puede crear siendo administrador, así que sin permisos se omite solo.
 
-*Hecho cuando:* tras una operación de prueba, la copia aparece, se devuelve y deja el sistema
-como estaba (comparado con una instantánea).
+Pendiente, anotado:
+- **Pedir el punto bloquea la ventana unos segundos** (se pide en el hilo de la ventana). Habrá que
+  medirlo siendo administrador y, si molesta, hacer el paso en un hilo antes de lanzar el
+  desinstalador.
+- **«Devolver todo» de una operación** (restos + registro a la vez) y «Borrar copia».
+- El punto de restauración **no se ha probado de verdad**: sin administrador solo falla de forma
+  controlada. Hay que probarlo con «Reiniciar como administrador».
 
 ## R3 · Escaneo completo y por modos
 

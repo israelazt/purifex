@@ -101,6 +101,13 @@ pub trait CleanupStore {
     fn quarantine_bytes(&self) -> Result<u64, String>;
 }
 
+/// A copy of what an app registered, kept before its uninstaller runs: the system forgets it
+/// afterwards, and with the copy it can be registered again.
+pub trait RegistryBackup {
+    /// Saves the registration of the app and says where; `None` when it has none to save.
+    fn save(&self, app: &crate::apps::InstalledApp) -> Result<Option<String>, String>;
+}
+
 /// The restore points of Windows: the way back for the whole system, taken before an
 /// uninstaller starts.
 pub trait RestorePoints {

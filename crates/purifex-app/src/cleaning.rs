@@ -12,7 +12,7 @@ use purifex_domain::cleanup_log::{
 };
 use purifex_domain::date::Date;
 use purifex_domain::ports::{
-    CleanupStore, Clock, RestorePoints, SeedProbe, TraceFinder, Uninstaller,
+    CleanupStore, Clock, RegistryBackup, RestorePoints, SeedProbe, TraceFinder, Uninstaller,
 };
 use purifex_domain::safeguard::{RestorePointOutcome, Started};
 
@@ -27,6 +27,7 @@ pub struct Cleaning {
     probe: Option<Box<dyn SeedProbe>>,
     clock: Option<Box<dyn Clock>>,
     restore_points: Option<Box<dyn RestorePoints>>,
+    registry_backup: Option<Box<dyn RegistryBackup>>,
 }
 
 /// The app that `query` names (its id, its name, or a part of it that only one has).
@@ -84,6 +85,25 @@ impl Cleaning {
             probe: None,
             clock: None,
             restore_points: None,
+            registry_backup: None,
+        }
+    }
+
+    /// The registration of each app is copied before its uninstaller runs.
+    pub fn with_registry_backup(mut self, backup: Box<dyn RegistryBackup>) -> Self {
+        self.registry_backup = Some(backup);
+        self
+    }
+
+    /// Where the copy of the app's registration went. A copy that cannot be made is logged
+    /// and does not stop the uninstall: the person can still cancel the uninstaller itself.
+    fn registry_copy_of(&self, app: &InstalledApp) -> Option<String> {
+        match self.registry_backup.as_ref()?.save(app) {
+            Ok(path) => path,
+            Err(why) => {
+                purifex_domain::log_warn!("{}: no se copió su registro: {why}", app.name);
+                None
+            }
         }
     }
 
@@ -144,10 +164,15 @@ impl Cleaning {
         self.store()?.remember(&app)?;
         // The way back for the whole system goes before the uninstaller does anything.
         let restore_point = self.restore_point_for(&app);
+        let registry_copy = self.registry_copy_of(&app);
         if let Some(launcher) = &self.launcher {
             launcher.launch(&app)?;
         }
-        Ok(Started { app, restore_point })
+        Ok(Started {
+            app,
+            restore_point,
+            registry_copy,
+        })
     }
 
     /// Keeps what is known of an app that has just disappeared from the list, so its
@@ -460,6 +485,27 @@ mod tests {
             RestorePointOutcome::Unavailable(_)
         ));
         assert_eq!(log2.borrow().launched, ["Discord"]);
+        assert_eq!(log.borrow().launched, ["Discord"]);
+    }
+
+    #[test]
+    fn the_registration_is_copied_before_the_uninstaller_and_a_failed_copy_does_not_stop_it() {
+        use crate::testing::FakeRegistryBackup;
+        let apps = vec![app("Discord", "Discord Inc.")];
+        let (c, _) = cleaning(vec![]);
+        let backup = FakeRegistryBackup::default();
+        let mut c = c.with_registry_backup(Box::new(backup.clone()));
+        let started = c.uninstall(&apps, "Discord").unwrap();
+        assert_eq!(backup.saved.borrow()[0], "Discord");
+        assert!(started.safeguards_text().contains(r"C:\copias\Discord.reg"));
+        let (c, log) = cleaning(vec![]);
+        let broken = FakeRegistryBackup {
+            fails: true,
+            ..Default::default()
+        };
+        let mut c = c.with_registry_backup(Box::new(broken));
+        let started = c.uninstall(&apps, "Discord").unwrap();
+        assert_eq!(started.registry_copy, None);
         assert_eq!(log.borrow().launched, ["Discord"]);
     }
 

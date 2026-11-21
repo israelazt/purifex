@@ -62,6 +62,25 @@ impl InstalledApp {
             && (self.uninstall.is_some() || self.kind == AppKind::Store)
     }
 
+    /// The registry key where the app registered itself (under `Uninstall`), to keep a copy
+    /// of it before the uninstaller runs. `None` for the apps of the Store, which are not
+    /// registered there.
+    pub fn registry_key(&self) -> Option<String> {
+        const UNINSTALL: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
+        let (place, sub) = self.id.split_once(':')?;
+        if sub.is_empty() || self.kind != AppKind::Desktop {
+            return None;
+        }
+        match place {
+            "HKLM64" => Some(format!(r"HKEY_LOCAL_MACHINE\{UNINSTALL}\{sub}")),
+            "HKLM32" => Some(format!(
+                r"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{sub}"
+            )),
+            "HKCU" => Some(format!(r"HKEY_CURRENT_USER\{UNINSTALL}\{sub}")),
+            _ => None,
+        }
+    }
+
     /// A package of the Store that Windows itself runs on (the Start menu, the shell, Settings,
     /// Windows Security, the Store, the installer of packages): removing it can leave the PC
     /// without a menu or without a way to put it back. Judged by the name of the package (the
@@ -186,6 +205,30 @@ pub fn apps_to_text(apps: &[InstalledApp]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_registry_key_of_a_classic_app_is_known_and_a_store_app_has_none() {
+        let app = |id: &str, kind| InstalledApp {
+            id: id.into(),
+            kind,
+            ..Default::default()
+        };
+        assert_eq!(
+            app("HKLM64:Discord", AppKind::Desktop)
+                .registry_key()
+                .unwrap(),
+            r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Discord"
+        );
+        let wow = app("HKLM32:X", AppKind::Desktop).registry_key().unwrap();
+        assert!(wow.contains("WOW6432Node"));
+        let user = app("HKCU:X", AppKind::Desktop).registry_key().unwrap();
+        assert!(user.starts_with("HKEY_CURRENT_USER"));
+        assert_eq!(
+            app("Microsoft.Paint_1_x64", AppKind::Store).registry_key(),
+            None
+        );
+        assert_eq!(app("name:Paint", AppKind::Desktop).registry_key(), None);
+    }
 
     fn app(name: &str, publisher: &str, version: &str) -> InstalledApp {
         InstalledApp {

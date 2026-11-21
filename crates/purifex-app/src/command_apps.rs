@@ -158,10 +158,7 @@ impl AppsCommand {
                     )));
                 }
                 let started = services.uninstall_app(&name)?;
-                let safeguard = started
-                    .restore_point
-                    .to_text()
-                    .map_or(String::new(), |t| format!(" {t}"));
+                let safeguard = format!(" {}", started.safeguards_text());
                 Ok(Outcome::Message(format!(
                     "Se abrió el desinstalador de {}. Cuando termine, busca los restos con: purifex apps clean \"{}\".{safeguard}",
                     started.app.name, started.app.name

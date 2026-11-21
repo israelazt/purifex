@@ -86,7 +86,7 @@ fn make_writable(path: &Path) {
 }
 
 /// Runs `reg.exe` and says whether it succeeded.
-fn reg(args: &[&str]) -> Result<(), String> {
+pub(super) fn reg(args: &[&str]) -> Result<(), String> {
     let output = Command::new("reg")
         .args(args)
         .creation_flags(CREATE_NO_WINDOW)

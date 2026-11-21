@@ -35,6 +35,23 @@ impl RestorePointOutcome {
 pub struct Started {
     pub app: InstalledApp,
     pub restore_point: RestorePointOutcome,
+    /// Where the copy of the app's registration was saved, if it had one.
+    pub registry_copy: Option<String>,
+}
+
+impl Started {
+    /// What to add to the message of the uninstall: what was kept before it started.
+    pub fn safeguards_text(&self) -> String {
+        let copy = self
+            .registry_copy
+            .as_ref()
+            .map(|path| format!("Copia del registro de la app: {path}."));
+        [self.restore_point.to_text(), copy]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }
 
 #[cfg(test)]

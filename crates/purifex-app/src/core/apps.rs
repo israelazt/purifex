@@ -3,8 +3,6 @@
 
 use std::time::Instant;
 
-use purifex_domain::safeguard::Started;
-
 use super::{Core, WATCH_EVERY, WATCH_FOR};
 
 impl Core {
@@ -33,11 +31,12 @@ impl Core {
     /// Starts the uninstaller of an app; its traces are looked for afterwards.
     pub(super) fn uninstalled(&mut self, id: &str) {
         match self.services.uninstall_app(id) {
-            Ok(Started { app, restore_point }) => {
+            Ok(started) => {
+                let app = started.app.clone();
                 self.model.message = Some(format!(
-                    "Se abrió el desinstalador de {}. Cuando termine, Purifex busca sus restos y te los muestra.{}",
+                    "Se abrió el desinstalador de {}. Cuando termine, Purifex busca sus restos y te los muestra. {}",
                     app.name,
-                    restore_point.to_text().map_or(String::new(), |t| format!(" {t}"))
+                    started.safeguards_text()
                 ));
                 (self.model.uninstalled, self.model.traces) = (Some(app.name.clone()), None);
                 self.model.traces_open = false;

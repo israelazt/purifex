@@ -20,6 +20,7 @@ use super::find_registry::{
 };
 use super::find_services::find_services;
 use super::find_shell::find_shell;
+use super::find_typelib::find_typelibs;
 use super::tasks::find_tasks;
 use crate::registry::{Key, View};
 
@@ -189,8 +190,13 @@ fn keys_named(names: &[String]) -> Vec<Candidate> {
 /// menu). Each step waits on something slow (the registry by thousands, a process), and none
 /// needs another: they run side by side.
 fn system_places(seeds: &Seeds) -> Vec<Candidate> {
-    let steps: [fn(&Seeds) -> Vec<Candidate>; 4] =
-        [find_services, find_tasks, find_firewall_rules, find_shell];
+    let steps: [fn(&Seeds) -> Vec<Candidate>; 5] = [
+        find_services,
+        find_tasks,
+        find_firewall_rules,
+        find_shell,
+        find_typelibs,
+    ];
     std::thread::scope(|scope| {
         let running: Vec<_> = steps
             .iter()

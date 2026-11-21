@@ -10,6 +10,7 @@ mod find_firewall;
 mod find_registry;
 mod find_services;
 mod find_shell;
+mod find_typelib;
 mod finder;
 mod launcher;
 mod lnk;

@@ -19,6 +19,25 @@ pub struct Classes<'a> {
     path: &'a str,
 }
 
+impl<'a> Classes<'a> {
+    #[cfg(test)]
+    pub(super) fn new(root: HKEY, label: &'a str, path: &'a str) -> Self {
+        Self { root, label, path }
+    }
+
+    pub(super) fn root(&self) -> HKEY {
+        self.root
+    }
+
+    pub(super) fn label(&self) -> &str {
+        self.label
+    }
+
+    pub(super) fn path(&self) -> &str {
+        self.path
+    }
+}
+
 pub const REAL: [Classes<'static>; 3] = [
     Classes {
         root: HKEY_LOCAL_MACHINE,

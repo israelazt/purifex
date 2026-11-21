@@ -14,7 +14,7 @@ mod system;
 /// Keys (below `HKCU\Software` or `HKLM\SOFTWARE`) that only hold caches and usage
 /// lists of Windows: one *value* of them may be the app's. Lowercase, with the hive
 /// stripped.
-const VALUE_KEYS: [&str; 10] = [
+const VALUE_KEYS: [&str; 12] = [
     r"\microsoft\windows\shell\muicache",
     r"\microsoft\windows nt\currentversion\appcompatflags\compatibility assistant\store",
     r"\microsoft\windows nt\currentversion\appcompatflags\layers",
@@ -23,6 +23,9 @@ const VALUE_KEYS: [&str; 10] = [
     r"\microsoft\windows\currentversion\explorer\featureusage\showjumpview",
     r"\microsoft\windows\currentversion\search\jumplistdata",
     r"\microsoft\windows\currentversion\applicationassociationtoasts",
+    // The files an installer shares and the folders it made: one value is one path.
+    r"\microsoft\windows\currentversion\shareddlls",
+    r"\microsoft\windows\currentversion\installer\folders",
     // What starts with Windows: one value is one program (the 32-bit view ends the same way).
     r"\microsoft\windows\currentversion\run",
     r"\microsoft\windows\currentversion\runonce",
@@ -71,13 +74,14 @@ struct Ctx<'a> {
 /// A rule answers `None` when the candidate is not its case.
 type Rule = fn(&Ctx) -> Option<Found>;
 
-const KEY_RULES: [Rule; 7] = [
+const KEY_RULES: [Rule; 8] = [
     classes_key,
     explorer_extension_key,
     program_key,
     tile_key,
     system::service_key,
     shell::com_key,
+    shell::typelib_key,
     shell::context_menu_key,
 ];
 const TASK_RULES: [Rule; 1] = [system::task_action];
@@ -544,6 +548,48 @@ mod tests {
         assert_eq!(t.location, MUI);
         assert_eq!(t.evidence, Evidence::PathReference);
         assert!(t.value.is_some());
+    }
+
+    #[test]
+    fn a_type_library_and_the_shared_files_and_folders_of_an_installer_are_taken_through_the_folder(
+    ) {
+        let key =
+            |location: &str, text: &str| cand(TraceKind::RegistryKey, location, None, Some(text));
+        let lib = key(
+            r"HKLM\SOFTWARE\Classes\TypeLib\{ABC}",
+            r"C:\Program Files\Kdenlive\lib.tlb",
+        );
+        assert_eq!(evidence(&lib), Evidence::ComServer);
+        let elsewhere = key(
+            r"HKLM\SOFTWARE\Classes\TypeLib\{ABC}",
+            r"C:\Program Files\Kdenlive2\lib.tlb",
+        );
+        assert!(judge(&elsewhere, &[]).is_err());
+        let other_place = key(
+            r"HKLM\SOFTWARE\Classes\Interface\{ABC}",
+            r"C:\Program Files\Kdenlive\lib.tlb",
+        );
+        assert!(judge(&other_place, &[]).is_err());
+        for (place, name) in [
+            (
+                r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\SharedDLLs",
+                r"C:\Program Files\Kdenlive\bin\x.dll",
+            ),
+            (
+                r"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Installer\Folders",
+                r"C:\Program Files\Kdenlive\",
+            ),
+        ] {
+            let value = cand(TraceKind::RegistryValue, place, Some(name), None);
+            assert_eq!(evidence(&value), Evidence::PathReference, "{place}");
+            let neighbour = cand(
+                TraceKind::RegistryValue,
+                place,
+                Some(r"C:\Program Files\Kdenlive2\x.dll"),
+                None,
+            );
+            assert!(judge(&neighbour, &[]).is_err(), "{place}");
+        }
     }
 
     #[test]

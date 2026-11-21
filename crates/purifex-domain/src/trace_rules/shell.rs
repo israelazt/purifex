@@ -13,6 +13,13 @@ const CLSID_KEYS: [&str; 3] = [
     r"hkcu\software\classes\clsid",
 ];
 
+/// The keys with one child per type library.
+const TYPELIB_KEYS: [&str; 3] = [
+    r"hklm\software\classes\typelib",
+    r"hklm\software\wow6432node\classes\typelib",
+    r"hkcu\software\classes\typelib",
+];
+
 /// Where the verbs (`shell`) and the handlers (`shellex\ContextMenuHandlers`) of the context
 /// menu hang, below `Classes` of the machine or of the user.
 const MENU_PLACES: [&str; 10] = [
@@ -37,6 +44,19 @@ pub(super) fn com_key(c: &Ctx) -> Option<Found> {
         c,
         Evidence::ComServer,
         "clase COM cuyo servidor está en la carpeta de la app",
+    )
+}
+
+/// A type library whose files (the finder read them, all of them, into `text`) are inside the
+/// app's folder.
+pub(super) fn typelib_key(c: &Ctx) -> Option<Found> {
+    if !TYPELIB_KEYS.contains(&c.parent) {
+        return None;
+    }
+    runs_inside_folder(
+        c,
+        Evidence::ComServer,
+        "biblioteca de tipos cuyo archivo está en la carpeta de la app",
     )
 }
 

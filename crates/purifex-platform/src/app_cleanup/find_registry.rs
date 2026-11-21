@@ -38,7 +38,7 @@ impl Hives {
 
 /// Keys of Windows that only hold caches and usage lists, with the hives they live in
 /// (`true`: also machine-wide). One value of them may be the app's.
-const VALUE_KEYS: [(&str, bool); 12] = [
+const VALUE_KEYS: [(&str, bool); 16] = [
     (
         r"Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache",
         false,
@@ -70,6 +70,17 @@ const VALUE_KEYS: [(&str, bool); 12] = [
     (
         r"Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts",
         false,
+    ),
+    // The files an installer shares, and the folders it made (values named by a path).
+    (r"Microsoft\Windows\CurrentVersion\SharedDLLs", true),
+    (
+        r"WOW6432Node\Microsoft\Windows\CurrentVersion\SharedDLLs",
+        true,
+    ),
+    (r"Microsoft\Windows\CurrentVersion\Installer\Folders", true),
+    (
+        r"WOW6432Node\Microsoft\Windows\CurrentVersion\Installer\Folders",
+        true,
     ),
     // What starts with Windows, for the user and for the machine (both views of it).
     (r"Microsoft\Windows\CurrentVersion\Run", true),

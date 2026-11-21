@@ -34,6 +34,11 @@ pub(crate) fn items(app: &InstalledApp) -> Vec<Item> {
             action: free.then(|| Action::AskUninstall(id())),
         },
         Item {
+            label: "Desinstalación forzada",
+            icon: "zap",
+            action: free.then(|| Action::AskForceUninstall(id())),
+        },
+        Item {
             label: "Abrir carpeta de instalación",
             icon: "folder-open",
             action: folder.map(Action::OpenFolder),

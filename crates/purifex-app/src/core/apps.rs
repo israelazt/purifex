@@ -53,6 +53,24 @@ impl Core {
         }
     }
 
+    /// Forces the removal of an app after the person confirmed: no uninstaller runs, its entry
+    /// goes to the quarantine, and what it left is looked for and shown.
+    pub(super) fn force_uninstalled(&mut self, id: &str) {
+        match self.services.force_uninstall(id) {
+            Ok(started) => {
+                let name = started.app.name.clone();
+                self.model.apps = None;
+                self.model.app_selected = None;
+                self.find_traces(name.clone());
+                self.model.message = Some(format!(
+                    "Se quitó {name} sin su desinstalador. Estos son los restos que dejó. {}",
+                    started.safeguards_text()
+                ));
+            }
+            Err(error) => self.model.error = Some(error),
+        }
+    }
+
     /// Removes the traces of an app to the quarantine: all of them, or only the ones
     /// the user left checked.
     pub(super) fn cleaned(&mut self, name: &str, everything: bool) {

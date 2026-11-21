@@ -102,6 +102,7 @@ impl Core {
             Action::OpenFolder(path) => self.open_app_folder(&path),
             Action::OpenRegistryKey(id) => self.open_app_registry_key(&id),
             Action::OpenWebsite(url) => self.open_app_website(&url),
+            Action::AskForceUninstall(id) => self.ask(Confirm::ForceUninstall(id)),
             Action::AskCloseProcesses(name) => self.ask(Confirm::CloseProcesses(name)),
             Action::SetScanMode(mode) => self.scan_mode_set(mode),
             Action::FindTraces(name) => self.find_traces(name),
@@ -131,6 +132,7 @@ impl Core {
             Confirm::EmptyQuarantine => return self.quarantine_emptied(),
             Confirm::RestartAsAdmin(name) => return self.restarted_as_admin(&name),
             Confirm::DeleteAtReboot(name) => return self.deleted_at_reboot(&name),
+            Confirm::ForceUninstall(id) => return self.force_uninstalled(&id),
             Confirm::CloseProcesses(name) => return self.programs_closed(&name),
         };
         match result {
@@ -1319,6 +1321,39 @@ mod tests {
         )));
         plain.apply(Action::SetAppView(AppView::List));
         assert_eq!(plain.model().app_view, AppView::List);
+    }
+
+    #[test]
+    fn a_forced_uninstall_asks_first_then_removes_the_entry_and_shows_what_is_left() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        *installed.0.borrow_mut() = vec![purifex_domain::apps::InstalledApp {
+            id: "HKLM64:OBS Studio".into(),
+            name: "OBS Studio".into(),
+            publisher: Some("OBS".into()),
+            uninstall: Some("broken.exe".into()),
+            ..Default::default()
+        }];
+        let (mut c, log) = two_traces_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::AskForceUninstall("HKLM64:OBS Studio".into()));
+        assert_eq!(
+            c.model().confirm,
+            Some(Confirm::ForceUninstall("HKLM64:OBS Studio".into()))
+        );
+        c.apply(Action::CancelConfirm);
+        assert!(log.borrow().removed.is_empty() && log.borrow().launched.is_empty());
+        c.apply(Action::AskForceUninstall("HKLM64:OBS Studio".into()));
+        c.apply(Action::Confirm);
+        let removed = log.borrow().removed.clone();
+        assert_eq!(removed.len(), 1);
+        assert!(removed[0].ends_with(r"Uninstall\OBS Studio"), "{removed:?}");
+        assert!(log.borrow().launched.is_empty(), "no uninstaller ran");
+        assert_eq!(c.model().uninstalled.as_deref(), Some("OBS Studio"));
+        let said = c.model().message.clone().unwrap();
+        assert!(said.contains("sin su desinstalador"), "{said}");
     }
 
     #[test]

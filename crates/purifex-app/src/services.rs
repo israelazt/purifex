@@ -93,6 +93,8 @@ pub trait Services {
         &mut self,
         settings: &purifex_domain::app_list::AppListSettings,
     ) -> Result<(), String>;
+    /// Takes an app out without its uninstaller: its entry goes to the quarantine.
+    fn force_uninstall(&mut self, query: &str) -> Result<Started, String>;
     /// Shows the registry key of an app in the registry editor.
     fn open_registry_key(&mut self, key: &str) -> Result<(), String>;
     /// Opens the web page an app registered (any `https` address).
@@ -308,6 +310,11 @@ where
             .as_ref()
             .ok_or("esta versión no guarda la vista")?
             .save(settings)
+    }
+
+    fn force_uninstall(&mut self, query: &str) -> Result<Started, String> {
+        let (listed, _) = self.installed()?;
+        self.cleaning.force_uninstall(&listed, query)
     }
 
     fn open_registry_key(&mut self, key: &str) -> Result<(), String> {

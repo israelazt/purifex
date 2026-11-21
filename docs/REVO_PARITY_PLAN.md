@@ -272,17 +272,25 @@ Cada una es independiente y puede quedarse fuera sin romper lo anterior.
    de que **no se puede deshacer** (la única función que no pasa por cuarentena).
 5. **Complementos de navegador:** listar y quitar extensiones.
 
-## R10 · Lista de apps al nivel de Revo (en curso, 2026-11-21)
+## R10 · Lista de apps al nivel de Revo (cerrado, 2026-11-21)
 
 Hecho (puntos 1, 2 y 5): se leen `InstallDate`, `URLInfoAbout` y `HelpLink` (solo se guarda una
 dirección `http(s)`). La lista muestra fecha de instalación, tamaño y tipo («64 bits», «32 bits»,
 «Usuario», «Tienda»); las cabeceras «App y editor», «Instalada» y «Tamaño» ordenan; y los filtros
 «Todas / Programas / Apps de Windows / Instaladas hace poco (30 días)» llevan su cuenta. Las apps de
-la Tienda no dicen cuándo se instalaron: no cuentan como recientes. Punto 3, en su forma: la interfaz no tiene menús contextuales, así que pulsar una app abre sus
-**detalles** bajo la fila (carpeta y página que registró) con «Abrir carpeta» y «Sitio web». Solo se
-abre una carpeta o una página que una app de la lista registró, y la carpeta debe existir; las
-direcciones deben ser `https`. «Desinstalar» sigue en la fila y «Desinstalación forzada» es Ctrl+F.
-Falta: «Abrir clave de registro» y «Propiedades», y recordar la elección de vista (punto 4).
+la Tienda no dicen cuándo se instalaron: no cuentan como recientes. Punto 3 hecho: **clic derecho** sobre una app abre un menú con Desinstalar, Desinstalación
+forzada, Abrir carpeta de instalación, Abrir clave de registro, Sitio web y Propiedades (lo que no
+aplica a esa app se ve apagado). «Propiedades» (o pulsar la fila) abre los detalles bajo la fila:
+carpeta, web, clave de registro y comando de desinstalación, con botones para abrirlos. Solo se
+abre una carpeta, una página o una clave que una app de la lista registró; las páginas son `https`;
+la clave se abre con Regedit (escribe su ajuste `LastKey` y Windows pide permiso).
+Punto 4 hecho: dos vistas, «Detalles» y «Lista» (compacta), y el filtro, el orden y la vista se
+recuerdan en `%LOCALAPPDATA%\Purifexpps-view.json`.
+**Desinstalación forzada de una app instalada** (la del menú y la que faltaba en R4): no se usa su
+desinstalador; tras el mismo punto de restauración y copia del registro, su entrada de `Uninstall`
+va a la cuarentena (se puede devolver) y se buscan y muestran sus restos como siempre. Se rechaza
+una app protegida, una de la Tienda (no tiene entrada propia) y una entrada que no se pudo quitar.
+**R10 cerrado (2026-11-21).**
 
 1. Columnas: nombre, editor, versión, tamaño, **fecha de instalación**, tipo (32/64 bits, Tienda).
 2. Ordenar por columna; filtros «Todas / Programas / Apps de Windows / Instaladas hace poco».

@@ -46,6 +46,8 @@ pub enum Confirm {
     RestartAsAdmin(String),
     /// Ask Windows to delete, at the next restart, what the app left open. Cannot be undone.
     DeleteAtReboot(String),
+    /// Take the app out without its own uninstaller (it fails or is gone).
+    ForceUninstall(String),
     /// Close the programs an app that is gone still runs from its folder.
     CloseProcesses(String),
 }
@@ -192,6 +194,8 @@ pub enum Action {
     SetAppFilter(crate::app_list::AppFilter),
     SetAppSort(crate::app_list::AppSort),
     SetAppView(crate::app_list::AppView),
+    /// Asks to force the removal of an installed app, by its id.
+    AskForceUninstall(String),
     /// Opens (or closes) the details of an app of the list, by its id.
     SelectApp(String),
     /// Opens the install folder of an app in Explorer.

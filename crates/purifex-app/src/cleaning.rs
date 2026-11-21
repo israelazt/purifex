@@ -20,6 +20,7 @@ use purifex_domain::scan_mode::ScanMode;
 
 mod backing_up;
 mod closing;
+mod forcing;
 mod purging;
 mod rebooting;
 mod restoring;
@@ -660,6 +661,45 @@ mod tests {
             assert!(c.clean(&[], &kept, broad, true, None).is_err(), "{broad}");
         }
         assert!(log.borrow().removed.is_empty());
+    }
+
+    #[test]
+    fn a_forced_uninstall_takes_out_the_entry_without_the_uninstaller_and_refuses_what_it_must() {
+        const KEY: &str =
+            r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Old Tool";
+        let (mut c, log) = cleaning(vec![]);
+        let apps = vec![app("Old Tool", "Acme")];
+        let started = c.force_uninstall(&apps, "Old Tool").unwrap();
+        assert_eq!(started.app.name, "Old Tool");
+        assert!(
+            log.borrow().launched.is_empty(),
+            "its own uninstaller is never started"
+        );
+        assert_eq!(log.borrow().removed, [KEY]);
+        assert_eq!(
+            c.history().unwrap().len(),
+            1,
+            "and it is in the log, so it can be put back"
+        );
+        // What Windows needs, and what has no entry of its own, is refused before any change.
+        let (mut c, log) = cleaning(vec![]);
+        let runtime = vec![app("Microsoft Visual C++ 2015", "Microsoft Corporation")];
+        let err = c.force_uninstall(&runtime, "Visual C++").unwrap_err();
+        assert!(err.contains("no se quita"), "{err}");
+        let store = vec![InstalledApp {
+            id: "Cool_1_x64__abc".into(),
+            name: "Cool Store App".into(),
+            kind: purifex_domain::apps::AppKind::Store,
+            ..Default::default()
+        }];
+        let err = c.force_uninstall(&store, "Cool").unwrap_err();
+        assert!(err.contains("entrada propia"), "{err}");
+        assert!(log.borrow().removed.is_empty());
+        // An entry that cannot be taken out (no permission) is an error, not a half job.
+        let (mut c, log) = cleaning(vec![]);
+        log.borrow_mut().stuck.push(KEY.into());
+        let err = c.force_uninstall(&apps, "Old Tool").unwrap_err();
+        assert!(err.contains("no se pudo quitar su entrada"), "{err}");
     }
 
     /// A finder that also says which seeds it used (extensions it found in the registry).

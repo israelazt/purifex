@@ -128,6 +128,7 @@ pub fn view(m: &Model) -> Option<DialogView> {
             "Borrar al reiniciar",
             "trash-2",
         )),
+        (Some(Confirm::ForceUninstall(id)), _) => Some(force_uninstall_view(m, id)),
         (Some(Confirm::CloseProcesses(name)), _) => Some(confirm_view(
             format!("¿Cerrar los programas de {name}?"),
             "Se cierran a la fuerza, sin darles tiempo a guardar: lo que tengan sin guardar se pierde. Es para soltar los archivos de la app y poder quitar sus restos.",
@@ -153,6 +154,22 @@ fn uninstall_view(m: &Model, id: &str) -> DialogView {
         "Se abrirá su desinstalador oficial y lo terminas tú en su ventana. Cuando termine, Purifex busca lo que deje y te lo muestra.",
         "Desinstalar",
         "trash-2",
+    )
+}
+
+/// The question before a forced uninstall: what it does and when it is for.
+fn force_uninstall_view(m: &Model, id: &str) -> DialogView {
+    let name = m
+        .apps
+        .iter()
+        .flatten()
+        .find(|a| a.id == id)
+        .map_or(id, |a| a.name.as_str());
+    confirm_view(
+        format!("¿Desinstalación forzada de {name}?"),
+        "No se usa su desinstalador: se quita su entrada del registro (con copia, se puede devolver) y Purifex busca lo que dejó para que lo quites. Sus archivos siguen donde están hasta que los quites tú. Úsala solo si el desinstalador de la app falla o ya no existe.",
+        "Forzar",
+        "zap",
     )
 }
 

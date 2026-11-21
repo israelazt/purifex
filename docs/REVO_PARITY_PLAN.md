@@ -106,7 +106,33 @@ Pendiente, anotado:
 - El punto de restauración **no se ha probado de verdad**: sin administrador solo falla de forma
   controlada. Hay que probarlo con «Reiniciar como administrador».
 
-## R3 · Escaneo completo y por modos
+## R3 · Escaneo completo y por modos (en curso, 2026-11-20)
+
+Hecho, cada punto con su prueba, y una prueba de punta a punta con el sistema real (carpeta, tarea
+y entrada de inicio de una app de prueba: salen a la cuarentena y vuelven):
+- **Servicios** (`968c823`): evidencia `ServicePath`, el `ImagePath` (con variables expandidas)
+  apunta a la carpeta de la app. Se quitan como cualquier clave de registro (copia `.reg` y devolver).
+- **Tareas programadas** (`0afc438`): tipo `Task`, evidencia `TaskAction`, leídas de
+  `schtasks /query /xml` (igual en todos los idiomas y sin pedir administrador para leer). Quitar
+  guarda la definición y borra con `schtasks`; devolver la recrea y nunca pisa una que exista. La
+  ventana las agrupa aparte («Tareas programadas»).
+- **Inicio** (`f2e9081`): `Run` y `RunOnce` (usuario y máquina, vistas de 32 y 64 bits).
+- Hallazgo de seguridad que destapó una prueba: otra app instalada en la misma carpeta ahora bloquea
+  también servicios y tareas.
+
+Falta de R3: reglas de firewall, menú contextual y asociaciones más allá de las ya cubiertas,
+COM y bibliotecas de tipos, `SharedDLLs` y `Installer` y otros sitios de Windows, todos los
+usuarios, los tres modos, el borrado al reiniciar y la lista como árbol.
+
+Notas:
+- Las tareas siempre se marcan «requiere administrador»: las de máquina las crea un instalador con
+  permisos y no hay forma barata de saber de antemano cuáles puede borrar el usuario.
+- Una ruta con acentos dentro de una tarea puede no reconocerse (`schtasks` escribe en la página de
+  códigos de la consola): no se ha medido.
+- Servicios no se probaron con uno real (crear uno pide administrador): sí el buscador sobre una
+  rama de prueba del registro y la regla del dominio.
+
+Plan original del bloque (lo hecho arriba cuenta como cumplido):
 
 Aquí está lo que más distingue a Revo: cuántos sitios mira.
 

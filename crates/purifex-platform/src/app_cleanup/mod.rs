@@ -3,6 +3,8 @@
 //! quarantine that can give back whatever was removed.
 
 mod backup;
+#[cfg(test)]
+mod end_to_end;
 mod find_files;
 mod find_registry;
 mod find_services;

@@ -85,7 +85,7 @@ Hecho:
   mensaje dice cuál de las dos cosas pasó. Windows guarda como mucho uno cada 24 h, y el mensaje lo
   dice con esas palabras («se pidió», no «se creó»).
 - **Copia del registro** (`6536f46`): antes de desinstalar se exporta la clave `Uninstall` de la app
-  a `%LOCALAPPDATA%\Purifexackups\<hora>-<app>egistro.reg`. Las apps de la Tienda no tienen
+  a `%LOCALAPPDATA%\Purifex\backups\<hora>-<app>\registro.reg`. Las apps de la Tienda no tienen
   esa clave y se saltan. Si la copia falla se anota en el registro de errores y el desinstalador
   sigue.
 - **Copias en pantalla** (`1686860`): el panel «Copias del registro de apps desinstaladas» de la

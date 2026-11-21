@@ -657,4 +657,20 @@ mod tests {
         assert!(actions.contains(&Action::SelectTraces(false)));
         assert!(actions.contains(&Action::CloseTraces));
     }
+
+    #[test]
+    fn an_app_still_installed_cannot_be_cleaned_and_the_window_says_why() {
+        let mut m = model_with_traces(2);
+        m.traces.as_mut().unwrap().still_installed = true;
+        let v = view(&m).unwrap();
+        let (ops, actions) = render(&v, 1.0);
+        assert!(!actions
+            .iter()
+            .any(|a| matches!(a, Action::AskClean(_) | Action::AskCleanAll(_))));
+        assert!(actions.contains(&Action::CloseTraces));
+        let said = ops
+            .iter()
+            .any(|o| matches!(o, Op::Text { text, .. } if text.contains("sigue")));
+        assert!(said, "it explains that the app must be uninstalled first");
+    }
 }

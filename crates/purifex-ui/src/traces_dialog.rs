@@ -46,13 +46,14 @@ pub(crate) fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
                 label: format!("Eliminar marcados ({checked})"),
                 icon: "trash-2",
                 primary: false,
-                action: (checked > 0).then(|| Action::AskClean(name.clone())),
+                action: (checked > 0 && !report.still_installed)
+                    .then(|| Action::AskClean(name.clone())),
             },
             Btn {
                 label: "Eliminar todo rastro".into(),
                 icon: "trash-2",
                 primary: true,
-                action: Some(Action::AskCleanAll(name)),
+                action: (!report.still_installed).then_some(Action::AskCleanAll(name)),
             },
         ],
         cancel: Action::CloseTraces,
@@ -71,6 +72,12 @@ fn restart_button(m: &Model, report: &CleanReport) -> Option<Btn> {
 
 /// What the window says above the list; when the search was cut short, that too.
 fn traces_body(m: &Model, report: &CleanReport) -> String {
+    if report.still_installed {
+        return format!(
+            "{} sigue instalada, así que esto aún no son restos: lo usa la propia app. Desinstálala primero (botón «Desinstalar» de la lista) y vuelve a buscar; entonces se podrá quitar lo que quede.",
+            report.app
+        );
+    }
     let mut body = "Esto es lo que quedó después de desinstalar. Marca lo que quieras quitar, o elimina todo de una vez sin elegir.".to_string();
     if report.incomplete {
         body.push_str(" La búsqueda se cortó por tiempo y puede faltar algo: pulsa «Buscar otra vez» para completarla.");

@@ -215,6 +215,7 @@ impl Cleaning {
                 preview: true,
                 proposed,
                 incomplete: found.incomplete,
+                still_installed: installed,
                 ..Default::default()
             });
         }

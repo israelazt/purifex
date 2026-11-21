@@ -79,6 +79,9 @@ pub struct CleanReport {
     /// The search ran out of time (reading shortcuts on a slow disk) and may have missed
     /// some traces: it should be looked for again.
     pub incomplete: bool,
+    /// The app is still installed: its traces are in use and are not removed until its
+    /// uninstaller has finished.
+    pub still_installed: bool,
 }
 
 impl CleanReport {

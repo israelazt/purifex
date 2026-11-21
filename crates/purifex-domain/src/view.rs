@@ -26,14 +26,6 @@ pub enum Page {
     Apps,
 }
 
-/// The traces listed in the window of traces (the rest are only taken by removing
-/// them all): the window has to fit in the smallest the program can be.
-pub const TRACES_LISTED: usize = 9;
-
-/// Of those, the room kept for the registry when files and registry entries both exist,
-/// so the list shows something of each.
-pub const REGISTRY_ROOM: usize = 4;
-
 /// What the user is being asked to confirm before something is changed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Confirm {

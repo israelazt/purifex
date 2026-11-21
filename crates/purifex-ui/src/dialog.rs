@@ -20,6 +20,9 @@ const SLIDE: f32 = 18.0;
 const ROW_H: f32 = 40.0;
 /// The height of the heading of a group of rows.
 const HEADING_H: f32 = 30.0;
+/// The most the list of rows shows at once: more rows scroll inside it, so the window fits in
+/// the smallest the program can be.
+const LIST_MAX_H: f32 = 9.0 * ROW_H + 2.0 * HEADING_H;
 
 /// One line of a list with a checkbox.
 #[derive(Debug, Clone, PartialEq)]
@@ -51,8 +54,6 @@ pub struct DialogView {
     pub title: String,
     pub body: String,
     pub rows: Vec<Row>,
-    /// Rows that did not fit the list.
-    pub more: usize,
     /// A link-like button at the left of the buttons (select all / none).
     pub aside: Option<Btn>,
     /// Buttons in the top right corner, beside the title, from the right edge in (a way out
@@ -73,7 +74,6 @@ fn confirm_view(title: String, body: &str, yes: &str, icon: &'static str) -> Dia
         title,
         body: body.to_string(),
         rows: vec![],
-        more: 0,
         aside: None,
         corner: Vec::new(),
         buttons: vec![
@@ -211,6 +211,29 @@ fn row(c: &mut Canvas, r: &Row, bar: Rect) {
     c.hit(bar, r.toggle.clone());
 }
 
+/// How the rows sit in their window: all of them are `content` tall, and `view` of that shows.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ListMetrics {
+    pub content: f32,
+    pub view: f32,
+}
+
+impl ListMetrics {
+    /// How far the rows can be scrolled.
+    pub fn max_scroll(self) -> f32 {
+        (self.content - self.view).max(0.0)
+    }
+}
+
+fn list_metrics(v: &DialogView) -> ListMetrics {
+    let headings = v.rows.iter().filter(|r| r.heading.is_some()).count();
+    let content = v.rows.len() as f32 * ROW_H + headings as f32 * HEADING_H;
+    ListMetrics {
+        content,
+        view: content.min(LIST_MAX_H),
+    }
+}
+
 /// The height of the dialog.
 fn height_of(c: &Canvas, v: &DialogView) -> f32 {
     let body = c
@@ -225,16 +248,20 @@ fn height_of(c: &Canvas, v: &DialogView) -> f32 {
     let list = if v.rows.is_empty() {
         0.0
     } else {
-        let headings = v.rows.iter().filter(|r| r.heading.is_some()).count();
-        16.0 + v.rows.len() as f32 * ROW_H
-            + headings as f32 * HEADING_H
-            + if v.more > 0 { 26.0 } else { 0.0 }
+        16.0 + list_metrics(v).view
     };
     24.0 + 40.0 + 14.0 + body + list + 24.0 + 44.0 + 24.0
 }
 
-/// Draws the dialog at `t` (0 gone, 1 settled) over a window of `width` x `height`.
-pub fn draw(c: &mut Canvas, v: &DialogView, t: f32, width: f32, height: f32) {
+/// Draws the dialog at `t` (0 gone, 1 settled) over a window of `width` x `height`, with its
+/// rows scrolled by `scroll`. Says how the rows sit, so the wheel knows how far it may go.
+pub fn draw(
+    c: &mut Canvas,
+    v: &DialogView,
+    t: f32,
+    (width, height): (f32, f32),
+    scroll: f32,
+) -> ListMetrics {
     // The page goes dim.
     c.rest();
     c.fill(
@@ -250,10 +277,11 @@ pub fn draw(c: &mut Canvas, v: &DialogView, t: f32, width: f32, height: f32) {
     panel(c, rect);
     let y = heading_and_body(c, v, rect);
     if !v.rows.is_empty() {
-        list(c, v, rect, y);
+        list(c, v, rect, y, scroll);
     }
     buttons(c, v, rect);
     c.rest();
+    list_metrics(v)
 }
 
 /// The icon, the title and the paragraph of the dialog; returns where the paragraph ends.
@@ -283,35 +311,46 @@ fn heading_and_body(c: &mut Canvas, v: &DialogView, rect: Rect) -> f32 {
     )
 }
 
-/// The checkable rows (and the note of how many more there are), from `y` down.
-fn list(c: &mut Canvas, v: &DialogView, rect: Rect, mut y: f32) {
-    y += 16.0;
-    c.line(rect.x, y - 8.0, rect.right(), y - 8.0, theme::LINE);
+/// The checkable rows from `y` down, inside a window that clips them and that `scroll` moves
+/// over them. Rows out of the window are not drawn.
+fn list(c: &mut Canvas, v: &DialogView, rect: Rect, y: f32, scroll: f32) {
+    let metrics = list_metrics(v);
+    let window = Rect::new(rect.x, y + 16.0, rect.w, metrics.view);
+    c.line(
+        rect.x,
+        window.y - 8.0,
+        rect.right(),
+        window.y - 8.0,
+        theme::LINE,
+    );
+    c.clip(window);
+    let mut at = window.y - scroll.clamp(0.0, metrics.max_scroll());
     for r in &v.rows {
-        if let Some(heading) = &r.heading {
-            c.text(
-                rect.x + 28.0,
-                y + 8.0,
-                heading,
-                theme::eyebrow(theme::TEXT_3),
-            );
-            y += HEADING_H;
+        let height = ROW_H + if r.heading.is_some() { HEADING_H } else { 0.0 };
+        if at + height >= window.y && at <= window.bottom() {
+            if let Some(heading) = &r.heading {
+                let place = rect.x + 28.0;
+                c.text(place, at + 8.0, heading, theme::eyebrow(theme::TEXT_3));
+            }
+            let row_at = at + height - ROW_H;
+            row(c, r, Rect::new(rect.x + 12.0, row_at, rect.w - 24.0, ROW_H));
         }
-        row(c, r, Rect::new(rect.x + 12.0, y, rect.w - 24.0, ROW_H));
-        y += ROW_H;
+        at += height;
     }
-    if v.more > 0 {
-        let note = format!(
-            "y {} más: solo se quitan con «Eliminar todo rastro»",
-            v.more
-        );
-        c.text(
-            rect.x + 28.0,
-            y + 4.0,
-            &note,
-            theme::mono(11.5, theme::TEXT_3),
-        );
+    c.unclip();
+    scrollbar(c, window, metrics, scroll);
+}
+
+/// A thin bar at the right edge of the rows, only when they do not all fit.
+fn scrollbar(c: &mut Canvas, window: Rect, metrics: ListMetrics, scroll: f32) {
+    let max = metrics.max_scroll();
+    if max <= 0.0 {
+        return;
     }
+    let thumb = (window.h * window.h / metrics.content).max(28.0);
+    let top = window.y + (scroll.clamp(0.0, max) / max) * (window.h - thumb);
+    let bar = Rect::new(window.right() - 7.0, top, 3.0, thumb);
+    c.fill(bar, 1.5, theme::TEXT_3.with_alpha(0.55));
 }
 
 /// The buttons at the bottom right, and the aside one at the left.
@@ -338,7 +377,6 @@ mod tests {
     use purifex_domain::apps::InstalledApp;
     use purifex_domain::cleanup_log::CleanReport;
     use purifex_domain::draw::Op;
-    use purifex_domain::view::TRACES_LISTED;
 
     use super::*;
     use crate::canvas::testing::FakeText;
@@ -415,12 +453,7 @@ mod tests {
         );
         let files = v.rows.iter().filter(|r| r.label.starts_with("C:")).count();
         let registry = v.rows.len() - files;
-        assert_eq!(
-            (files, registry),
-            (5, 4),
-            "both kinds are listed: {TRACES_LISTED} rows"
-        );
-        assert_eq!(v.more, 17 - TRACES_LISTED);
+        assert_eq!((files, registry), (7, 10), "all of them are listed");
         let value_row = v.rows.iter().find(|r| r.label.starts_with("HKCU")).unwrap();
         assert_eq!(
             value_row.detail,
@@ -549,7 +582,7 @@ mod tests {
 
     fn render(v: &DialogView, t: f32) -> (Vec<Op>, Vec<Action>) {
         let mut c = Canvas::new(&FakeText, None);
-        draw(&mut c, v, t, 1440.0, 900.0);
+        draw(&mut c, v, t, (1440.0, 900.0), 0.0);
         let (list, hits) = c.finish();
         (list.ops, hits.into_iter().map(|h| h.action).collect())
     }
@@ -595,14 +628,32 @@ mod tests {
     }
 
     #[test]
-    fn more_traces_than_fit_say_so_and_only_the_all_button_takes_them() {
-        let v = view(&model_with_traces(TRACES_LISTED + 3)).unwrap();
-        assert_eq!(v.rows.len(), TRACES_LISTED);
-        assert_eq!(v.more, 3);
-        let (ops, _) = render(&v, 1.0);
-        assert!(ops
-            .iter()
-            .any(|o| matches!(o, Op::Text { text, .. } if text.contains("y 3 más"))));
+    fn more_traces_than_fit_scroll_inside_a_window_of_fixed_height() {
+        let few = view(&model_with_traces(3)).unwrap();
+        let many = view(&model_with_traces(40)).unwrap();
+        assert_eq!(many.rows.len(), 40, "all of them are listed");
+        let (m_few, m_many) = (list_metrics(&few), list_metrics(&many));
+        assert_eq!(m_few.max_scroll(), 0.0, "they fit: nothing to scroll");
+        assert_eq!(
+            m_many.view, LIST_MAX_H,
+            "the window does not grow with the rows"
+        );
+        assert_eq!(m_many.max_scroll(), m_many.content - LIST_MAX_H);
+        let c = Canvas::new(&FakeText, None);
+        assert!(height_of(&c, &many) - height_of(&c, &few) <= LIST_MAX_H);
+        // Scrolled to the end, the last row is drawn and the first is not.
+        let drew = |scroll: f32, label: &str| {
+            let mut c = Canvas::new(&FakeText, None);
+            draw(&mut c, &many, 1.0, (1440.0, 900.0), scroll);
+            c.finish()
+                .0
+                .ops
+                .iter()
+                .any(|o| matches!(o, Op::Text { text, .. } if text == label))
+        };
+        let (first, last) = (r"C:\ProgramData\obs0", r"C:\ProgramData\obs39");
+        assert!(drew(0.0, first) && !drew(0.0, last));
+        assert!(!drew(m_many.max_scroll(), first) && drew(m_many.max_scroll(), last));
     }
 
     #[test]

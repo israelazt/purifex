@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_traces::{Trace, TraceGroup};
 use crate::date::Date;
-use crate::view::{REGISTRY_ROOM, TRACES_LISTED};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -97,22 +96,17 @@ impl CleanReport {
         self.proposed.iter().filter(|t| t.needs_admin()).count()
     }
 
-    /// The traces the window lists, in the order it lists them: files and folders first,
-    /// then the registry, each biggest first. At most `TRACES_LISTED`; when both kinds exist
-    /// the registry keeps some room. What does not fit is only removed by taking all.
+    /// The traces the window lists, in the order it lists them: files and folders first, then
+    /// the tasks, then the registry, each group biggest first. All of them: the window scrolls.
     pub fn listed(&self) -> Vec<&Trace> {
-        let (registry, mut files): (Vec<&Trace>, Vec<&Trace>) =
-            self.proposed.iter().partition(|t| t.is_registry());
-        // The tasks go after the files (the sort keeps what was already in order).
-        files.sort_by_key(|t| t.group() == TraceGroup::Tasks);
-        let files_room = TRACES_LISTED - registry.len().min(REGISTRY_ROOM);
-        let shown_files = files.len().min(files_room);
-        let shown_registry = registry.len().min(TRACES_LISTED - shown_files);
-        files
-            .into_iter()
-            .take(shown_files)
-            .chain(registry.into_iter().take(shown_registry))
-            .collect()
+        let mut all: Vec<&Trace> = self.proposed.iter().collect();
+        // A stable sort: inside a group the order is still the one of `proposed` (by size).
+        all.sort_by_key(|t| match t.group() {
+            TraceGroup::Files => 0,
+            TraceGroup::Tasks => 1,
+            TraceGroup::Registry => 2,
+        });
+        all
     }
 
     pub fn to_text(&self) -> String {
@@ -275,38 +269,31 @@ mod tests {
         }
     }
 
-    fn kinds(report: &CleanReport) -> (usize, usize) {
-        let listed = report.listed();
-        let registry = listed.iter().filter(|t| t.is_registry()).count();
-        (listed.len() - registry, registry)
-    }
-
     #[test]
-    fn the_list_has_files_first_then_registry_and_keeps_room_for_both() {
-        assert_eq!(
-            kinds(&report_of(7, 10)),
-            (5, 4),
-            "room kept for the registry"
-        );
-        assert_eq!(
-            kinds(&report_of(20, 2)),
-            (7, 2),
-            "few registry entries: all of them"
-        );
-        assert_eq!(kinds(&report_of(2, 20)), (2, 7), "few files: all of them");
-        assert_eq!(kinds(&report_of(20, 0)), (TRACES_LISTED, 0));
-        assert_eq!(kinds(&report_of(0, 20)), (0, TRACES_LISTED));
-        assert_eq!(kinds(&report_of(3, 3)), (3, 3));
-        assert!(report_of(0, 0).listed().is_empty());
+    fn the_list_has_everything_files_first_then_tasks_then_registry_each_in_its_order() {
         let report = report_of(7, 10);
         let listed = report.listed();
-        assert!(
-            !listed[0].is_registry() && listed[8].is_registry(),
-            "files first"
-        );
+        assert_eq!(listed.len(), 17, "nothing is left out: the window scrolls");
+        assert!(listed[..7].iter().all(|t| !t.is_registry()), "files first");
+        assert!(listed[7..].iter().all(|t| t.is_registry()));
         assert_eq!(
             listed[0].location, r"C:\x\file0",
             "each group keeps its order"
+        );
+        assert!(report_of(0, 0).listed().is_empty());
+        let mut with_task = report_of(1, 1);
+        with_task.proposed.insert(
+            0,
+            Trace {
+                kind: TraceKind::Task,
+                location: r"\App\Updater".into(),
+                ..Default::default()
+            },
+        );
+        let kinds: Vec<_> = with_task.listed().iter().map(|t| t.kind).collect();
+        assert_eq!(
+            kinds,
+            [TraceKind::Folder, TraceKind::Task, TraceKind::RegistryKey]
         );
     }
 

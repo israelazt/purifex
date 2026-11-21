@@ -63,6 +63,10 @@ pub struct Ui {
     modal: bool,
     /// What Escape does while it is open.
     modal_cancel: Option<Action>,
+    /// How far the rows of the dialog are scrolled, and how they sat when it was last drawn
+    /// (how far the wheel may take them).
+    dialog_scroll: f32,
+    dialog_list: dialog::ListMetrics,
     content_height: f32,
     viewport_height: f32,
     mouse: Option<(f32, f32)>,
@@ -97,6 +101,8 @@ impl Ui {
             dialog: None,
             modal: false,
             modal_cancel: None,
+            dialog_scroll: 0.0,
+            dialog_list: dialog::ListMetrics::default(),
             content_height: 0.0,
             viewport_height: 0.0,
             mouse: None,
@@ -245,13 +251,13 @@ impl Ui {
     /// The dialog over everything, if it shows; otherwise it is forgotten.
     fn draw_dialog(&mut self, c: &mut Canvas, shown: f32, covered: bool, width: f32, height: f32) {
         if !covered {
-            self.dialog = None;
+            (self.dialog, self.dialog_scroll) = (None, 0.0);
             return;
         }
         c.block_mouse(false);
         c.clear_hits();
         if let Some(view) = &self.dialog {
-            dialog::draw(c, view, shown, width, height);
+            self.dialog_list = dialog::draw(c, view, shown, (width, height), self.dialog_scroll);
         }
     }
 
@@ -824,6 +830,56 @@ mod tests {
             y: rect.y + 4.0,
         })
         .actions
+    }
+
+    #[test]
+    fn the_wheel_scrolls_the_rows_of_a_long_list_and_not_the_page_and_a_short_list_does_not_move() {
+        use purifex_domain::app_traces::{Trace, TraceKind};
+        use purifex_domain::cleanup_log::CleanReport;
+        let traces = |n: usize| Model {
+            traces_open: true,
+            traces: Some(CleanReport {
+                app: "Discord".into(),
+                preview: true,
+                proposed: (0..n)
+                    .map(|i| Trace {
+                        kind: TraceKind::Folder,
+                        location: format!(r"C:\ProgramData\d{i}"),
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            }),
+            ..apps_model(None)
+        };
+        let mut ui = Ui::new();
+        let long = traces(40);
+        for ms in (0..=400).step_by(16) {
+            frame_at(&mut ui, &long, ms);
+        }
+        let max = ui.dialog_list.max_scroll();
+        assert!(max > 0.0, "forty rows do not fit");
+        let page = ui.scroll_target;
+        assert!(ui.event(UiEvent::Wheel { dy: 100.0 }).redraw);
+        assert_eq!(ui.dialog_scroll, 100.0);
+        ui.event(UiEvent::Wheel { dy: 99_999.0 });
+        assert_eq!(ui.dialog_scroll, max, "never past the last row");
+        assert!(
+            !ui.event(UiEvent::Wheel { dy: 50.0 }).redraw,
+            "already at the end"
+        );
+        assert_eq!(ui.scroll_target, page, "the page behind did not move");
+        // The dialog goes away and comes back at the top.
+        for ms in (416..=900).step_by(16) {
+            frame_at(&mut ui, &apps_model(None), ms);
+        }
+        assert_eq!(ui.dialog_scroll, 0.0);
+        // A short list has nowhere to go.
+        let short = traces(3);
+        for ms in (916..=1400).step_by(16) {
+            frame_at(&mut ui, &short, ms);
+        }
+        assert!(!ui.event(UiEvent::Wheel { dy: 100.0 }).redraw);
     }
 
     #[test]

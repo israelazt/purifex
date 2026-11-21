@@ -23,7 +23,6 @@ pub(crate) fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
         tone: Tone::Amber,
         title: format!("Restos de {name}"),
         body: traces_body(m, report),
-        more: report.proposed.len().saturating_sub(rows.len()),
         rows,
         aside: Some(Btn {
             label: if all_checked {

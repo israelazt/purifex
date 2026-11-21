@@ -61,7 +61,13 @@ impl Ui {
                 }
                 true
             }
-            UiEvent::Wheel { .. } | UiEvent::Key(_) | UiEvent::Char(_) => true,
+            UiEvent::Wheel { dy } => {
+                // The wheel moves the rows of the dialog, when they do not all fit.
+                let to = (self.dialog_scroll + dy).clamp(0.0, self.dialog_list.max_scroll());
+                out.redraw = std::mem::replace(&mut self.dialog_scroll, to) != to;
+                true
+            }
+            UiEvent::Key(_) | UiEvent::Char(_) => true,
             _ => false,
         }
     }

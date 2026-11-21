@@ -37,6 +37,8 @@ mod session_archive;
 #[cfg(windows)]
 mod session_file;
 #[cfg(windows)]
+mod store_apps;
+#[cfg(windows)]
 mod window;
 #[cfg(windows)]
 mod windows_update;
@@ -69,6 +71,8 @@ pub use sampler::WindowsSampler;
 pub use session_archive::LocalSessionArchive;
 #[cfg(windows)]
 pub use session_file::LocalSessionFile;
+#[cfg(windows)]
+pub use store_apps::{StorePackages, StoreUninstaller};
 #[cfg(windows)]
 pub use window::run as run_window;
 #[cfg(windows)]

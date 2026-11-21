@@ -13,6 +13,10 @@ purifex-domain = { path = "../purifex-domain" }
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = [
     "Win32_Foundation",
+    "ApplicationModel",
+    "Management_Deployment",
+    "Foundation",
+    "Foundation_Collections",
     "Win32_Devices_DeviceAndDriverInstallation",
     "Win32_Devices_Properties",
     "Win32_System_SystemInformation",

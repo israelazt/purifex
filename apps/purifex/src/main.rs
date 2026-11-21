@@ -36,12 +36,15 @@ fn main() {
 /// The application with the real adapters of Windows: the only place that knows them.
 #[cfg(windows)]
 fn build_app() -> impl purifex_app::Services + 'static {
-    use purifex_app::{App, Archive, Candidates, Cleaning, Fixer, Offering, Recorder, Scanner};
+    use purifex_app::{
+        AllApps, App, Archive, Candidates, Cleaning, Fixer, Offering, Recorder, Scanner,
+        UninstallByKind,
+    };
     use purifex_platform::{
         BrowserOpener, JsonlCandidates, JsonlHistory, LocalCleanup, LocalSessionArchive,
-        LocalSessionFile, RegisteredUninstaller, RegistryApps, SetupApiInventory, SystemClock,
-        SystemFixes, WindowsElevation, WindowsSampler, WindowsSeedProbe, WindowsTraceFinder,
-        WindowsUpdateOffers,
+        LocalSessionFile, RegisteredUninstaller, RegistryApps, SetupApiInventory, StorePackages,
+        StoreUninstaller, SystemClock, SystemFixes, WindowsElevation, WindowsSampler,
+        WindowsSeedProbe, WindowsTraceFinder, WindowsUpdateOffers,
     };
 
     let scanner = Scanner::new(SetupApiInventory, SystemClock::new());
@@ -53,7 +56,10 @@ fn build_app() -> impl purifex_app::Services + 'static {
     let offering = Offering::new(std::sync::Arc::new(WindowsUpdateOffers));
     let cleaning = Cleaning::new(
         Box::new(WindowsTraceFinder),
-        Box::new(RegisteredUninstaller),
+        Box::new(UninstallByKind::new(
+            Box::new(RegisteredUninstaller),
+            Box::new(StoreUninstaller),
+        )),
         Box::new(LocalCleanup::new()),
     )
     .with_probe(Box::new(WindowsSeedProbe))
@@ -63,7 +69,10 @@ fn build_app() -> impl purifex_app::Services + 'static {
         .with_offers(offering)
         .with_candidates(Candidates::new(Box::new(JsonlCandidates::new())))
         .with_opener(Box::new(BrowserOpener))
-        .with_apps(Box::new(RegistryApps))
+        .with_apps(Box::new(AllApps::new(vec![
+            Box::new(RegistryApps),
+            Box::new(StorePackages),
+        ])))
         .with_cleaning(cleaning)
         .with_elevation(Box::new(WindowsElevation))
 }

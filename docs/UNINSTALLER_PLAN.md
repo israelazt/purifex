@@ -60,14 +60,21 @@ Funciona hoy, con pruebas y probado de punta a punta con una app de mentira (reg
 - **Cuarentena**: carpetas movidas (no borradas) a `%LOCALAPPDATA%\Purifex\quarantine\N`; claves de registro exportadas a `.reg` antes de borrarlas; todo anotado en `cleanup.jsonl`; **devolver** cualquier eliminación (nunca sobrescribe).
 - Línea de órdenes: `purifex apps [traces|uninstall|clean|restore|history] NOMBRE [--yes] [--json]`. Pantalla: página **Apps**.
 
-Pendiente (no hecho todavía):
+Pendiente (actualizado 2026-11-20):
 
-- **Apps de la Tienda (MSIX)**: no se listan aún.
-- **Servicios, tareas programadas, entradas de inicio, reglas de firewall, menú contextual y asociaciones de archivos**: no se buscan aún; solo carpetas, archivos/accesos directos y claves de `Software\<nombre>`.
-- **Punto de restauración** del sistema antes de desinstalar: no se crea (pediría administrador); la cuarentena y la copia de las claves son la red de seguridad.
-- **Deshacer desde la pantalla** y **purgar la cuarentena a los 7 días**: hoy se devuelve con `purifex apps restore N` y la cuarentena no caduca sola.
-- Buscador de la página de Apps.
-- Probado con una app de mentira, **no con apps reales** de este PC.
+- **Servicios, tareas programadas, entradas de inicio, reglas de firewall, menú contextual y asociaciones de archivos**: no se buscan aún (la limpieza profunda de `DEEP_CLEAN_PLAN.md` cubre archivos, accesos directos y claves del registro, no estos).
+- **Punto de restauración** del sistema antes de desinstalar: no se crea (pediría administrador; ahora que existe el reinicio como administrador se puede ofrecer); la cuarentena y la copia de las claves son la red de seguridad.
+- **Deshacer desde la pantalla**: el historial se devuelve con `purifex apps restore N`; falta el botón en la página de Apps.
+- Probado con una app de mentira y con Kdenlive real (solo lectura), **no desinstalando apps reales** de este PC.
+
+Hecho desde entonces: vaciar y caducar la cuarentena a los 7 días (`DEEP_CLEAN_PLAN.md`, fase 7), buscador de la página de Apps, y las apps de la Tienda (abajo).
+
+### Apps de la Tienda (MSIX) (2026-11-20)
+
+- **Lista:** `StorePackages` (WinRT `PackageManager`, solo lectura, sin administrador) las suma a las clásicas con `AllApps`; si una fuente falla, las otras se siguen viendo y el fallo va al registro. En este PC: 54 paquetes.
+- **Desinstalar:** `StoreUninstaller` quita el paquete del usuario con `RemovePackageWithOptionsAsync` en su propio hilo (la ventana no se congela); `UninstallByKind` elige entre el desinstalador registrado y este según el tipo de app. Después se vigila que desaparezca de la lista, igual que con las clásicas.
+- **Protegidos («es parte de Windows»):** por el nombre del paquete, no por lo que se ve en pantalla: Inicio, shell, Configuración, Seguridad de Windows, la Tienda, el instalador de paquetes, Xbox Identity, Gaming Services, Widgets, winget, paquetes de idioma, runtimes (VCLibs, UI.Xaml, .NET, Windows App Runtime) y los códecs y formatos de imagen (`Microsoft.*Extension*`). Calculadora, Bloc de notas, Paint, etc. sí se pueden quitar.
+- **Probado:** la lista real, la protección con nombres reales de este PC y la tubería de borrado con un paquete que no existe (falla con el motivo de Windows y no toca nada). **No se ha quitado ningún paquete real**: falta probarlo con una app de prueba que la persona elija.
 
 ## Como Revo Uninstaller (2026-11-18)
 

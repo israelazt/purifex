@@ -62,6 +62,48 @@ impl InstalledApp {
             && (self.uninstall.is_some() || self.kind == AppKind::Store)
     }
 
+    /// A package of the Store that Windows itself runs on (the Start menu, the shell, Settings,
+    /// Windows Security, the Store, the installer of packages): removing it can leave the PC
+    /// without a menu or without a way to put it back. Judged by the name of the package (the
+    /// start of its id), not by what it is called on the screen.
+    fn is_core_package(&self) -> bool {
+        if self.kind != AppKind::Store {
+            return false;
+        }
+        let package = self.id.split('_').next().unwrap_or("").to_lowercase();
+        let prefixes = [
+            "microsoft.windows.",
+            "microsoftwindows.",
+            "windows.",
+            "microsoft.aad.",
+            "microsoft.accountscontrol",
+            "microsoft.lockapp",
+            "microsoft.secHealthui",
+            "microsoft.windowsstore",
+            "microsoft.desktopappinstaller",
+            "microsoft.storepurchaseapp",
+            "microsoft.xboxidentityprovider",
+            "microsoft.win32webviewhost",
+            "microsoft.ui.xaml",
+            "microsoft.vclibs",
+            "microsoft.net.",
+            "microsoft.windowsappruntime",
+            "microsoft.startexperiencesapp",
+            "microsoft.widgetsplatformruntime",
+            "microsoft.gamingservices",
+            "microsoft.applicationcompatibilityenhancements",
+            "microsoft.winget.source",
+            "microsoft.languageexperiencepack",
+        ];
+        // The codecs and image formats (`Microsoft.HEVCVideoExtension`, ...) are used by the
+        // apps that open those files.
+        let shared_component = package.starts_with("microsoft.") && package.contains("extension");
+        shared_component
+            || prefixes
+                .iter()
+                .any(|p| package.starts_with(&p.to_lowercase()))
+    }
+
     /// Why it must not be removed from here, if so: other programs and Windows
     /// depend on it, or it is what keeps the PC working.
     pub fn protection(&self) -> Option<&'static str> {
@@ -79,7 +121,7 @@ impl InstalledApp {
         if (microsoft || name.contains("visual c++")) && runtimes.iter().any(|r| name.contains(r)) {
             return Some("lo usan otros programas: quitarlo puede romperlos");
         }
-        if name.contains("microsoft edge") {
+        if name.contains("microsoft edge") || self.is_core_package() {
             return Some("es parte de Windows");
         }
         let drivers = [
@@ -216,6 +258,53 @@ mod tests {
             .contains("Drivers"));
         assert_eq!(app("Discord", "Discord Inc.", "1").protection(), None);
         assert_eq!(app("Steam", "Valve", "1").protection(), None);
+    }
+
+    fn package(full_name: &str, shown_as: &str) -> InstalledApp {
+        InstalledApp {
+            id: full_name.into(),
+            name: shown_as.into(),
+            kind: AppKind::Store,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_packages_windows_runs_on_are_protected_and_the_apps_a_person_installs_are_not() {
+        for core in [
+            "Microsoft.WindowsStore_22611.1401.2.0_x64__8wekyb3d8bbwe",
+            "Microsoft.Windows.StartMenuExperienceHost_10.0.26100.1_neutral_neutral_cw5n1h2txyewy",
+            "MicrosoftWindows.Client.CBS_1000.26100.1.0_x64__cw5n1h2txyewy",
+            "Microsoft.SecHealthUI_1000.26100.1.0_x64__8wekyb3d8bbwe",
+            "Microsoft.DesktopAppInstaller_1.26.1_x64__8wekyb3d8bbwe",
+            "windows.immersivecontrolpanel_10.0.6.1000_neutral_neutral_cw5n1h2txyewy",
+            "Microsoft.StartExperiencesApp_1.0.0.0_x64__8wekyb3d8bbwe",
+            "Microsoft.HEVCVideoExtension_2.0.0.0_x64__8wekyb3d8bbwe",
+            "Microsoft.GamingServices_33.0.0.0_x64__8wekyb3d8bbwe",
+        ] {
+            assert_eq!(
+                package(core, "x").protection(),
+                Some("es parte de Windows"),
+                "{core}"
+            );
+        }
+        for free in [
+            "Microsoft.WindowsCalculator_11.2607.0.0_x64__8wekyb3d8bbwe",
+            "Microsoft.WindowsNotepad_11.2609.11.0_x64__8wekyb3d8bbwe",
+            "SpotifyAB.SpotifyMusic_1.2.0.0_x64__zpdnekdrzrea0",
+            "Anthropic.Claude_4.23118.0.0_x64__abc",
+            "Microsoft.Paint_11.2.0.0_x64__8wekyb3d8bbwe",
+            "Microsoft.VisualStudioCode_1.0.0.0_x64__8wekyb3d8bbwe",
+        ] {
+            assert_eq!(package(free, "Algo").protection(), None, "{free}");
+        }
+        // The same name as a classic program is not a package of the system.
+        let classic = InstalledApp {
+            id: "HKLM64:windows.x".into(),
+            name: "x".into(),
+            ..Default::default()
+        };
+        assert_eq!(classic.protection(), None);
     }
 
     #[test]

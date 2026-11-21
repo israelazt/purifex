@@ -117,12 +117,17 @@ y entrada de inicio de una app de prueba: salen a la cuarentena y vuelven):
   guarda la definición y borra con `schtasks`; devolver la recrea y nunca pisa una que exista. La
   ventana las agrupa aparte («Tareas programadas»).
 - **Inicio** (`f2e9081`): `Run` y `RunOnce` (usuario y máquina, vistas de 32 y 64 bits).
+- **Firewall** (`50443ec`): una regla es un valor de `FirewallRules` cuyo texto (`App=...`) nombra un
+  programa dentro de la carpeta de la app; el nombre de la regla es un código y no prueba nada.
+- **COM y menú contextual** (`2171d6e`): clases CLSID cuyo servidor está en la carpeta, y verbos
+  (`shell`) y manejadores (`ContextMenuHandlers`) del menú contextual que ejecutan o cargan un programa
+  de la carpeta, solo en los sitios fijos. La búsqueda ejecuta estos pasos en paralelo: 0,8 s en
+  este PC (1,6 s en serie).
 - Hallazgo de seguridad que destapó una prueba: otra app instalada en la misma carpeta ahora bloquea
   también servicios y tareas.
 
-Falta de R3: reglas de firewall, menú contextual y asociaciones más allá de las ya cubiertas,
-COM y bibliotecas de tipos, `SharedDLLs` y `Installer` y otros sitios de Windows, todos los
-usuarios, los tres modos, el borrado al reiniciar y la lista como árbol.
+Falta de R3: bibliotecas de tipos (TypeLib), otros sitios de Windows (SharedDLLs, Installer),
+escanear a todos los usuarios, los tres modos, el borrado al reiniciar y la lista como árbol.
 
 Notas:
 - Las tareas siempre se marcan «requiere administrador»: las de máquina las crea un instalador con

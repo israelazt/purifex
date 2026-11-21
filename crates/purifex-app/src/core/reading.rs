@@ -56,10 +56,11 @@ impl Core {
     }
 
     fn read_apps_page(&mut self, errors: &mut Vec<String>) {
-        if self.model.apps.is_none() {
+        let refreshing = std::mem::take(&mut self.refreshing_apps);
+        if self.model.apps.is_none() || refreshing {
+            // A failed reading keeps the list that is on the screen.
             if let Some(apps) = read(self.services.apps(), "apps", errors) {
-                let old = self.previous_apps.take();
-                self.model.apps = Some(apps);
+                let old = self.model.apps.replace(apps);
                 if let Some(gone) = old.as_deref().and_then(|o| self.vanished(o)) {
                     self.model.finding = Some(gone);
                 }

@@ -30,8 +30,8 @@ pub struct Core {
     pending: bool,
     /// The program started again as an administrator: the window closes.
     quit: bool,
-    /// The apps of the list before it is read again, to see which one disappeared.
-    previous_apps: Option<Vec<purifex_domain::apps::InstalledApp>>,
+    /// The window came back: the list of apps is read again without clearing it.
+    refreshing_apps: bool,
     /// The app whose uninstaller was started here, when it was last looked for in the
     /// list, and when it was started: when it disappears the uninstall has finished.
     watching: Option<(purifex_domain::apps::InstalledApp, Instant, Instant)>,
@@ -49,7 +49,7 @@ impl Core {
                 ..Model::default()
             },
             pending: true,
-            previous_apps: None,
+            refreshing_apps: false,
             watching: None,
             quit: false,
             expired_checked: false,
@@ -142,7 +142,12 @@ impl Core {
         let page_lacks = match m.page {
             Page::Overview => false,
             Page::Fixes => m.fixes.is_none() || m.history.is_none(),
-            Page::Apps => m.apps.is_none() || m.finding.is_some() || m.quarantine.is_none(),
+            Page::Apps => {
+                m.apps.is_none()
+                    || m.finding.is_some()
+                    || m.quarantine.is_none()
+                    || self.refreshing_apps
+            }
             Page::Drivers => m.drivers.is_none() || m.candidates.is_none(),
             Page::Sessions => {
                 m.analysis.is_none()
@@ -1054,7 +1059,13 @@ mod tests {
         // The user uninstalled OBS in its own window and comes back.
         installed.0.borrow_mut().retain(|a| a.name != "OBS Studio");
         c.apply(Action::RefreshApps);
-        assert!(c.model().apps.is_none(), "it is read again");
+        assert_eq!(
+            c.model().visible_apps().len(),
+            2,
+            "the list stays as it is until the new one is read"
+        );
+        assert!(!c.model().busy, "no loading state shows");
+        assert!(c.needs_tick());
         c.tick();
         assert_eq!(c.model().visible_apps().len(), 1, "OBS is no longer listed");
         assert_eq!(c.model().uninstalled.as_deref(), Some("OBS Studio"));

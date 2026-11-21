@@ -87,14 +87,16 @@ impl Core {
     }
 
     /// Reads the list of apps again when the window comes back (the person may have
-    /// uninstalled something meanwhile), unless a search of traces is going.
+    /// uninstalled something meanwhile), unless a search of traces is going. The list
+    /// stays on the screen, as it is, until the new one is read: nothing flashes and the
+    /// place the person was reading is kept.
     pub(super) fn refresh_apps(&mut self) {
         if self.model.page != Page::Apps || self.model.finding.is_some() {
             return;
         }
-        if let Some(old) = self.model.apps.take() {
-            self.previous_apps = Some(old);
-            self.expect_reading();
+        if self.model.apps.is_some() {
+            self.refreshing_apps = true;
+            self.pending = true;
         }
     }
 

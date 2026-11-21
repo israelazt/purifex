@@ -102,6 +102,8 @@ impl Core {
             Action::OpenFolder(path) => self.open_app_folder(&path),
             Action::OpenRegistryKey(id) => self.open_app_registry_key(&id),
             Action::OpenWebsite(url) => self.open_app_website(&url),
+            Action::AskDeleteBackup(copy) => self.ask(Confirm::DeleteBackup(copy)),
+            Action::RestoreAll(app, copy) => self.everything_restored(&app, &copy),
             Action::AskForceUninstall(id) => self.ask(Confirm::ForceUninstall(id)),
             Action::AskCloseProcesses(name) => self.ask(Confirm::CloseProcesses(name)),
             Action::SetScanMode(mode) => self.scan_mode_set(mode),
@@ -132,6 +134,7 @@ impl Core {
             Confirm::EmptyQuarantine => return self.quarantine_emptied(),
             Confirm::RestartAsAdmin(name) => return self.restarted_as_admin(&name),
             Confirm::DeleteAtReboot(name) => return self.deleted_at_reboot(&name),
+            Confirm::DeleteBackup(copy) => return self.backup_deleted(&copy),
             Confirm::ForceUninstall(id) => return self.force_uninstalled(&id),
             Confirm::CloseProcesses(name) => return self.programs_closed(&name),
         };
@@ -1408,6 +1411,68 @@ mod tests {
         c.apply(Action::AskCleanAll("OBS Studio".into()));
         c.apply(Action::Confirm);
         assert_eq!(log.borrow().removed, [r"C:\ProgramData\OBS Studio"]);
+    }
+
+    /// A core that has the copies of `backups` and nothing else to clean.
+    fn core_with_copies(backups: &crate::testing::FakeBackups) -> Core {
+        use crate::testing::{CleanLog, FakeApps, FakeCleaning, FakeFinder};
+        let log = std::rc::Rc::new(std::cell::RefCell::new(CleanLog::default()));
+        let cleaning = crate::Cleaning::new(
+            Box::new(FakeFinder(vec![])),
+            Box::new(FakeCleaning(log.clone())),
+            Box::new(FakeCleaning(log)),
+        )
+        .with_backups(Box::new(backups.clone()));
+        Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_apps(Box::new(FakeApps::default()))
+            .with_cleaning(cleaning),
+        ))
+    }
+
+    #[test]
+    fn a_copy_is_deleted_only_after_a_warning_and_everything_is_put_back_in_one_step() {
+        use crate::testing::FakeBackups;
+        use purifex_domain::safeguard::BackupEntry;
+        let backups = FakeBackups::default();
+        backups.entries.borrow_mut().push(BackupEntry {
+            app: "OBS Studio".into(),
+            key: "HKCU".into(),
+            registry_copy: "obs.reg".into(),
+            on: None,
+        });
+        let mut c = core_with_copies(&backups);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        // Everything at once: the registration comes back even if there is nothing to put back
+        // from the quarantine, and the message says both.
+        c.apply(Action::RestoreAll("OBS Studio".into(), "obs.reg".into()));
+        assert_eq!(*backups.restored.borrow(), ["OBS Studio"]);
+        let said = c.model().message.clone().unwrap();
+        assert!(said.contains("registrada otra vez"), "{said}");
+        // Deleting asks first, and saying no keeps the copy.
+        let ask = || Action::AskDeleteBackup("obs.reg".into());
+        c.apply(ask());
+        assert_eq!(
+            c.model().confirm,
+            Some(Confirm::DeleteBackup("obs.reg".into()))
+        );
+        c.apply(Action::CancelConfirm);
+        assert_eq!(backups.entries.borrow().len(), 1);
+        c.apply(ask());
+        c.apply(Action::Confirm);
+        assert!(backups.entries.borrow().is_empty());
+        let said = c.model().message.clone().unwrap();
+        assert!(said.contains("Se borró la copia"), "{said}");
     }
 
     #[test]

@@ -48,6 +48,22 @@ impl Cleaning {
         Ok(entries)
     }
 
+    /// Deletes a copy (after the person confirmed): the app can no longer be registered again
+    /// from it.
+    pub fn delete_backup(&self, registry_copy: &str) -> Result<BackupEntry, String> {
+        let backups = self
+            .backups
+            .as_ref()
+            .ok_or("esta versión no guarda copias del registro")?;
+        let entry = backups
+            .entries()?
+            .into_iter()
+            .rfind(|e| e.registry_copy == registry_copy)
+            .ok_or("esa copia no está en la lista")?;
+        backups.delete(&entry)?;
+        Ok(entry)
+    }
+
     /// Registers the app again from the copy taken before its uninstaller ran.
     pub fn restore_backup(&self, registry_copy: &str) -> Result<BackupEntry, String> {
         let backups = self

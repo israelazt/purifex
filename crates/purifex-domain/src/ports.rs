@@ -148,6 +148,9 @@ pub trait Backups {
     /// Registers the app again from a copy of the log (`reg import`). It refuses when the key
     /// exists: the app is registered, and importing would merge the old values into it.
     fn restore(&self, entry: &crate::safeguard::BackupEntry) -> Result<(), String>;
+    /// Deletes a copy of the log: its file and its line. The registration of the app can no
+    /// longer be put back with it.
+    fn delete(&self, entry: &crate::safeguard::BackupEntry) -> Result<(), String>;
 }
 
 /// The restore points of Windows: the way back for the whole system, taken before an

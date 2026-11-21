@@ -54,16 +54,34 @@ fn row(c: &mut Canvas, entry: &BackupEntry, rect: Rect, top: f32) {
         &format!("{}{day}", entry.app),
         theme::mono(12.0, theme::TEXT_2),
     );
-    let label = "Registrar de nuevo";
-    let width = button_width(c, label);
-    button(
-        c,
-        Rect::new(rect.right() - 16.0 - width, rect.y + top, width, 44.0),
-        label,
-        "undo-2",
-        false,
-        Some(Action::RestoreBackup(entry.registry_copy.clone())),
-    );
+    let copy = || entry.registry_copy.clone();
+    let buttons = [
+        ("Borrar copia", "trash-2", Action::AskDeleteBackup(copy())),
+        (
+            "Registrar de nuevo",
+            "undo-2",
+            Action::RestoreBackup(copy()),
+        ),
+        (
+            "Devolver todo",
+            "history",
+            Action::RestoreAll(entry.app.clone(), copy()),
+        ),
+    ];
+    let mut right = rect.right() - 16.0;
+    for (label, icon, action) in buttons {
+        let width = button_width(c, label);
+        right -= width;
+        button(
+            c,
+            Rect::new(right, rect.y + top, width, 44.0),
+            label,
+            icon,
+            false,
+            Some(action),
+        );
+        right -= 12.0;
+    }
 }
 
 #[cfg(test)]
@@ -98,5 +116,22 @@ mod tests {
         assert_eq!(offered(&m).len(), LISTED);
         m.backups = None;
         assert!(offered(&m).is_empty());
+    }
+
+    #[test]
+    fn each_copy_offers_to_put_everything_back_to_register_it_again_and_to_delete_it() {
+        let m = Model {
+            backups: Some(vec![entry("Discord")]),
+            apps: Some(Vec::new()),
+            ..Default::default()
+        };
+        let mut c = Canvas::new(&crate::canvas::testing::FakeText, None);
+        backups_panel(&mut c, &m, Rect::new(0.0, 0.0, 1100.0, 0.0), 0.0);
+        let (_, hits) = c.finish();
+        let actions: Vec<Action> = hits.into_iter().map(|h| h.action).collect();
+        let copy = "Discord.reg".to_string();
+        assert!(actions.contains(&Action::RestoreAll("Discord".into(), copy.clone())));
+        assert!(actions.contains(&Action::RestoreBackup(copy.clone())));
+        assert!(actions.contains(&Action::AskDeleteBackup(copy)));
     }
 }

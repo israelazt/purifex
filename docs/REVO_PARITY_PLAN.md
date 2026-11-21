@@ -102,7 +102,7 @@ Pendiente, anotado:
 - **Pedir el punto bloquea la ventana unos segundos** (se pide en el hilo de la ventana). Habrá que
   medirlo siendo administrador y, si molesta, hacer el paso en un hilo antes de lanzar el
   desinstalador.
-- **«Devolver todo» de una operación** (restos + registro a la vez) y «Borrar copia».
+- **«Devolver todo»** y **«Borrar copia»** (hecho 2026-11-21): cada copia del panel tiene «Devolver todo» (primero los restos de la cuarentena, para que los archivos estén, y luego el registro; si uno falla el otro sigue y el mensaje dice qué hizo cada uno), «Registrar de nuevo» y «Borrar copia» (con aviso: ya no se podrá registrar la app con ella). Solo se borra una carpeta que está dentro de las copias de Purifex y una copia que figura en su lista.
 - El punto de restauración **no se ha probado de verdad**: sin administrador solo falla de forma
   controlada. Hay que probarlo con «Reiniciar como administrador».
 

@@ -48,6 +48,8 @@ pub enum Confirm {
     DeleteAtReboot(String),
     /// Take the app out without its own uninstaller (it fails or is gone).
     ForceUninstall(String),
+    /// Delete the copy of the registration of an app (by the file of the copy).
+    DeleteBackup(String),
     /// Close the programs an app that is gone still runs from its folder.
     CloseProcesses(String),
 }
@@ -194,6 +196,11 @@ pub enum Action {
     SetAppFilter(crate::app_list::AppFilter),
     SetAppSort(crate::app_list::AppSort),
     SetAppView(crate::app_list::AppView),
+    /// Asks to delete a copy of the registration, by its file.
+    AskDeleteBackup(String),
+    /// Puts back everything of an app that was cleaned: its traces from the quarantine and its
+    /// registration from the copy (the app, and the file of the copy).
+    RestoreAll(String, String),
     /// Asks to force the removal of an installed app, by its id.
     AskForceUninstall(String),
     /// Opens (or closes) the details of an app of the list, by its id.

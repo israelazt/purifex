@@ -110,6 +110,30 @@ impl Backups for LocalBackups {
         }
         reg(&["import", &entry.registry_copy])
     }
+
+    fn delete(&self, entry: &BackupEntry) -> Result<(), String> {
+        let entries = self.entries()?;
+        if !entries.iter().any(|e| e == entry) {
+            return Err("esa copia no es de Purifex".into());
+        }
+        let backups = self
+            .base
+            .as_ref()
+            .ok_or("no se encuentra la carpeta de datos del usuario")?
+            .join("backups");
+        // Only a folder of this program's own copies is ever deleted, whatever the line says.
+        let folder = std::path::Path::new(&entry.registry_copy).parent();
+        if let Some(folder) = folder.filter(|f| f.starts_with(&backups) && *f != backups) {
+            fs::remove_dir_all(folder).map_err(|e| format!("no se pudo borrar la copia: {e}"))?;
+        }
+        let kept: Vec<String> = entries
+            .iter()
+            .filter(|e| *e != entry)
+            .map(BackupEntry::to_line)
+            .collect();
+        let text: String = kept.iter().map(|line| format!("{line}\n")).collect();
+        fs::write(self.log()?, text).map_err(|e| format!("no se pudo actualizar la lista: {e}"))
+    }
 }
 
 #[cfg(test)]
@@ -121,6 +145,41 @@ mod tests {
     /// `reg export` fails now and then when several run at once (seen on the CI): the tests
     /// that use the real registry take turns.
     static REAL_REGISTRY: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn deleting_a_copy_removes_its_folder_and_its_line_and_never_a_folder_outside_the_copies() {
+        let base = std::env::temp_dir().join(format!("purifex-bdel-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let store = LocalBackups::in_dir(base.clone());
+        let made = |folder: PathBuf, app: &str| {
+            fs::create_dir_all(&folder).unwrap();
+            let file = folder.join("registro.reg");
+            fs::write(&file, "x").unwrap();
+            let entry = BackupEntry {
+                app: app.into(),
+                key: "HKCU".into(),
+                registry_copy: file.to_string_lossy().into_owned(),
+                on: None,
+            };
+            store.record(&entry).unwrap();
+            entry
+        };
+        let first = made(base.join("backups").join("1-A"), "A");
+        let second = made(base.join("backups").join("2-B"), "B");
+        // A line that points outside the copies (a damaged or edited log) loses its line only.
+        let outside = made(base.join("elsewhere"), "C");
+        store.delete(&first).unwrap();
+        assert!(!base.join("backups").join("1-A").exists());
+        assert_eq!(store.entries().unwrap(), [second.clone(), outside.clone()]);
+        store.delete(&outside).unwrap();
+        assert!(base.join("elsewhere").join("registro.reg").exists());
+        assert_eq!(store.entries().unwrap(), std::slice::from_ref(&second));
+        // What is not in the log is not deleted.
+        assert!(store.delete(&first).is_err());
+        store.delete(&second).unwrap();
+        assert!(store.entries().unwrap().is_empty());
+        let _ = fs::remove_dir_all(base);
+    }
 
     #[test]
     fn the_name_of_the_folder_has_only_safe_characters() {

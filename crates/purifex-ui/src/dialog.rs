@@ -128,6 +128,12 @@ pub fn view(m: &Model) -> Option<DialogView> {
             "Borrar al reiniciar",
             "trash-2",
         )),
+        (Some(Confirm::DeleteBackup(copy)), _) => Some(confirm_view(
+            "¿Borrar la copia del registro?".to_string(),
+            &format!("Se borra la copia ({copy}). Después ya no podrás registrar la app de nuevo con ella. Lo que Purifex quitó de la app sigue en la cuarentena."),
+            "Borrar copia",
+            "trash-2",
+        )),
         (Some(Confirm::ForceUninstall(id)), _) => Some(force_uninstall_view(m, id)),
         (Some(Confirm::CloseProcesses(name)), _) => Some(confirm_view(
             format!("¿Cerrar los programas de {name}?"),

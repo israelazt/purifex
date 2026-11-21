@@ -258,6 +258,39 @@ impl Core {
         }
     }
 
+    /// Deletes, after the person confirmed, a copy of the registration of an app.
+    pub(super) fn backup_deleted(&mut self, registry_copy: &str) {
+        match self.services.delete_backup(registry_copy) {
+            Ok(entry) => {
+                self.model.message = Some(format!(
+                    "Se borró la copia del registro de {}: ya no se puede registrar de nuevo con ella.",
+                    entry.app
+                ));
+                self.model.backups = None;
+                self.expect_reading();
+            }
+            Err(error) => self.model.error = Some(error),
+        }
+    }
+
+    /// Puts back everything of an app: its traces from the quarantine first (so its files are
+    /// there) and then its registration. One failing does not stop the other; the message says
+    /// what each did.
+    pub(super) fn everything_restored(&mut self, app: &str, registry_copy: &str) {
+        self.model.error = None;
+        let traces = match self.services.restore_app_cleanup(app) {
+            Ok(report) => report.to_text(),
+            Err(why) => format!("Restos: {why}."),
+        };
+        let registration = match self.services.restore_backup(registry_copy) {
+            Ok(_) => format!("{app} está registrada otra vez."),
+            Err(why) => format!("Registro: {why}."),
+        };
+        self.model.message = Some(format!("{traces} {registration}"));
+        (self.model.quarantine, self.model.apps, self.model.backups) = (None, None, None);
+        self.expect_reading();
+    }
+
     /// Deletes for good what the quarantine holds, after the person confirmed.
     pub(super) fn quarantine_emptied(&mut self) {
         match self.services.empty_quarantine(true) {

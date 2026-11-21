@@ -64,6 +64,10 @@ impl purifex_domain::ports::Backups for FakeBackups {
         self.restored.borrow_mut().push(entry.app.clone());
         Ok(())
     }
+    fn delete(&self, entry: &purifex_domain::safeguard::BackupEntry) -> Result<(), String> {
+        self.entries.borrow_mut().retain(|e| e != entry);
+        Ok(())
+    }
 }
 
 /// Restore points that a test can make fail. It records what it was asked for.

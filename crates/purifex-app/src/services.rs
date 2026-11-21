@@ -134,6 +134,8 @@ pub trait Services {
     fn backups(&self) -> Result<Vec<BackupEntry>, String>;
     /// Registers an app again from the copy kept in `registry_copy`.
     fn restore_backup(&mut self, registry_copy: &str) -> Result<BackupEntry, String>;
+    /// Deletes that copy (after the person confirmed).
+    fn delete_backup(&mut self, registry_copy: &str) -> Result<BackupEntry, String>;
     /// Whether the program runs as an administrator.
     fn is_elevated(&self) -> bool;
     /// Starts the program again as an administrator, looking for the traces of `resume`.
@@ -394,6 +396,10 @@ where
 
     fn backups(&self) -> Result<Vec<BackupEntry>, String> {
         self.cleaning.backups()
+    }
+
+    fn delete_backup(&mut self, registry_copy: &str) -> Result<BackupEntry, String> {
+        self.cleaning.delete_backup(registry_copy)
     }
 
     fn restore_backup(&mut self, registry_copy: &str) -> Result<BackupEntry, String> {

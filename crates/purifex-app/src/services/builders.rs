@@ -16,6 +16,8 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
             candidates: Candidates::default(),
             opener: None,
             folder_opener: None,
+            registry_viewer: None,
+            app_list_store: None,
             inventory: None,
             cleaning: Cleaning::default(),
             elevation: None,
@@ -48,6 +50,24 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
         opener: Box<dyn purifex_domain::ports::FolderOpener>,
     ) -> Self {
         self.folder_opener = Some(opener);
+        self
+    }
+
+    /// How a key of the registry is shown in the registry editor (nothing until given).
+    pub fn with_registry_viewer(
+        mut self,
+        viewer: Box<dyn purifex_domain::ports::RegistryViewer>,
+    ) -> Self {
+        self.registry_viewer = Some(viewer);
+        self
+    }
+
+    /// Where the choices for the list of apps are kept (not kept until given).
+    pub fn with_app_list_store(
+        mut self,
+        store: Box<dyn purifex_domain::ports::AppListStore>,
+    ) -> Self {
+        self.app_list_store = Some(store);
         self
     }
 

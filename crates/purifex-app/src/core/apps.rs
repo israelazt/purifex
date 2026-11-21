@@ -4,7 +4,7 @@
 use std::time::Instant;
 
 use purifex_domain::scan_mode::ScanMode;
-use purifex_domain::view::InUse;
+use purifex_domain::view::{InUse, Model};
 
 use super::{Core, WATCH_EVERY, WATCH_FOR};
 
@@ -129,6 +129,20 @@ impl Core {
         }
     }
 
+    /// Changes how the list of apps looks and keeps the choice for the next run. Not being able
+    /// to keep it is logged and nothing more: the list already changed.
+    pub(super) fn app_list_chosen(&mut self, change: impl FnOnce(&mut Model)) {
+        change(&mut self.model);
+        let settings = purifex_domain::app_list::AppListSettings {
+            filter: self.model.app_filter,
+            sort: self.model.app_sort,
+            view: self.model.app_view,
+        };
+        if let Err(why) = self.services.save_app_list_settings(&settings) {
+            purifex_domain::log_warn!("the view of the apps could not be kept: {why}");
+        }
+    }
+
     /// Opens the details of an app, or closes them if they were open.
     pub(super) fn select_app(&mut self, id: String) {
         self.model.app_selected = (self.model.app_selected.as_ref() != Some(&id)).then_some(id);
@@ -147,6 +161,22 @@ impl Core {
             self.services.open_folder(path).err()
         } else {
             Some("esa carpeta no es de ninguna app de la lista".into())
+        };
+    }
+
+    /// Shows where the app registered itself, in the registry editor. The key comes from the
+    /// app of the list, never from what asked for it.
+    pub(super) fn open_app_registry_key(&mut self, id: &str) {
+        let key = self
+            .model
+            .apps
+            .iter()
+            .flatten()
+            .find(|a| a.id == id)
+            .and_then(|a| a.registry_key());
+        self.model.error = match key {
+            Some(key) => self.services.open_registry_key(&key).err(),
+            None => Some("esa app no está registrada en el registro".into()),
         };
     }
 

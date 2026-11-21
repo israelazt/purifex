@@ -42,10 +42,14 @@ pub struct Core {
 impl Core {
     /// Starts on the overview, with its reading pending.
     pub fn new(services: Box<dyn Services>) -> Self {
+        let chosen = services.app_list_settings();
         Self {
             services,
             model: Model {
                 busy: true,
+                app_filter: chosen.filter,
+                app_sort: chosen.sort,
+                app_view: chosen.view,
                 ..Model::default()
             },
             pending: true,
@@ -91,10 +95,12 @@ impl Core {
             Action::RestoreApp(app) => self.apps_restored(&app),
             Action::AskRestartAsAdmin(name) => self.ask(Confirm::RestartAsAdmin(name)),
             Action::AskDeleteAtReboot(name) => self.ask(Confirm::DeleteAtReboot(name)),
-            Action::SetAppFilter(filter) => self.model.app_filter = filter,
-            Action::SetAppSort(sort) => self.model.app_sort = sort,
+            Action::SetAppFilter(filter) => self.app_list_chosen(|m| m.app_filter = filter),
+            Action::SetAppSort(sort) => self.app_list_chosen(|m| m.app_sort = sort),
+            Action::SetAppView(view) => self.app_list_chosen(|m| m.app_view = view),
             Action::SelectApp(id) => self.select_app(id),
             Action::OpenFolder(path) => self.open_app_folder(&path),
+            Action::OpenRegistryKey(id) => self.open_app_registry_key(&id),
             Action::OpenWebsite(url) => self.open_app_website(&url),
             Action::AskCloseProcesses(name) => self.ask(Confirm::CloseProcesses(name)),
             Action::SetScanMode(mode) => self.scan_mode_set(mode),
@@ -1273,6 +1279,49 @@ mod tests {
     }
 
     #[test]
+    fn how_the_list_of_apps_looks_is_kept_and_is_there_the_next_time() {
+        use crate::testing::FakeAppList;
+        use purifex_domain::app_list::{AppFilter, AppSort, AppView};
+        let store = FakeAppList::default();
+        let build = |store: &FakeAppList| {
+            Core::new(Box::new(
+                App::new(
+                    Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                    Recorder::new(
+                        FakeSampler::new(0, 1, true),
+                        FakeClock::ticking(0),
+                        FakeFile::default(),
+                    ),
+                    Archive::new(FakeArchive::with(&[])),
+                )
+                .with_app_list_store(Box::new(store.clone())),
+            ))
+        };
+        let mut first = build(&store);
+        first.apply(Action::SetAppFilter(AppFilter::Programs));
+        first.apply(Action::SetAppSort(AppSort::Size));
+        first.apply(Action::SetAppView(AppView::List));
+        let next = build(&store);
+        let m = next.model();
+        assert_eq!(
+            (m.app_filter, m.app_sort, m.app_view),
+            (AppFilter::Programs, AppSort::Size, AppView::List)
+        );
+        // Without a store the choice still applies for this run.
+        let mut plain = Core::new(Box::new(App::new(
+            Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+            Recorder::new(
+                FakeSampler::new(0, 1, true),
+                FakeClock::ticking(0),
+                FakeFile::default(),
+            ),
+            Archive::new(FakeArchive::with(&[])),
+        )));
+        plain.apply(Action::SetAppView(AppView::List));
+        assert_eq!(plain.model().app_view, AppView::List);
+    }
+
+    #[test]
     fn an_app_opens_its_details_and_only_what_the_list_registered_is_ever_opened() {
         use crate::testing::FakeApps;
         let installed = FakeApps::default();
@@ -1297,6 +1346,21 @@ mod tests {
         assert!(c.model().error.as_deref().unwrap().contains("ninguna app"));
         c.apply(Action::OpenWebsite("https://evil.example".into()));
         assert!(c.model().error.as_deref().unwrap().contains("ninguna app"));
+        // The key comes from the app of the list: an id that is not one has none to show.
+        c.apply(Action::OpenRegistryKey("HKLM64:Nothing".into()));
+        assert!(c
+            .model()
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("no está registrada"));
+        c.apply(Action::OpenRegistryKey("HKLM64:Tool".into()));
+        assert!(c
+            .model()
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("no puede abrir"));
         // What was passes the guard (this core has no opener, and says so).
         c.apply(Action::OpenFolder(r"C:\Program Files\Tool".into()));
         assert!(c

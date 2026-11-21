@@ -10,55 +10,55 @@ use crate::theme;
 use crate::widgets::{button, button_width};
 
 /// Height of the details under a row.
-pub(crate) const DETAIL_H: f32 = 92.0;
+pub(crate) const DETAIL_H: f32 = 148.0;
+/// Room kept at the right of the lines for the buttons.
+const BUTTONS_W: f32 = 520.0;
 
 pub(crate) fn app_detail(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
     c.fill(bar, 0.0, theme::TEXT.with_alpha(0.03));
     let label = theme::eyebrow(theme::TEXT_3);
     let value = theme::mono(12.0, theme::TEXT_2);
-    let (folder, site) = (app.install_location.as_deref(), app.website.as_deref());
-    let buttons_w = 360.0;
-    for (i, (name, text)) in [("CARPETA", folder), ("WEB", site)].into_iter().enumerate() {
+    let key = app.registry_key();
+    let lines = [
+        ("CARPETA", app.install_location.as_deref()),
+        ("WEB", app.website.as_deref()),
+        ("REGISTRO", key.as_deref()),
+        ("DESINSTALADOR", app.uninstall.as_deref()),
+    ];
+    for (i, (name, text)) in lines.into_iter().enumerate() {
         let y = bar.y + 14.0 + i as f32 * 28.0;
         c.text(bar.x + 70.0, y + 2.0, name, label);
+        let room = bar.w - 150.0 - BUTTONS_W;
         c.text_cut(
             bar.x + 150.0,
             y,
             text.unwrap_or("no lo indica"),
             value,
-            bar.w - 150.0 - buttons_w,
+            room,
         );
     }
+    buttons(c, app, bar);
+}
+
+/// What the app lets be opened, as buttons at the right (the ones that do not apply are not drawn).
+fn buttons(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
+    let id = || app.id.clone();
+    let entries = [
+        app.website
+            .clone()
+            .map(|s| ("Sitio web", "arrow-right", Action::OpenWebsite(s))),
+        app.registry_key()
+            .map(|_| ("Abrir registro", "key-round", Action::OpenRegistryKey(id()))),
+        app.install_location
+            .clone()
+            .map(|f| ("Abrir carpeta", "folder-open", Action::OpenFolder(f))),
+    ];
     let mut right = bar.right() - 16.0;
-    for (label, icon, action) in [
-        site.map(|s| {
-            (
-                "Sitio web",
-                "arrow-right",
-                Action::OpenWebsite(s.to_string()),
-            )
-        }),
-        folder.map(|f| {
-            (
-                "Abrir carpeta",
-                "folder-open",
-                Action::OpenFolder(f.to_string()),
-            )
-        }),
-    ]
-    .into_iter()
-    .flatten()
-    {
+    for (label, icon, action) in entries.into_iter().flatten() {
         let width = button_width(c, label);
         right -= width;
-        button(
-            c,
-            Rect::new(right, bar.y + 22.0, width, 44.0),
-            label,
-            icon,
-            false,
-            Some(action),
-        );
+        let rect = Rect::new(right, bar.y + 22.0, width, 44.0);
+        button(c, rect, label, icon, false, Some(action));
         right -= 12.0;
     }
 }
@@ -96,7 +96,7 @@ mod tests {
         assert!(actions.contains(&Action::OpenFolder(r"C:\Program Files\X".into())));
         assert!(actions.contains(&Action::OpenWebsite("https://x.example".into())));
         let (texts, actions) = render(&InstalledApp::default());
-        assert_eq!(texts.iter().filter(|t| *t == "no lo indica").count(), 2);
+        assert_eq!(texts.iter().filter(|t| *t == "no lo indica").count(), 4);
         assert!(actions.is_empty(), "nothing to open");
     }
 }

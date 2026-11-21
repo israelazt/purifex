@@ -230,6 +230,10 @@ mod states {
                 }
             }
             Some("backups") => model = with_backups(model),
+            Some("list") => {
+                model.traces_open = false;
+                model.app_view = purifex_domain::app_list::AppView::List;
+            }
             Some("details") => {
                 model.traces_open = false;
                 model.app_selected = Some("HKLM64:Discord".into());

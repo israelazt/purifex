@@ -39,6 +39,11 @@ pub(crate) fn items(app: &InstalledApp) -> Vec<Item> {
             action: folder.map(Action::OpenFolder),
         },
         Item {
+            label: "Abrir clave de registro",
+            icon: "key-round",
+            action: app.registry_key().map(|_| Action::OpenRegistryKey(id())),
+        },
+        Item {
             label: "Sitio web",
             icon: "arrow-right",
             action: site.map(Action::OpenWebsite),
@@ -121,6 +126,7 @@ mod tests {
         };
         assert!(labels(&protected).contains(&("Desinstalar", false)));
         let full = InstalledApp {
+            id: "HKLM64:Tool".into(),
             install_location: Some(r"C:\X".into()),
             website: Some("https://x.example".into()),
             ..plain

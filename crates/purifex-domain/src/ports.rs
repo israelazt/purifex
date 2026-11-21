@@ -41,6 +41,19 @@ pub trait FolderOpener {
     fn open(&self, folder: &str) -> Result<(), String>;
 }
 
+/// Where the choices of the person for the list of apps are kept between runs.
+pub trait AppListStore {
+    /// What was saved (the defaults when nothing was).
+    fn load(&self) -> crate::app_list::AppListSettings;
+    fn save(&self, settings: &crate::app_list::AppListSettings) -> Result<(), String>;
+}
+
+/// Shows a key of the registry in the registry editor. Nothing is changed in the registry.
+pub trait RegistryViewer {
+    /// `key` is a full path: `HKEY_LOCAL_MACHINE\...` or `HKEY_CURRENT_USER\...`.
+    fn show(&self, key: &str) -> Result<(), String>;
+}
+
 /// The programs running now. Listing changes nothing; closing ends one of them.
 pub trait Processes {
     /// Every running program whose `.exe` can be read.

@@ -86,6 +86,15 @@ pub trait Services {
     fn apps(&self) -> Result<Vec<InstalledApp>, String>;
     /// Opens the install folder of an app in Explorer.
     fn open_folder(&mut self, folder: &str) -> Result<(), String>;
+    /// What the person chose for the list of apps (the defaults when nothing was kept).
+    fn app_list_settings(&self) -> purifex_domain::app_list::AppListSettings;
+    /// Keeps that choice for the next run.
+    fn save_app_list_settings(
+        &mut self,
+        settings: &purifex_domain::app_list::AppListSettings,
+    ) -> Result<(), String>;
+    /// Shows the registry key of an app in the registry editor.
+    fn open_registry_key(&mut self, key: &str) -> Result<(), String>;
     /// Opens the web page an app registered (any `https` address).
     fn open_website(&mut self, url: &str) -> Result<(), String>;
     /// Today's day, by the clock of the program.
@@ -141,6 +150,8 @@ pub struct App<I, C, S, C2, F, A> {
     candidates: Candidates,
     opener: Option<Box<dyn UrlOpener>>,
     folder_opener: Option<Box<dyn purifex_domain::ports::FolderOpener>>,
+    registry_viewer: Option<Box<dyn purifex_domain::ports::RegistryViewer>>,
+    app_list_store: Option<Box<dyn purifex_domain::ports::AppListStore>>,
     inventory: Option<Box<dyn AppInventory>>,
     cleaning: Cleaning,
     elevation: Option<Box<dyn Elevation>>,
@@ -280,6 +291,30 @@ where
             .as_ref()
             .ok_or("esta versión no puede abrir carpetas")?
             .open(folder)
+    }
+
+    fn app_list_settings(&self) -> purifex_domain::app_list::AppListSettings {
+        self.app_list_store
+            .as_ref()
+            .map(|s| s.load())
+            .unwrap_or_default()
+    }
+
+    fn save_app_list_settings(
+        &mut self,
+        settings: &purifex_domain::app_list::AppListSettings,
+    ) -> Result<(), String> {
+        self.app_list_store
+            .as_ref()
+            .ok_or("esta versión no guarda la vista")?
+            .save(settings)
+    }
+
+    fn open_registry_key(&mut self, key: &str) -> Result<(), String> {
+        self.registry_viewer
+            .as_ref()
+            .ok_or("esta versión no puede abrir el editor del registro")?
+            .show(key)
     }
 
     fn open_website(&mut self, url: &str) -> Result<(), String> {

@@ -16,7 +16,7 @@ mod lnk;
 mod locks;
 mod quarantine;
 mod reboot;
-mod registry_write;
+pub(crate) mod registry_write;
 mod seed_probe;
 mod tasks;
 

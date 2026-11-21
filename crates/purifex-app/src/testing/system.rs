@@ -114,3 +114,18 @@ impl purifex_domain::ports::Processes for FakeProcesses {
         Ok(())
     }
 }
+
+/// The choices for the list of apps, kept in memory so a test can look at them.
+#[derive(Clone, Default)]
+pub struct FakeAppList(pub Rc<RefCell<purifex_domain::app_list::AppListSettings>>);
+
+impl purifex_domain::ports::AppListStore for FakeAppList {
+    fn load(&self) -> purifex_domain::app_list::AppListSettings {
+        *self.0.borrow()
+    }
+
+    fn save(&self, settings: &purifex_domain::app_list::AppListSettings) -> Result<(), String> {
+        *self.0.borrow_mut() = *settings;
+        Ok(())
+    }
+}

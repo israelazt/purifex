@@ -3,8 +3,8 @@
 //! and the list of traces are dialogs (`dialog`); what may be removed is decided in
 //! the domain (`app_traces`). This only shows and asks.
 
-use purifex_domain::app_list::AppSort;
-use purifex_domain::apps::{size_text, InstalledApp};
+use purifex_domain::app_list::{AppSort, AppView};
+use purifex_domain::apps::InstalledApp;
 use purifex_domain::cleanup_log::CleanReport;
 use purifex_domain::draw::Rect;
 use purifex_domain::trace_text::Counts;
@@ -12,6 +12,7 @@ use purifex_domain::view::{Action, Model};
 
 use crate::apps_detail::{app_detail, DETAIL_H};
 use crate::apps_filters::app_filters;
+use crate::apps_row::{app_row, row_height};
 use crate::backups_panel::backups_panel;
 use crate::canvas::Canvas;
 use crate::drivers_page::search_box;
@@ -20,9 +21,7 @@ use crate::page;
 use crate::quarantine_panel::quarantine_panel;
 use crate::running_panel::running_panel;
 use crate::theme::{self, Tone};
-use crate::widgets::{button, button_width, icon_box, panel, tag};
-
-const ROW_H: f32 = 60.0;
+use crate::widgets::{button, button_width, panel};
 
 fn info(c: &mut Canvas, area: Rect, text: &str) -> f32 {
     let style = theme::mono(12.5, theme::TEXT);
@@ -144,96 +143,6 @@ fn stop_waiting_button(c: &mut Canvas, rect: Rect) {
     );
 }
 
-fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
-    let hover = c.hover(bar);
-    if hover > 0.01 {
-        c.fill(bar, 0.0, theme::TEXT.with_alpha(0.02 * hover));
-    }
-    // The whole row opens its details; the tag of the action, drawn after, wins where it is.
-    c.hit(bar, Action::SelectApp(app.id.clone()));
-    c.line(
-        bar.x,
-        bar.bottom() - 0.5,
-        bar.right(),
-        bar.bottom() - 0.5,
-        theme::LINE_SOFT,
-    );
-    icon_box(c, bar.x + 16.0, bar.y + 10.0, 40.0, "package", Tone::Gray);
-    app_labels(c, app, bar);
-    let installed = app.install_date.map_or("–".to_string(), |d| d.to_string());
-    c.text(
-        bar.right() - 450.0,
-        bar.y + 21.0,
-        &installed,
-        theme::mono(12.0, theme::TEXT_2),
-    );
-    c.text(
-        bar.right() - 330.0,
-        bar.y + 21.0,
-        &size_text(app.size_kb),
-        theme::mono(12.0, theme::TEXT_2),
-    );
-    if app.protection().is_some() {
-        let shield = Some("shield-check");
-        tag(
-            c,
-            bar.right() - 220.0,
-            bar.y + 19.0,
-            "No tocar",
-            Tone::Gray,
-            shield,
-        );
-    } else {
-        uninstall_tag(c, app, bar);
-    }
-}
-
-/// The name of the app and, below it, its publisher and version.
-fn app_labels(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
-    let room = bar.w - 600.0;
-    c.text_cut(
-        bar.x + 70.0,
-        bar.y + 10.0,
-        &app.name,
-        theme::sans(13.5, theme::TEXT).bold(),
-        room,
-    );
-    let detail = [
-        app.publisher.as_deref().unwrap_or("editor desconocido"),
-        app.version.as_deref().unwrap_or(""),
-        app.type_label(),
-    ]
-    .into_iter()
-    .filter(|part| !part.is_empty())
-    .collect::<Vec<_>>()
-    .join("  ");
-    c.text_cut(
-        bar.x + 70.0,
-        bar.y + 32.0,
-        detail.trim(),
-        theme::mono(11.5, theme::TEXT_3),
-        room,
-    );
-}
-
-/// The red «Desinstalar» tag of an app that may be uninstalled: outlined while the
-/// pointer is over it, and a place to click.
-fn uninstall_tag(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
-    let rect = Rect::new(bar.right() - 220.0, bar.y + 19.0, 120.0, 22.0);
-    let hover = c.hover(rect);
-    let width = tag(c, rect.x, rect.y, "Desinstalar", Tone::Red, Some("trash-2"));
-    let tag_rect = Rect::new(rect.x, rect.y, width, 22.0);
-    if hover > 0.01 {
-        c.stroke(
-            tag_rect,
-            4.0,
-            1.0,
-            Tone::Red.color().with_alpha(0.9 * hover),
-        );
-    }
-    c.hit(tag_rect, Action::AskUninstall(app.id.clone()));
-}
-
 /// A heading that orders the list by its column when clicked; the one in use is lit.
 fn sort_head(c: &mut Canvas, m: &Model, head: Rect, x: f32, text: &str, sort: AppSort) {
     let active = m.app_sort == sort;
@@ -255,13 +164,16 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     let apps = m.visible_apps();
     let open = |app: &InstalledApp| m.app_selected.as_deref() == Some(app.id.as_str());
     let opened = apps.iter().filter(|a| open(a)).count() as f32;
-    let height = 48.0 + apps.len().max(1) as f32 * ROW_H + opened * DETAIL_H;
+    let row_h = row_height(m.app_view);
+    let height = 48.0 + apps.len().max(1) as f32 * row_h + opened * DETAIL_H;
     let rect = Rect::new(area.x, y, area.w, height);
     panel(c, rect);
     let head = Rect::new(rect.x, rect.y, rect.w, 48.0);
     let label = theme::eyebrow(theme::TEXT_3);
     sort_head(c, m, head, rect.x + 16.0, "APP Y EDITOR", AppSort::Name);
-    sort_head(c, m, head, rect.right() - 450.0, "INSTALADA", AppSort::Date);
+    if m.app_view == AppView::Details {
+        sort_head(c, m, head, rect.right() - 450.0, "INSTALADA", AppSort::Date);
+    }
     sort_head(c, m, head, rect.right() - 330.0, "TAMAÑO", AppSort::Size);
     c.text_in(rect.right() - 220.0, head, "ACCIÓN", label);
     c.line(
@@ -274,8 +186,8 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     let mut row_y = rect.y + 48.0;
     for (i, app) in apps.iter().enumerate() {
         c.reveal(if i < 12 { 18 * i as u64 } else { 0 });
-        app_row(c, app, Rect::new(rect.x, row_y, rect.w, ROW_H));
-        row_y += ROW_H;
+        app_row(c, app, Rect::new(rect.x, row_y, rect.w, row_h), m.app_view);
+        row_y += row_h;
         if open(app) {
             app_detail(c, app, Rect::new(rect.x, row_y, rect.w, DETAIL_H));
             row_y += DETAIL_H;

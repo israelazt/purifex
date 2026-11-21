@@ -9,6 +9,7 @@ pub mod anim;
 mod apps_detail;
 mod apps_filters;
 mod apps_page;
+mod apps_row;
 mod backups_panel;
 pub mod canvas;
 mod compare_panel;

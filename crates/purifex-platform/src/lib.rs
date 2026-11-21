@@ -9,6 +9,8 @@ pub mod nt_layout;
 #[cfg(windows)]
 mod app_cleanup;
 #[cfg(windows)]
+mod app_list_file;
+#[cfg(windows)]
 mod apps_registry;
 #[cfg(windows)]
 mod browser;
@@ -31,6 +33,8 @@ mod nt_query;
 #[cfg(windows)]
 mod processes;
 #[cfg(windows)]
+mod regedit;
+#[cfg(windows)]
 mod registry;
 #[cfg(windows)]
 mod restore_points;
@@ -51,6 +55,8 @@ mod windows_update;
 pub use app_cleanup::{
     LocalBackups, LocalCleanup, RegisteredUninstaller, WindowsSeedProbe, WindowsTraceFinder,
 };
+#[cfg(windows)]
+pub use app_list_file::LocalAppList;
 #[cfg(windows)]
 pub use apps_registry::RegistryApps;
 #[cfg(windows)]
@@ -73,6 +79,8 @@ pub use log_console::install_stderr_log;
 pub use nt_query::running_programs;
 #[cfg(windows)]
 pub use processes::WindowsProcesses;
+#[cfg(windows)]
+pub use regedit::RegeditViewer;
 #[cfg(windows)]
 pub use restore_points::WindowsRestorePoints;
 #[cfg(windows)]

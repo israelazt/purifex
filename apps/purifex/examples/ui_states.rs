@@ -177,11 +177,9 @@ mod states {
         model
     }
 
-    /// The apps page after uninstalling Inkscape, with its traces; `extra` picks a variant
-    /// (`all`, `uninstall`, `unchecked`).
-    fn apps_state(mut model: Model, extra: Option<&str>) -> Model {
-        use purifex_domain::apps::InstalledApp;
-        let app = |name: &str, publisher: &str, kb: u64| InstalledApp {
+    /// An installed app for the pictures: its install day comes from its size, to vary.
+    fn sample_app(name: &str, publisher: &str, kb: u64) -> purifex_domain::apps::InstalledApp {
+        purifex_domain::apps::InstalledApp {
             id: format!("HKLM64:{name}"),
             name: name.into(),
             publisher: Some(publisher.into()),
@@ -190,13 +188,18 @@ mod states {
             size_kb: Some(kb),
             install_date: purifex_domain::date::Date::new(2026, 11, (kb % 27) as u8 + 1),
             ..Default::default()
-        };
+        }
+    }
+
+    /// The apps page after uninstalling Inkscape, with its traces; `extra` picks a variant
+    /// (`all`, `uninstall`, `unchecked`).
+    fn apps_state(mut model: Model, extra: Option<&str>) -> Model {
         model.today = purifex_domain::date::Date::new(2026, 11, 21);
         model.page = Page::Apps;
         model.apps = Some(vec![
-            app("Discord", "Discord Inc.", 110_000),
-            app("GIMP 2.10", "The GIMP Team", 1_250_000),
-            app("Microsoft .NET Runtime 8", "Microsoft Corporation", 190_000),
+            sample_app("Discord", "Discord Inc.", 110_000),
+            sample_app("GIMP 2.10", "The GIMP Team", 1_250_000),
+            sample_app("Microsoft .NET Runtime 8", "Microsoft Corporation", 190_000),
         ]);
         model.uninstalled = Some("Inkscape".into());
         model.message = Some("Se abrió el desinstalador de Inkscape.".into());

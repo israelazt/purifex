@@ -20,7 +20,7 @@ use purifex_domain::ports::{
 };
 use purifex_domain::quarantine::{PurgeReport, QuarantineInfo, RestoreReport};
 use purifex_domain::report::{ScanReport, Scope};
-use purifex_domain::safeguard::Started;
+use purifex_domain::safeguard::{BackupEntry, Started};
 use purifex_domain::session_list::SessionRow;
 
 use crate::archive::Archive;
@@ -103,6 +103,10 @@ pub trait Services {
     fn empty_quarantine(&mut self, confirmed: bool) -> Result<PurgeReport, String>;
     /// Lets go of what has been in the quarantine for seven days.
     fn expire_quarantine(&mut self) -> Result<PurgeReport, String>;
+    /// The copies of the registration taken before uninstalling, newest first.
+    fn backups(&self) -> Result<Vec<BackupEntry>, String>;
+    /// Registers an app again from the copy kept in `registry_copy`.
+    fn restore_backup(&mut self, registry_copy: &str) -> Result<BackupEntry, String>;
     /// Whether the program runs as an administrator.
     fn is_elevated(&self) -> bool;
     /// Starts the program again as an administrator, looking for the traces of `resume`.
@@ -350,6 +354,14 @@ where
 
     fn restore_app_cleanup(&mut self, app: &str) -> Result<RestoreReport, String> {
         self.cleaning.restore_app(app)
+    }
+
+    fn backups(&self) -> Result<Vec<BackupEntry>, String> {
+        self.cleaning.backups()
+    }
+
+    fn restore_backup(&mut self, registry_copy: &str) -> Result<BackupEntry, String> {
+        self.cleaning.restore_backup(registry_copy)
     }
 
     fn empty_quarantine(&mut self, confirmed: bool) -> Result<PurgeReport, String> {

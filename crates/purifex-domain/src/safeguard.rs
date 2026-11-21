@@ -2,7 +2,10 @@
 //! happened is told to the person, because without it the uninstall still goes on but the
 //! system cannot be taken back as a whole.
 
+use serde::{Deserialize, Serialize};
+
 use crate::apps::InstalledApp;
+use crate::date::Date;
 
 /// What came of asking Windows for a restore point.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +30,29 @@ impl RestorePointOutcome {
             Self::Unavailable(why) => Some(format!("Sin punto de restauración: {why}.")),
             Self::NotAsked => None,
         }
+    }
+}
+
+/// A copy of the registration of an app, taken before its uninstaller ran. Importing the file
+/// registers the app again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackupEntry {
+    pub app: String,
+    /// The registry key that was copied.
+    pub key: String,
+    /// The file with the copy (a `.reg`).
+    pub registry_copy: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on: Option<Date>,
+}
+
+impl BackupEntry {
+    pub fn to_line(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    pub fn from_line(line: &str) -> Result<Self, String> {
+        serde_json::from_str(line).map_err(|e| e.to_string())
     }
 }
 

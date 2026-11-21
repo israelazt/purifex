@@ -103,9 +103,16 @@ pub trait CleanupStore {
 
 /// A copy of what an app registered, kept before its uninstaller runs: the system forgets it
 /// afterwards, and with the copy it can be registered again.
-pub trait RegistryBackup {
+pub trait Backups {
     /// Saves the registration of the app and says where; `None` when it has none to save.
     fn save(&self, app: &crate::apps::InstalledApp) -> Result<Option<String>, String>;
+    /// Writes down that a copy was taken (the log of copies only ever grows).
+    fn record(&self, entry: &crate::safeguard::BackupEntry) -> Result<(), String>;
+    /// The copies that were taken, oldest first.
+    fn entries(&self) -> Result<Vec<crate::safeguard::BackupEntry>, String>;
+    /// Registers the app again from a copy of the log (`reg import`). It refuses when the key
+    /// exists: the app is registered, and importing would merge the old values into it.
+    fn restore(&self, entry: &crate::safeguard::BackupEntry) -> Result<(), String>;
 }
 
 /// The restore points of Windows: the way back for the whole system, taken before an

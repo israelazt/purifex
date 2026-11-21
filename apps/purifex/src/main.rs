@@ -41,7 +41,7 @@ fn build_app() -> impl purifex_app::Services + 'static {
         UninstallByKind,
     };
     use purifex_platform::{
-        BrowserOpener, JsonlCandidates, JsonlHistory, LocalCleanup, LocalRegistryBackup,
+        BrowserOpener, JsonlCandidates, JsonlHistory, LocalBackups, LocalCleanup,
         LocalSessionArchive, LocalSessionFile, RegisteredUninstaller, RegistryApps,
         SetupApiInventory, StorePackages, StoreUninstaller, SystemClock, SystemFixes,
         WindowsElevation, WindowsRestorePoints, WindowsSampler, WindowsSeedProbe,
@@ -65,7 +65,7 @@ fn build_app() -> impl purifex_app::Services + 'static {
     )
     .with_probe(Box::new(WindowsSeedProbe))
     .with_restore_points(Box::new(WindowsRestorePoints))
-    .with_registry_backup(Box::new(LocalRegistryBackup::new()))
+    .with_backups(Box::new(LocalBackups::new()))
     .with_clock(Box::new(SystemClock::new()));
     App::new(scanner, recorder, archive)
         .with_fixer(fixer)

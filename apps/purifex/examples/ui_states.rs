@@ -149,6 +149,26 @@ mod states {
         }
     }
 
+    /// The apps page with the copies of the registration of two apps that are gone.
+    fn with_backups(mut model: Model) -> Model {
+        model.traces_open = false;
+        model.backups = Some(vec![
+            purifex_domain::safeguard::BackupEntry {
+                app: "Kdenlive".into(),
+                key: "HKCU".into(),
+                registry_copy: "kdenlive.reg".into(),
+                on: purifex_domain::date::Date::new(2026, 11, 20),
+            },
+            purifex_domain::safeguard::BackupEntry {
+                app: "Inkscape".into(),
+                key: "HKCU".into(),
+                registry_copy: "inkscape.reg".into(),
+                on: purifex_domain::date::Date::new(2026, 11, 18),
+            },
+        ]);
+        model
+    }
+
     /// The apps page after uninstalling Inkscape, with its traces; `extra` picks a variant
     /// (`all`, `uninstall`, `unchecked`).
     fn apps_state(mut model: Model, extra: Option<&str>) -> Model {
@@ -169,9 +189,7 @@ mod states {
             app("Microsoft .NET Runtime 8", "Microsoft Corporation", 190_000),
         ]);
         model.uninstalled = Some("Inkscape".into());
-        model.message = Some(
-            "Se abrió el desinstalador de Inkscape. Cuando termine, pulsa «Buscar restos».".into(),
-        );
+        model.message = Some("Se abrió el desinstalador de Inkscape.".into());
         model.traces = Some(inkscape_traces());
         model.traces_open = true;
         match extra {
@@ -196,6 +214,7 @@ mod states {
                     model.confirm = Some(Confirm::EmptyQuarantine);
                 }
             }
+            Some("backups") => model = with_backups(model),
             Some("unchecked") => {
                 model.unchecked = vec![r"C:\Users\yo\AppData\Local\Programs\Inkscape".into()];
             }

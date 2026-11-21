@@ -100,6 +100,9 @@ pub struct Model {
     pub waiting: bool,
     /// What the quarantine holds (read on the apps page).
     pub quarantine: Option<QuarantineInfo>,
+    /// The copies of the registration of apps taken before uninstalling them (read on the
+    /// apps page), newest first.
+    pub backups: Option<Vec<crate::safeguard::BackupEntry>>,
     /// Whether the program runs as an administrator (read on the apps page).
     pub elevated: Option<bool>,
     /// The window with the list of traces is open.
@@ -131,6 +134,8 @@ pub enum Action {
     RefreshApps,
     /// Stop waiting for the uninstaller that was started here.
     StopWaiting,
+    /// Register an app again from the copy kept in this file.
+    RestoreBackup(String),
     /// Asks to remove the checked traces: the user is asked to confirm.
     AskClean(String),
     /// Asks to remove every trace without selecting: same, it must be confirmed.

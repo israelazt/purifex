@@ -105,6 +105,22 @@ impl Core {
         }
     }
 
+    /// Registers an app again from the copy taken before it was uninstalled.
+    pub(super) fn backup_restored(&mut self, registry_copy: &str) {
+        self.model.error = None;
+        match self.services.restore_backup(registry_copy) {
+            Ok(entry) => {
+                self.model.message = Some(format!(
+                    "{} está registrada otra vez: Windows la vuelve a listar. Si sus archivos siguen en el disco, ya puedes abrir su desinstalador.",
+                    entry.app
+                ));
+                (self.model.apps, self.model.backups) = (None, None);
+                self.expect_reading();
+            }
+            Err(error) => self.model.error = Some(error),
+        }
+    }
+
     /// Deletes for good what the quarantine holds, after the person confirmed.
     pub(super) fn quarantine_emptied(&mut self) {
         match self.services.empty_quarantine(true) {

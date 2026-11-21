@@ -7,6 +7,7 @@
 
 pub mod anim;
 mod apps_page;
+mod backups_panel;
 pub mod canvas;
 mod compare_panel;
 mod dialog;

@@ -12,10 +12,11 @@ use purifex_domain::cleanup_log::{
 };
 use purifex_domain::date::Date;
 use purifex_domain::ports::{
-    CleanupStore, Clock, RegistryBackup, RestorePoints, SeedProbe, TraceFinder, Uninstaller,
+    Backups, CleanupStore, Clock, RestorePoints, SeedProbe, TraceFinder, Uninstaller,
 };
 use purifex_domain::safeguard::{RestorePointOutcome, Started};
 
+mod backing_up;
 mod purging;
 mod restoring;
 
@@ -27,7 +28,7 @@ pub struct Cleaning {
     probe: Option<Box<dyn SeedProbe>>,
     clock: Option<Box<dyn Clock>>,
     restore_points: Option<Box<dyn RestorePoints>>,
-    registry_backup: Option<Box<dyn RegistryBackup>>,
+    backups: Option<Box<dyn Backups>>,
 }
 
 /// The app that `query` names (its id, its name, or a part of it that only one has).
@@ -85,25 +86,7 @@ impl Cleaning {
             probe: None,
             clock: None,
             restore_points: None,
-            registry_backup: None,
-        }
-    }
-
-    /// The registration of each app is copied before its uninstaller runs.
-    pub fn with_registry_backup(mut self, backup: Box<dyn RegistryBackup>) -> Self {
-        self.registry_backup = Some(backup);
-        self
-    }
-
-    /// Where the copy of the app's registration went. A copy that cannot be made is logged
-    /// and does not stop the uninstall: the person can still cancel the uninstaller itself.
-    fn registry_copy_of(&self, app: &InstalledApp) -> Option<String> {
-        match self.registry_backup.as_ref()?.save(app) {
-            Ok(path) => path,
-            Err(why) => {
-                purifex_domain::log_warn!("{}: no se copió su registro: {why}", app.name);
-                None
-            }
+            backups: None,
         }
     }
 
@@ -490,23 +473,42 @@ mod tests {
 
     #[test]
     fn the_registration_is_copied_before_the_uninstaller_and_a_failed_copy_does_not_stop_it() {
-        use crate::testing::FakeRegistryBackup;
+        use crate::testing::FakeBackups;
         let apps = vec![app("Discord", "Discord Inc.")];
         let (c, _) = cleaning(vec![]);
-        let backup = FakeRegistryBackup::default();
-        let mut c = c.with_registry_backup(Box::new(backup.clone()));
+        let backup = FakeBackups::default();
+        let mut c = c.with_backups(Box::new(backup.clone()));
         let started = c.uninstall(&apps, "Discord").unwrap();
         assert_eq!(backup.saved.borrow()[0], "Discord");
         assert!(started.safeguards_text().contains(r"C:\copias\Discord.reg"));
         let (c, log) = cleaning(vec![]);
-        let broken = FakeRegistryBackup {
+        let broken = FakeBackups {
             fails: true,
             ..Default::default()
         };
-        let mut c = c.with_registry_backup(Box::new(broken));
+        let mut c = c.with_backups(Box::new(broken));
         let started = c.uninstall(&apps, "Discord").unwrap();
         assert_eq!(started.registry_copy, None);
         assert_eq!(log.borrow().launched, ["Discord"]);
+    }
+
+    #[test]
+    fn each_copy_is_listed_newest_first_and_only_a_listed_copy_is_registered_again() {
+        use crate::testing::FakeBackups;
+        let apps = vec![app("Discord", "Discord Inc."), app("OBS Studio", "OBS")];
+        let (c, _) = cleaning(vec![]);
+        let backup = FakeBackups::default();
+        let mut c = c.with_backups(Box::new(backup.clone()));
+        c.uninstall(&apps, "Discord").unwrap();
+        c.uninstall(&apps, "OBS Studio").unwrap();
+        let listed = c.backups().unwrap();
+        assert_eq!(listed[0].app, "OBS Studio");
+        assert_eq!(listed[1].app, "Discord");
+        let entry = c.restore_backup(&listed[1].registry_copy).unwrap();
+        assert_eq!(entry.app, "Discord");
+        assert_eq!(backup.restored.borrow().as_slice(), ["Discord"]);
+        let error = c.restore_backup(r"C:\otro\evil.reg").unwrap_err();
+        assert!(error.contains("no está en la lista"));
     }
 
     #[test]

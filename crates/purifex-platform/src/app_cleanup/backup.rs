@@ -2,20 +2,22 @@
 //! `%LOCALAPPDATA%\Purifex\backups\<time>-<app>\registro.reg`. Importing that file registers
 //! the app again, so Windows lists it and its own uninstaller can be run once more.
 
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use purifex_domain::apps::InstalledApp;
-use purifex_domain::ports::RegistryBackup;
+use purifex_domain::ports::Backups;
+use purifex_domain::safeguard::BackupEntry;
 
 use super::quarantine::reg;
 
-pub struct LocalRegistryBackup {
+pub struct LocalBackups {
     base: Option<PathBuf>,
 }
 
-impl LocalRegistryBackup {
+impl LocalBackups {
     pub fn new() -> Self {
         Self {
             base: std::env::var_os("LOCALAPPDATA").map(|b| PathBuf::from(b).join("Purifex")),
@@ -23,16 +25,26 @@ impl LocalRegistryBackup {
     }
 }
 
-impl LocalRegistryBackup {
+impl LocalBackups {
     #[cfg(test)]
     fn in_dir(base: PathBuf) -> Self {
         Self { base: Some(base) }
     }
 }
 
-impl Default for LocalRegistryBackup {
+impl Default for LocalBackups {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl LocalBackups {
+    fn log(&self) -> Result<PathBuf, String> {
+        let base = self
+            .base
+            .as_ref()
+            .ok_or("no se encuentra la carpeta de datos del usuario")?;
+        Ok(base.join("backups.jsonl"))
     }
 }
 
@@ -46,7 +58,7 @@ fn slug(name: &str) -> String {
     clean.trim_matches('-').to_string()
 }
 
-impl RegistryBackup for LocalRegistryBackup {
+impl Backups for LocalBackups {
     fn save(&self, app: &InstalledApp) -> Result<Option<String>, String> {
         let Some(key) = app.registry_key() else {
             return Ok(None);
@@ -65,6 +77,38 @@ impl RegistryBackup for LocalRegistryBackup {
         let file = folder.join("registro.reg").to_string_lossy().into_owned();
         reg(&["export", &key, &file, "/y"])?;
         Ok(Some(file))
+    }
+
+    fn record(&self, entry: &BackupEntry) -> Result<(), String> {
+        let path = self.log()?;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| format!("no se pudo abrir {}: {e}", path.display()))?;
+        writeln!(file, "{}", entry.to_line()).map_err(|e| format!("no se pudo escribir: {e}"))
+    }
+
+    fn entries(&self) -> Result<Vec<BackupEntry>, String> {
+        // A missing file is no copies; a line that does not read is skipped, because the
+        // list is only a convenience to find the copies.
+        let text = fs::read_to_string(self.log()?).unwrap_or_default();
+        Ok(text
+            .lines()
+            .filter_map(|l| BackupEntry::from_line(l).ok())
+            .collect())
+    }
+
+    fn restore(&self, entry: &BackupEntry) -> Result<(), String> {
+        // Only a copy this program made is imported: it must be one of its own files.
+        let known = self.entries()?.iter().any(|e| e == entry);
+        if !known {
+            return Err("esa copia no es de Purifex".into());
+        }
+        if reg(&["query", &entry.key]).is_ok() {
+            return Err("la app ya está registrada: no se mezcla con la copia".into());
+        }
+        reg(&["import", &entry.registry_copy])
     }
 }
 
@@ -90,7 +134,7 @@ mod tests {
             name: "Prueba".into(),
             ..Default::default()
         };
-        let saved = LocalRegistryBackup::in_dir(dir.clone()).save(&app);
+        let saved = LocalBackups::in_dir(dir.clone()).save(&app);
         let _ = reg(&["delete", &key, "/f"]);
         let file = saved.unwrap().unwrap();
         let bytes = fs::read(&file).unwrap();
@@ -106,12 +150,60 @@ mod tests {
     }
 
     #[test]
+    fn a_copy_registers_the_app_again_but_never_over_one_that_exists() {
+        let sub = format!("PurifexRestoreTest{}", std::process::id());
+        let key = format!(r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{sub}");
+        reg(&["add", &key, "/v", "DisplayName", "/d", "Prueba", "/f"]).unwrap();
+        let dir = std::env::temp_dir().join(format!("purifex-restore-{}", std::process::id()));
+        let backups = LocalBackups::in_dir(dir.clone());
+        let app = InstalledApp {
+            id: format!("HKCU:{sub}"),
+            name: "Prueba".into(),
+            ..Default::default()
+        };
+        let entry = BackupEntry {
+            app: app.name.clone(),
+            key: key.clone(),
+            registry_copy: backups.save(&app).unwrap().unwrap(),
+            on: None,
+        };
+        backups.record(&entry).unwrap();
+        assert_eq!(backups.entries().unwrap(), std::slice::from_ref(&entry));
+        // Registered: nothing is merged.
+        assert!(backups
+            .restore(&entry)
+            .unwrap_err()
+            .contains("ya está registrada"));
+        // Gone (the uninstaller ran): the copy brings it back.
+        reg(&["delete", &key, "/f"]).unwrap();
+        let back = backups.restore(&entry);
+        let registered = reg(&["query", &key]).is_ok();
+        let _ = reg(&["delete", &key, "/f"]);
+        let _ = fs::remove_dir_all(dir);
+        back.unwrap();
+        assert!(registered);
+    }
+
+    #[test]
+    fn a_file_that_the_log_does_not_know_is_never_imported() {
+        let dir = std::env::temp_dir().join(format!("purifex-unknown-{}", std::process::id()));
+        let stranger = BackupEntry {
+            app: "X".into(),
+            key: r"HKCU\SOFTWARE\Purifex\NoExiste".into(),
+            registry_copy: r"C:\Windows\evil.reg".into(),
+            on: None,
+        };
+        let error = LocalBackups::in_dir(dir).restore(&stranger).unwrap_err();
+        assert!(error.contains("no es de Purifex"));
+    }
+
+    #[test]
     fn an_app_without_a_key_has_nothing_to_save() {
         let store_app = InstalledApp {
             id: "Microsoft.Paint_1_x64".into(),
             kind: purifex_domain::apps::AppKind::Store,
             ..Default::default()
         };
-        assert_eq!(LocalRegistryBackup::new().save(&store_app), Ok(None));
+        assert_eq!(LocalBackups::new().save(&store_app), Ok(None));
     }
 }

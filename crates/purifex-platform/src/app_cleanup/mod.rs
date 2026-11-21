@@ -12,7 +12,7 @@ mod quarantine;
 mod registry_write;
 mod seed_probe;
 
-pub use backup::LocalRegistryBackup;
+pub use backup::LocalBackups;
 pub use finder::WindowsTraceFinder;
 pub use launcher::RegisteredUninstaller;
 pub use quarantine::LocalCleanup;

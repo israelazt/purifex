@@ -47,7 +47,7 @@ mod windows_update;
 
 #[cfg(windows)]
 pub use app_cleanup::{
-    LocalCleanup, LocalRegistryBackup, RegisteredUninstaller, WindowsSeedProbe, WindowsTraceFinder,
+    LocalBackups, LocalCleanup, RegisteredUninstaller, WindowsSeedProbe, WindowsTraceFinder,
 };
 #[cfg(windows)]
 pub use apps_registry::RegistryApps;

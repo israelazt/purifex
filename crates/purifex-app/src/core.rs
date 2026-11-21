@@ -93,6 +93,7 @@ impl Core {
             Action::FindTraces(name) => self.find_traces(name),
             Action::RefreshApps => self.refresh_apps(),
             Action::StopWaiting => self.stop_waiting(),
+            Action::RestoreBackup(file) => self.backup_restored(&file),
             Action::SetFilter(filter) => self.model.filter = filter,
             Action::SetQuery(query) => self.model.query = query,
             Action::SelectSession(id) => self.select_session(id),
@@ -148,6 +149,7 @@ impl Core {
                 m.apps.is_none()
                     || m.finding.is_some()
                     || m.quarantine.is_none()
+                    || m.backups.is_none()
                     || self.refreshing_apps
             }
             Page::Drivers => m.drivers.is_none() || m.candidates.is_none(),

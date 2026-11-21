@@ -70,6 +70,12 @@ impl Core {
             self.find_traces_of(&name, errors);
         }
         self.read_quarantine();
+        if self.model.backups.is_none() {
+            self.model.backups = Some(self.services.backups().unwrap_or_else(|error| {
+                log_warn!("the copies could not be read: {error}");
+                Vec::new()
+            }));
+        }
         if self.model.elevated.is_none() {
             self.model.elevated = Some(self.services.is_elevated());
         }

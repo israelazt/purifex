@@ -10,6 +10,7 @@ use purifex_domain::quarantine::QuarantineInfo;
 use purifex_domain::trace_text::Counts;
 use purifex_domain::view::{Action, Model};
 
+use crate::backups_panel::backups_panel;
 use crate::canvas::Canvas;
 use crate::drivers_page::search_box;
 use crate::page;
@@ -400,6 +401,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
         y += cleanup_panel(c, m, name, area, y);
     }
     y += quarantine_panel(c, m, area, y);
+    y += backups_panel(c, m, area, y);
     y += search_box(
         c,
         m,
@@ -584,6 +586,20 @@ mod tests {
         let (texts, actions) = render(&m);
         assert!(texts.contains(&"No se encontraron restos.".to_string()));
         assert!(!actions.contains(&Action::OpenTraces));
+    }
+
+    #[test]
+    fn a_copy_of_an_app_that_is_gone_can_be_registered_again_from_the_page() {
+        let mut m = model();
+        m.backups = Some(vec![purifex_domain::safeguard::BackupEntry {
+            app: "Kdenlive".into(),
+            key: "HKCU".into(),
+            registry_copy: "kdenlive.reg".into(),
+            on: None,
+        }]);
+        let (texts, actions) = render(&m);
+        assert!(texts.iter().any(|t| t.contains("Kdenlive")));
+        assert!(actions.contains(&Action::RestoreBackup("kdenlive.reg".into())));
     }
 
     #[test]

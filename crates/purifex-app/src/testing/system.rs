@@ -38,18 +38,31 @@ impl purifex_domain::ports::AppInventory for FakeApps {
 
 /// A registry backup that records the apps it was asked to save.
 #[derive(Clone, Default)]
-pub struct FakeRegistryBackup {
+pub struct FakeBackups {
     pub fails: bool,
     pub saved: Rc<RefCell<Vec<String>>>,
+    pub entries: Rc<RefCell<Vec<purifex_domain::safeguard::BackupEntry>>>,
+    pub restored: Rc<RefCell<Vec<String>>>,
 }
 
-impl purifex_domain::ports::RegistryBackup for FakeRegistryBackup {
+impl purifex_domain::ports::Backups for FakeBackups {
     fn save(&self, app: &purifex_domain::apps::InstalledApp) -> Result<Option<String>, String> {
         if self.fails {
             return Err("no hay permiso".into());
         }
         self.saved.borrow_mut().push(app.name.clone());
         Ok(Some(format!(r"C:\copias\{}.reg", app.name)))
+    }
+    fn record(&self, entry: &purifex_domain::safeguard::BackupEntry) -> Result<(), String> {
+        self.entries.borrow_mut().push(entry.clone());
+        Ok(())
+    }
+    fn entries(&self) -> Result<Vec<purifex_domain::safeguard::BackupEntry>, String> {
+        Ok(self.entries.borrow().clone())
+    }
+    fn restore(&self, entry: &purifex_domain::safeguard::BackupEntry) -> Result<(), String> {
+        self.restored.borrow_mut().push(entry.app.clone());
+        Ok(())
     }
 }
 

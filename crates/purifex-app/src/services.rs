@@ -13,6 +13,7 @@ use purifex_domain::driver_offers::OfferReport;
 use purifex_domain::driver_tiers::report;
 use purifex_domain::drivers_view::DriversView;
 use purifex_domain::fix::{FixReport, HistoryEntry, Proposal};
+use purifex_domain::forced::{CloseReport, RunningProcess};
 use purifex_domain::overview::Overview;
 use purifex_domain::ports::{
     AppInventory, Clock, Elevation, PerformanceSampler, SessionArchive, SessionFile,
@@ -102,6 +103,10 @@ pub trait Services {
     fn set_scan_mode(&mut self, mode: ScanMode);
     /// Asks Windows to delete at the next restart what the app left open. It cannot be undone.
     fn delete_app_leftovers_at_reboot(&mut self, query: &str) -> Result<RebootReport, String>;
+    /// The programs of an app that is gone and still run from its folder.
+    fn running_programs(&mut self, query: &str) -> Result<Vec<RunningProcess>, String>;
+    /// Closes them. The person must have confirmed: a program may lose what it had not saved.
+    fn close_programs(&mut self, query: &str) -> Result<CloseReport, String>;
     /// Puts back every trace of the app that is still in the quarantine.
     fn restore_app_cleanup(&mut self, app: &str) -> Result<RestoreReport, String>;
     /// Deletes for good what the quarantine holds; without `confirmed` it only says how much.
@@ -185,6 +190,16 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
     pub fn with_offers(mut self, offering: Offering) -> Self {
         self.offering = offering;
         self
+    }
+
+    /// The apps installed: the ones to show, and everything installed.
+    fn installed(&self) -> Result<(Vec<InstalledApp>, Vec<InstalledApp>), String> {
+        let all = self
+            .inventory
+            .as_ref()
+            .ok_or("esta versión no sabe leer las apps instaladas")?
+            .apps()?;
+        Ok((listed(all.clone()), all))
     }
 
     /// The fixes this application can make (none until given).
@@ -336,12 +351,7 @@ where
         confirmed: bool,
         only: Option<&[String]>,
     ) -> Result<CleanReport, String> {
-        let all = self
-            .inventory
-            .as_ref()
-            .ok_or("esta versión no sabe leer las apps instaladas")?
-            .apps()?;
-        let listed = listed(all.clone());
+        let (listed, all) = self.installed()?;
         self.cleaning.clean(&listed, &all, query, confirmed, only)
     }
 
@@ -350,13 +360,18 @@ where
     }
 
     fn delete_app_leftovers_at_reboot(&mut self, query: &str) -> Result<RebootReport, String> {
-        let all = self
-            .inventory
-            .as_ref()
-            .ok_or("esta versión no sabe leer las apps instaladas")?
-            .apps()?;
-        let listed = listed(all.clone());
+        let (listed, all) = self.installed()?;
         self.cleaning.delete_at_reboot(&listed, &all, query)
+    }
+
+    fn running_programs(&mut self, query: &str) -> Result<Vec<RunningProcess>, String> {
+        let (listed, all) = self.installed()?;
+        self.cleaning.running_of(&listed, &all, query)
+    }
+
+    fn close_programs(&mut self, query: &str) -> Result<CloseReport, String> {
+        let (listed, all) = self.installed()?;
+        self.cleaning.close_running(&listed, &all, query)
     }
 
     fn restore_cleanup(&mut self, seq: u64) -> Result<CleanupEntry, String> {

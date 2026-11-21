@@ -128,23 +128,32 @@ pub fn view(m: &Model) -> Option<DialogView> {
             "Borrar al reiniciar",
             "trash-2",
         )),
-        (Some(Confirm::Uninstall(id)), _) => {
-            let name = m
-                .apps
-                .iter()
-                .flatten()
-                .find(|a| a.id == *id)
-                .map_or(id.as_str(), |a| a.name.as_str());
-            Some(confirm_view(
-                format!("¿Desinstalar {name}?"),
-                "Se abrirá su desinstalador oficial y lo terminas tú en su ventana. Cuando termine, Purifex busca lo que deje y te lo muestra.",
-                "Desinstalar",
-                "trash-2",
-            ))
-        }
+        (Some(Confirm::CloseProcesses(name)), _) => Some(confirm_view(
+            format!("¿Cerrar los programas de {name}?"),
+            "Se cierran a la fuerza, sin darles tiempo a guardar: lo que tengan sin guardar se pierde. Es para soltar los archivos de la app y poder quitar sus restos.",
+            "Cerrar programas",
+            "x",
+        )),
+        (Some(Confirm::Uninstall(id)), _) => Some(uninstall_view(m, id)),
         (_, Some(report)) => Some(traces_view(m, report)),
         _ => None,
     }
+}
+
+/// The question before an app's own uninstaller starts.
+fn uninstall_view(m: &Model, id: &str) -> DialogView {
+    let name = m
+        .apps
+        .iter()
+        .flatten()
+        .find(|a| a.id == id)
+        .map_or(id, |a| a.name.as_str());
+    confirm_view(
+        format!("¿Desinstalar {name}?"),
+        "Se abrirá su desinstalador oficial y lo terminas tú en su ventana. Cuando termine, Purifex busca lo que deje y te lo muestra.",
+        "Desinstalar",
+        "trash-2",
+    )
 }
 
 /// What emptying the quarantine means: what goes, and that it cannot be put back.

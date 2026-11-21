@@ -21,6 +21,8 @@ mod overview_cards;
 pub mod overview_page;
 mod overview_panels;
 pub mod page;
+mod quarantine_panel;
+mod running_panel;
 mod scrollbar;
 pub mod sessions_page;
 pub mod shell;

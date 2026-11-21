@@ -44,7 +44,7 @@ fn build_app() -> impl purifex_app::Services + 'static {
         BrowserOpener, JsonlCandidates, JsonlHistory, LocalBackups, LocalCleanup,
         LocalSessionArchive, LocalSessionFile, RegisteredUninstaller, RegistryApps,
         SetupApiInventory, StorePackages, StoreUninstaller, SystemClock, SystemFixes,
-        WindowsElevation, WindowsRestorePoints, WindowsSampler, WindowsSeedProbe,
+        WindowsElevation, WindowsProcesses, WindowsRestorePoints, WindowsSampler, WindowsSeedProbe,
         WindowsTraceFinder, WindowsUpdateOffers,
     };
 
@@ -66,6 +66,7 @@ fn build_app() -> impl purifex_app::Services + 'static {
     .with_probe(Box::new(WindowsSeedProbe))
     .with_restore_points(Box::new(WindowsRestorePoints))
     .with_backups(Box::new(LocalBackups::new()))
+    .with_processes(Box::new(WindowsProcesses))
     .with_clock(Box::new(SystemClock::new()));
     App::new(scanner, recorder, archive)
         .with_fixer(fixer)

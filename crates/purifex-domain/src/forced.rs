@@ -105,6 +105,68 @@ fn last_part_cased(path: &str) -> &str {
     path.rsplit('\\').next().unwrap_or(path)
 }
 
+/// A program that is running, with where its `.exe` is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunningProcess {
+    pub pid: u32,
+    /// The full path of its `.exe`.
+    pub path: String,
+}
+
+impl RunningProcess {
+    /// The file name of its `.exe`.
+    pub fn name(&self) -> &str {
+        self.path.rsplit('\\').next().unwrap_or(&self.path)
+    }
+}
+
+/// The running programs whose `.exe` is inside `folder`: what an app that is gone may still
+/// be running. Nothing outside the folder, and never `own` (this program), is returned, so
+/// closing them touches only what the app put there.
+pub fn running_in(folder: &str, all: &[RunningProcess], own: u32) -> Vec<RunningProcess> {
+    let folder = folder.trim_end_matches('\\').to_lowercase();
+    let mut found: Vec<RunningProcess> = all
+        .iter()
+        .filter(|p| p.pid != own && p.pid != 0)
+        .filter(|p| {
+            p.path
+                .to_lowercase()
+                .strip_prefix(&folder)
+                .is_some_and(|rest| rest.starts_with('\\'))
+        })
+        .cloned()
+        .collect();
+    found.sort_by_key(|p| (p.name().to_lowercase(), p.pid));
+    found
+}
+
+/// What closing the programs of an app gave.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CloseReport {
+    pub app: String,
+    pub closed: Vec<String>,
+    pub failed: Vec<(String, String)>,
+}
+
+impl CloseReport {
+    pub fn to_text(&self) -> String {
+        let mut text = match self.closed.len() {
+            0 => format!("No se cerró ningún programa de {}.", self.app),
+            1 => format!("Se cerró 1 programa de {}.", self.app),
+            n => format!("Se cerraron {n} programas de {}.", self.app),
+        };
+        if let Some((name, why)) = self.failed.first() {
+            let more = if self.failed.len() > 1 {
+                " (y otros)"
+            } else {
+                ""
+            };
+            text.push_str(&format!(" No se pudo cerrar {name}: {why}{more}."));
+        }
+        text
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,6 +238,40 @@ mod tests {
         for path in [r"C:\Program Files\Kept Two", r"D:\Old\Kept"] {
             assert!(installed_there(&forced_app(path).unwrap(), &all).is_none());
         }
+    }
+
+    #[test]
+    fn only_programs_inside_the_folder_are_returned_never_this_one_or_a_neighbour() {
+        let p = |pid, path: &str| RunningProcess {
+            pid,
+            path: path.into(),
+        };
+        let all = [
+            p(1, r"D:\Games\Old Tool\b\Tool.exe"),
+            p(2, r"d:\games\old tool\helper.exe"),
+            p(3, r"D:\Games\Old Tool Two\x.exe"),
+            p(4, r"D:\Games\Old Tool"),
+            p(5, r"C:\Windows\explorer.exe"),
+            p(6, r"D:\Games\Old Tool\purifex.exe"),
+            p(0, r"D:\Games\Old Tool\idle.exe"),
+        ];
+        let found = running_in(r"D:\Games\Old Tool\", &all, 6);
+        let pids: Vec<u32> = found.iter().map(|f| f.pid).collect();
+        assert_eq!(pids, [2, 1], "sorted by name: helper before tool");
+        assert_eq!(found[1].name(), "Tool.exe");
+    }
+
+    #[test]
+    fn the_close_report_says_what_closed_and_what_did_not() {
+        let mut r = CloseReport {
+            app: "Old Tool".into(),
+            ..Default::default()
+        };
+        assert!(r.to_text().contains("No se cerró ningún"));
+        r.closed = vec!["a.exe".into(), "b.exe".into()];
+        r.failed = vec![("c.exe".into(), "acceso denegado".into())];
+        let text = r.to_text();
+        assert!(text.contains("Se cerraron 2") && text.contains("c.exe: acceso denegado"));
     }
 
     #[test]

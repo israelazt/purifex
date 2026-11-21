@@ -36,6 +36,14 @@ pub trait UrlOpener {
     fn open(&self, url: &str) -> Result<(), String>;
 }
 
+/// The programs running now. Listing changes nothing; closing ends one of them.
+pub trait Processes {
+    /// Every running program whose `.exe` can be read.
+    fn running(&self) -> Result<Vec<crate::forced::RunningProcess>, String>;
+    /// Ends one program. It may lose what it had not saved.
+    fn close(&mut self, pid: u32) -> Result<(), String>;
+}
+
 /// The apps installed in the computer. Reading it changes nothing.
 pub trait AppInventory {
     fn apps(&self) -> Result<Vec<crate::apps::InstalledApp>, String>;

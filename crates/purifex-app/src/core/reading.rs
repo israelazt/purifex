@@ -5,7 +5,7 @@ use purifex_domain::driver_offers::Offers;
 use purifex_domain::log_warn;
 use purifex_domain::quarantine::{QuarantineInfo, QUARANTINE_DAYS};
 use purifex_domain::trace_text::Counts;
-use purifex_domain::view::Page;
+use purifex_domain::view::{Page, Running};
 
 use super::Core;
 
@@ -113,6 +113,7 @@ impl Core {
         else {
             return;
         };
+        self.model.running = self.running_programs_of(name, report.still_installed);
         self.model.traces_open = !report.proposed.is_empty();
         self.model.unchecked = Vec::new();
         let counts = Counts::of(&report.proposed).to_text();
@@ -124,6 +125,26 @@ impl Core {
             },
         );
         self.model.traces = Some(report);
+    }
+
+    /// The programs of an app that is gone that still run from its folder (none for an app
+    /// that is installed: its programs are not ours to close). Not being able to tell is
+    /// not an error worth stopping for: it is logged and nothing is offered.
+    fn running_programs_of(&mut self, name: &str, installed: bool) -> Option<Running> {
+        if installed {
+            return None;
+        }
+        let found = self
+            .services
+            .running_programs(name)
+            .inspect_err(|e| log_warn!("the running programs could not be read: {e}"))
+            .ok()?;
+        let mut names: Vec<String> = found.iter().map(|p| p.name().to_string()).collect();
+        names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+        (!names.is_empty()).then(|| Running {
+            app: name.to_string(),
+            names,
+        })
     }
 
     fn read_fixes_page(&mut self, errors: &mut Vec<String>) {

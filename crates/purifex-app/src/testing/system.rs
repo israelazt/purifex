@@ -79,3 +79,38 @@ impl purifex_domain::ports::RestorePoints for FakeRestorePoints {
         self.fails.clone().map_or(Ok(()), Err)
     }
 }
+
+/// Programs that are running, that a test can close.
+#[derive(Clone, Default)]
+pub struct FakeProcesses {
+    pub running: Rc<RefCell<Vec<purifex_domain::forced::RunningProcess>>>,
+    pub closed: Rc<RefCell<Vec<u32>>>,
+}
+
+impl FakeProcesses {
+    pub fn with(list: &[(u32, &str)]) -> Self {
+        let running = list
+            .iter()
+            .map(|(pid, path)| purifex_domain::forced::RunningProcess {
+                pid: *pid,
+                path: (*path).into(),
+            })
+            .collect();
+        Self {
+            running: Rc::new(RefCell::new(running)),
+            closed: Rc::default(),
+        }
+    }
+}
+
+impl purifex_domain::ports::Processes for FakeProcesses {
+    fn running(&self) -> Result<Vec<purifex_domain::forced::RunningProcess>, String> {
+        Ok(self.running.borrow().clone())
+    }
+
+    fn close(&mut self, pid: u32) -> Result<(), String> {
+        self.running.borrow_mut().retain(|p| p.pid != pid);
+        self.closed.borrow_mut().push(pid);
+        Ok(())
+    }
+}

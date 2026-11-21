@@ -152,6 +152,10 @@ mod states {
     /// The apps page with the copies of the registration of two apps that are gone.
     fn with_backups(mut model: Model) -> Model {
         model.traces_open = false;
+        model.running = Some(purifex_domain::view::Running {
+            app: "Inkscape".into(),
+            names: vec!["inkscape.exe".into(), "inkview.exe".into()],
+        });
         model.in_use = Some(purifex_domain::view::InUse {
             app: "Inkscape".into(),
             items: 3,

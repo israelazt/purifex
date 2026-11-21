@@ -13,12 +13,13 @@ use purifex_domain::cleanup_log::{
 use purifex_domain::date::Date;
 use purifex_domain::forced::{forced_app, installed_there, is_path};
 use purifex_domain::ports::{
-    Backups, CleanupStore, Clock, RestorePoints, SeedProbe, TraceFinder, Uninstaller,
+    Backups, CleanupStore, Clock, Processes, RestorePoints, SeedProbe, TraceFinder, Uninstaller,
 };
 use purifex_domain::safeguard::{RestorePointOutcome, Started};
 use purifex_domain::scan_mode::ScanMode;
 
 mod backing_up;
+mod closing;
 mod purging;
 mod rebooting;
 mod restoring;
@@ -32,6 +33,7 @@ pub struct Cleaning {
     clock: Option<Box<dyn Clock>>,
     restore_points: Option<Box<dyn RestorePoints>>,
     backups: Option<Box<dyn Backups>>,
+    processes: Option<Box<dyn Processes>>,
     mode: ScanMode,
 }
 
@@ -96,6 +98,7 @@ impl Cleaning {
             clock: None,
             restore_points: None,
             backups: None,
+            processes: None,
             mode: ScanMode::default(),
         }
     }

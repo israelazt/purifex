@@ -91,6 +91,7 @@ impl Core {
             Action::RestoreApp(app) => self.apps_restored(&app),
             Action::AskRestartAsAdmin(name) => self.ask(Confirm::RestartAsAdmin(name)),
             Action::AskDeleteAtReboot(name) => self.ask(Confirm::DeleteAtReboot(name)),
+            Action::AskCloseProcesses(name) => self.ask(Confirm::CloseProcesses(name)),
             Action::SetScanMode(mode) => self.scan_mode_set(mode),
             Action::FindTraces(name) => self.find_traces(name),
             Action::RefreshApps => self.refresh_apps(),
@@ -119,6 +120,7 @@ impl Core {
             Confirm::EmptyQuarantine => return self.quarantine_emptied(),
             Confirm::RestartAsAdmin(name) => return self.restarted_as_admin(&name),
             Confirm::DeleteAtReboot(name) => return self.deleted_at_reboot(&name),
+            Confirm::CloseProcesses(name) => return self.programs_closed(&name),
         };
         match result {
             Ok(report) => {
@@ -1177,6 +1179,16 @@ mod tests {
         Core,
         std::rc::Rc<std::cell::RefCell<crate::testing::CleanLog>>,
     ) {
+        two_traces_core_running(installed, crate::testing::FakeProcesses::default())
+    }
+
+    fn two_traces_core_running(
+        installed: &crate::testing::FakeApps,
+        processes: crate::testing::FakeProcesses,
+    ) -> (
+        Core,
+        std::rc::Rc<std::cell::RefCell<crate::testing::CleanLog>>,
+    ) {
         use crate::testing::{CleanLog, FakeCleaning, FakeFinder};
         use crate::Cleaning;
         use purifex_domain::app_traces::{Candidate, TraceKind};
@@ -1200,13 +1212,67 @@ mod tests {
                 Archive::new(FakeArchive::with(&[])),
             )
             .with_apps(Box::new(installed.clone()))
-            .with_cleaning(Cleaning::new(
-                Box::new(FakeFinder(found)),
-                Box::new(FakeCleaning(log.clone())),
-                Box::new(FakeCleaning(log.clone())),
-            )),
+            .with_cleaning(
+                Cleaning::new(
+                    Box::new(FakeFinder(found)),
+                    Box::new(FakeCleaning(log.clone())),
+                    Box::new(FakeCleaning(log.clone())),
+                )
+                .with_processes(Box::new(processes)),
+            ),
         ));
         (core, log)
+    }
+
+    #[test]
+    fn the_programs_a_forced_app_still_runs_are_listed_and_closed_only_after_a_warning() {
+        use crate::testing::{FakeApps, FakeProcesses};
+        const OLD: &str = r"D:\Games\OBS Studio";
+        let processes = FakeProcesses::with(&[
+            (10, r"D:\Games\OBS Studio\bin\obs64.exe"),
+            (11, r"D:\Games\OBS Studio\helper.exe"),
+            (12, r"D:\Games\OBS Studio Two\other.exe"),
+            (13, r"C:\Windows\explorer.exe"),
+        ]);
+        let (mut c, _log) = two_traces_core_running(&FakeApps::default(), processes.clone());
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::FindTraces(OLD.into()));
+        c.tick();
+        let running = c.model().running.clone().expect("it says what still runs");
+        assert_eq!(running.names, ["helper.exe", "obs64.exe"]);
+        // Asking is not enough, and saying no closes nothing.
+        c.apply(Action::AskCloseProcesses(OLD.into()));
+        assert_eq!(c.model().confirm, Some(Confirm::CloseProcesses(OLD.into())));
+        c.apply(Action::CancelConfirm);
+        assert!(processes.closed.borrow().is_empty());
+        c.apply(Action::AskCloseProcesses(OLD.into()));
+        c.apply(Action::Confirm);
+        c.tick();
+        let mut closed = processes.closed.borrow().clone();
+        closed.sort_unstable();
+        assert_eq!(closed, [10, 11], "only what runs from inside the folder");
+        assert!(c.model().running.is_none());
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("Se cerraron 2"));
+    }
+
+    #[test]
+    fn a_name_without_a_folder_offers_to_close_nothing() {
+        use crate::testing::{FakeApps, FakeProcesses};
+        let processes = FakeProcesses::with(&[(10, r"D:\Games\OBS Studio\obs64.exe")]);
+        let (mut c, _log) = two_traces_core_running(&FakeApps::default(), processes);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        c.tick();
+        assert!(c.model().running.is_none());
     }
 
     #[test]

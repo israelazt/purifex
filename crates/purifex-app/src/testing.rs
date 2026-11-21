@@ -415,4 +415,4 @@ impl purifex_domain::ports::CleanupStore for FakeCleaning {
 pub const PURGE_BYTES: u64 = 1024;
 
 mod system;
-pub use system::{FakeApps, FakeBackups, FakeElevation, FakeRestorePoints};
+pub use system::{FakeApps, FakeBackups, FakeElevation, FakeProcesses, FakeRestorePoints};

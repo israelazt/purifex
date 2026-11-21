@@ -6,7 +6,6 @@
 use purifex_domain::apps::{size_text, InstalledApp};
 use purifex_domain::cleanup_log::CleanReport;
 use purifex_domain::draw::Rect;
-use purifex_domain::quarantine::QuarantineInfo;
 use purifex_domain::trace_text::Counts;
 use purifex_domain::view::{Action, Model};
 
@@ -15,6 +14,8 @@ use crate::canvas::Canvas;
 use crate::drivers_page::search_box;
 use crate::in_use_panel::in_use_panel;
 use crate::page;
+use crate::quarantine_panel::quarantine_panel;
+use crate::running_panel::running_panel;
 use crate::theme::{self, Tone};
 use crate::widgets::{button, button_width, icon_box, panel, tag};
 
@@ -138,81 +139,6 @@ fn stop_waiting_button(c: &mut Canvas, rect: Rect) {
         false,
         Some(Action::StopWaiting),
     );
-}
-
-/// A name short enough to go on a button.
-fn short(name: &str) -> String {
-    const MAX: usize = 18;
-    if name.chars().count() <= MAX {
-        return name.to_string();
-    }
-    let head: String = name.chars().take(MAX - 1).collect();
-    format!("{}…", head.trim_end())
-}
-
-/// The button to empty the quarantine, and beside it the one that puts back the traces of the
-/// app cleaned last.
-fn quarantine_buttons(c: &mut Canvas, info: &QuarantineInfo, rect: Rect) {
-    let label = "Vaciar cuarentena";
-    let width = button_width(c, label);
-    button(
-        c,
-        Rect::new(rect.right() - 16.0 - width, rect.y + 14.0, width, 44.0),
-        label,
-        "trash-2",
-        false,
-        Some(Action::AskEmptyQuarantine),
-    );
-    if let Some(latest) = &info.latest {
-        let label = format!("Devolver {}", short(&latest.app));
-        let put_back = button_width(c, &label);
-        button(
-            c,
-            Rect::new(
-                rect.right() - 16.0 - width - 12.0 - put_back,
-                rect.y + 14.0,
-                put_back,
-                44.0,
-            ),
-            &label,
-            "undo-2",
-            false,
-            Some(Action::RestoreApp(latest.app.clone())),
-        );
-    }
-}
-
-/// What the quarantine holds and the buttons to put things back or empty it. Nothing is drawn when it holds
-/// nothing: there is nothing to say.
-fn quarantine_panel(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
-    let Some(info) = m.quarantine.as_ref().filter(|q| q.items > 0) else {
-        return 0.0;
-    };
-    let rect = Rect::new(area.x, y, area.w, 72.0);
-    panel(c, rect);
-    c.icon(
-        "hard-drive",
-        rect.x + 18.0,
-        rect.y + 18.0,
-        18.0,
-        theme::TEXT_2,
-    );
-    c.text(
-        rect.x + 46.0,
-        rect.y + 14.0,
-        "Cuarentena",
-        theme::sans(14.0, theme::TEXT).bold(),
-    );
-    c.paragraph(
-        rect.x + 46.0,
-        rect.y + 38.0,
-        rect.w - if info.latest.is_some() { 600.0 } else { 300.0 },
-        &info.to_text(),
-        theme::mono(12.0, theme::TEXT_2),
-        Some(2),
-    );
-    quarantine_buttons(c, info, rect);
-    rect.h + 16.0
 }
 
 fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
@@ -401,6 +327,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
     if let Some(name) = &m.uninstalled {
         y += cleanup_panel(c, m, name, area, y);
     }
+    y += running_panel(c, m, area, y);
     y += in_use_panel(c, m, area, y);
     y += quarantine_panel(c, m, area, y);
     y += backups_panel(c, m, area, y);
@@ -425,6 +352,7 @@ mod tests {
 
     use super::*;
     use crate::canvas::testing::FakeText;
+    use crate::quarantine_panel::short;
 
     fn app(name: &str, publisher: &str) -> InstalledApp {
         InstalledApp {

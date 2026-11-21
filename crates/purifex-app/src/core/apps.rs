@@ -115,6 +115,20 @@ impl Core {
         }
     }
 
+    /// Closes, after the person confirmed, the programs of the app that still run from its
+    /// folder, and looks again for what it left (their files are free now).
+    pub(super) fn programs_closed(&mut self, name: &str) {
+        match self.services.close_programs(name) {
+            Ok(report) => {
+                let said = report.to_text();
+                self.model.running = None;
+                self.find_traces(name.to_string());
+                self.model.message = Some(said);
+            }
+            Err(error) => self.model.error = Some(error),
+        }
+    }
+
     /// Starts the program again as an administrator after the person confirmed (Windows
     /// asks too). If they said no, nothing changes and the window stays as it was.
     pub(super) fn restarted_as_admin(&mut self, name: &str) {

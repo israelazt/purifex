@@ -29,6 +29,8 @@ mod log_console;
 #[cfg(windows)]
 mod nt_query;
 #[cfg(windows)]
+mod processes;
+#[cfg(windows)]
 mod registry;
 #[cfg(windows)]
 mod restore_points;
@@ -69,6 +71,8 @@ pub use inventory::SetupApiInventory;
 pub use log_console::install_stderr_log;
 #[cfg(windows)]
 pub use nt_query::running_programs;
+#[cfg(windows)]
+pub use processes::WindowsProcesses;
 #[cfg(windows)]
 pub use restore_points::WindowsRestorePoints;
 #[cfg(windows)]

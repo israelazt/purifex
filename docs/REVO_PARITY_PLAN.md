@@ -194,8 +194,12 @@ y lo convierte en una app ya borrada, que pasa por las mismas reglas de siempre.
 carpeta demasiado amplia, de Windows o compartida (`Program Files`, `Common Files`, `Microsoft*`...),
 un nombre corto o genérico, y una carpeta que usa una app aún instalada (en cualquier dirección:
 la misma, dentro o por encima). Sirve desde la caja de la página Apps («Buscar sus restos») y desde
-`purifex apps traces|clean <ruta>`. Falta: el atajo Ctrl+F / entrada en el menú de una app cuyo
-desinstalador falló (punto 2) y cerrar los procesos de la carpeta (punto 4).
+`purifex apps traces|clean <ruta>`. Punto 4 hecho: si de la app borrada siguen corriendo programas desde su carpeta, un panel los
+lista («X sigue abierta») y ofrece «Cerrar programas (N)» con una advertencia (se cierran a la
+fuerza y lo no guardado se pierde); después se busca otra vez. Solo se cierra lo que corre desde
+dentro de esa carpeta, nunca Purifex ni una carpeta vecina (`Old Tool` no es `Old Tool Two`); una
+app aún instalada no se toca. Probado con un programa real arrancado desde una carpeta temporal.
+Falta: el atajo Ctrl+F / entrada en el menú de una app cuyo desinstalador falló (punto 2).
 
 Para apps rotas, sin desinstalador o ya borradas a medias.
 

@@ -101,6 +101,13 @@ pub trait CleanupStore {
     fn quarantine_bytes(&self) -> Result<u64, String>;
 }
 
+/// The restore points of Windows: the way back for the whole system, taken before an
+/// uninstaller starts.
+pub trait RestorePoints {
+    /// Asks Windows for a restore point. `Err` says why not (it needs an administrator).
+    fn create(&self, description: &str) -> Result<(), String>;
+}
+
 /// What the program may do about its own permissions. Removing some traces (the registry
 /// of the machine, Program Files) needs an administrator; the program runs without one and
 /// only asks to start again with it when the person agrees.

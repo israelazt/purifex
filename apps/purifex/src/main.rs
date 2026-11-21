@@ -43,8 +43,8 @@ fn build_app() -> impl purifex_app::Services + 'static {
     use purifex_platform::{
         BrowserOpener, JsonlCandidates, JsonlHistory, LocalCleanup, LocalSessionArchive,
         LocalSessionFile, RegisteredUninstaller, RegistryApps, SetupApiInventory, StorePackages,
-        StoreUninstaller, SystemClock, SystemFixes, WindowsElevation, WindowsSampler,
-        WindowsSeedProbe, WindowsTraceFinder, WindowsUpdateOffers,
+        StoreUninstaller, SystemClock, SystemFixes, WindowsElevation, WindowsRestorePoints,
+        WindowsSampler, WindowsSeedProbe, WindowsTraceFinder, WindowsUpdateOffers,
     };
 
     let scanner = Scanner::new(SetupApiInventory, SystemClock::new());
@@ -63,6 +63,7 @@ fn build_app() -> impl purifex_app::Services + 'static {
         Box::new(LocalCleanup::new()),
     )
     .with_probe(Box::new(WindowsSeedProbe))
+    .with_restore_points(Box::new(WindowsRestorePoints))
     .with_clock(Box::new(SystemClock::new()));
     App::new(scanner, recorder, archive)
         .with_fixer(fixer)

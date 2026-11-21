@@ -27,6 +27,7 @@ pub mod process_group;
 pub mod quarantine;
 pub mod reference;
 pub mod report;
+pub mod safeguard;
 pub mod sample;
 pub mod seeds;
 pub mod session;

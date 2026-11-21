@@ -11,7 +11,10 @@ use purifex_domain::cleanup_log::{
     is_purged, is_restored, next_seq, CleanReport, CleanupEntry, CleanupState,
 };
 use purifex_domain::date::Date;
-use purifex_domain::ports::{CleanupStore, Clock, SeedProbe, TraceFinder, Uninstaller};
+use purifex_domain::ports::{
+    CleanupStore, Clock, RestorePoints, SeedProbe, TraceFinder, Uninstaller,
+};
+use purifex_domain::safeguard::{RestorePointOutcome, Started};
 
 mod purging;
 mod restoring;
@@ -23,6 +26,7 @@ pub struct Cleaning {
     store: Option<Box<dyn CleanupStore>>,
     probe: Option<Box<dyn SeedProbe>>,
     clock: Option<Box<dyn Clock>>,
+    restore_points: Option<Box<dyn RestorePoints>>,
 }
 
 /// The app that `query` names (its id, its name, or a part of it that only one has).
@@ -79,6 +83,25 @@ impl Cleaning {
             store: Some(store),
             probe: None,
             clock: None,
+            restore_points: None,
+        }
+    }
+
+    /// A restore point of Windows is asked for before each uninstaller starts.
+    pub fn with_restore_points(mut self, points: Box<dyn RestorePoints>) -> Self {
+        self.restore_points = Some(points);
+        self
+    }
+
+    fn restore_point_for(&self, app: &InstalledApp) -> RestorePointOutcome {
+        match &self.restore_points {
+            None => RestorePointOutcome::NotAsked,
+            Some(points) => {
+                match points.create(&format!("Purifex: antes de desinstalar {}", app.name)) {
+                    Ok(()) => RestorePointOutcome::Requested,
+                    Err(why) => RestorePointOutcome::Unavailable(why),
+                }
+            }
         }
     }
 
@@ -105,11 +128,7 @@ impl Cleaning {
     }
 
     /// Starts the uninstaller of the app. Protected apps are refused.
-    pub fn uninstall(
-        &mut self,
-        apps: &[InstalledApp],
-        query: &str,
-    ) -> Result<InstalledApp, String> {
+    pub fn uninstall(&mut self, apps: &[InstalledApp], query: &str) -> Result<Started, String> {
         let mut app = find(apps, query)?.clone();
         if let Some(why) = app.protection() {
             return Err(format!("{} no se desinstala desde aquí: {why}", app.name));
@@ -123,10 +142,12 @@ impl Cleaning {
             app.observed = probe.observe(&app);
         }
         self.store()?.remember(&app)?;
+        // The way back for the whole system goes before the uninstaller does anything.
+        let restore_point = self.restore_point_for(&app);
         if let Some(launcher) = &self.launcher {
             launcher.launch(&app)?;
         }
-        Ok(app)
+        Ok(Started { app, restore_point })
     }
 
     /// Keeps what is known of an app that has just disappeared from the list, so its
@@ -397,7 +418,7 @@ mod tests {
                 "Microsoft Corporation",
             ),
         ];
-        assert_eq!(c.uninstall(&apps, "Discord").unwrap().name, "Discord");
+        assert_eq!(c.uninstall(&apps, "Discord").unwrap().app.name, "Discord");
         assert_eq!(log.borrow().launched, ["Discord"]);
         assert_eq!(
             log.borrow().remembered.len(),
@@ -411,6 +432,35 @@ mod tests {
             1,
             "the protected one was not started"
         );
+    }
+
+    #[test]
+    fn a_restore_point_is_asked_for_before_the_uninstaller_and_a_failure_does_not_stop_it() {
+        use crate::testing::FakeRestorePoints;
+        let (c, log) = cleaning(vec![]);
+        let points = FakeRestorePoints::default();
+        let mut c = c.with_restore_points(Box::new(points.clone()));
+        let apps = vec![app("Discord", "Discord Inc.")];
+        let started = c.uninstall(&apps, "Discord").unwrap();
+        assert_eq!(started.restore_point, RestorePointOutcome::Requested);
+        assert_eq!(
+            points.asked.borrow()[0],
+            "Purifex: antes de desinstalar Discord"
+        );
+        // Without administrator the point is not made, and the uninstaller starts all the same.
+        let (c, log2) = cleaning(vec![]);
+        let denied = FakeRestorePoints {
+            fails: Some("hace falta ser administrador".into()),
+            ..Default::default()
+        };
+        let mut c = c.with_restore_points(Box::new(denied));
+        let started = c.uninstall(&apps, "Discord").unwrap();
+        assert!(matches!(
+            started.restore_point,
+            RestorePointOutcome::Unavailable(_)
+        ));
+        assert_eq!(log2.borrow().launched, ["Discord"]);
+        assert_eq!(log.borrow().launched, ["Discord"]);
     }
 
     #[test]

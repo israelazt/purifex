@@ -427,3 +427,17 @@ impl purifex_domain::ports::AppInventory for FakeApps {
         Ok(self.0.borrow().clone())
     }
 }
+
+/// Restore points that a test can make fail. It records what it was asked for.
+#[derive(Clone, Default)]
+pub struct FakeRestorePoints {
+    pub fails: Option<String>,
+    pub asked: Rc<RefCell<Vec<String>>>,
+}
+
+impl purifex_domain::ports::RestorePoints for FakeRestorePoints {
+    fn create(&self, description: &str) -> Result<(), String> {
+        self.asked.borrow_mut().push(description.to_string());
+        self.fails.clone().map_or(Ok(()), Err)
+    }
+}

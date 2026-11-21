@@ -20,6 +20,7 @@ use purifex_domain::ports::{
 };
 use purifex_domain::quarantine::{PurgeReport, QuarantineInfo, RestoreReport};
 use purifex_domain::report::{ScanReport, Scope};
+use purifex_domain::safeguard::Started;
 use purifex_domain::session_list::SessionRow;
 
 use crate::archive::Archive;
@@ -81,8 +82,8 @@ pub trait Services {
     fn open_page(&mut self, url: &str) -> Result<(), String>;
     /// The apps installed (the ones worth listing, by name).
     fn apps(&self) -> Result<Vec<InstalledApp>, String>;
-    /// Starts the uninstaller of an app (by name or id).
-    fn uninstall_app(&mut self, query: &str) -> Result<InstalledApp, String>;
+    /// Starts the uninstaller of an app (by name or id), after asking Windows for a restore point.
+    fn uninstall_app(&mut self, query: &str) -> Result<Started, String>;
     /// The traces of an app; with `confirmed` (and the app already uninstalled) it
     /// removes them to the quarantine, without it only says which.
     fn clean_app(
@@ -315,7 +316,7 @@ where
         Ok(listed(inventory.apps()?))
     }
 
-    fn uninstall_app(&mut self, query: &str) -> Result<InstalledApp, String> {
+    fn uninstall_app(&mut self, query: &str) -> Result<Started, String> {
         let apps = self.apps()?;
         self.cleaning.uninstall(&apps, query)
     }

@@ -31,6 +31,8 @@ mod nt_query;
 #[cfg(windows)]
 mod registry;
 #[cfg(windows)]
+mod restore_points;
+#[cfg(windows)]
 mod sampler;
 #[cfg(windows)]
 mod session_archive;
@@ -65,6 +67,8 @@ pub use inventory::SetupApiInventory;
 pub use log_console::install_stderr_log;
 #[cfg(windows)]
 pub use nt_query::running_programs;
+#[cfg(windows)]
+pub use restore_points::WindowsRestorePoints;
 #[cfg(windows)]
 pub use sampler::WindowsSampler;
 #[cfg(windows)]

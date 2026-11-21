@@ -157,10 +157,14 @@ impl AppsCommand {
                         "Se abriría el desinstalador oficial de «{name}». Para hacerlo: purifex apps uninstall \"{name}\" --yes"
                     )));
                 }
-                let app = services.uninstall_app(&name)?;
+                let started = services.uninstall_app(&name)?;
+                let safeguard = started
+                    .restore_point
+                    .to_text()
+                    .map_or(String::new(), |t| format!(" {t}"));
                 Ok(Outcome::Message(format!(
-                    "Se abrió el desinstalador de {}. Cuando termine, busca los restos con: purifex apps clean \"{}\"",
-                    app.name, app.name
+                    "Se abrió el desinstalador de {}. Cuando termine, busca los restos con: purifex apps clean \"{}\".{safeguard}",
+                    started.app.name, started.app.name
                 )))
             }
             Self::Restore { seq, yes } => {

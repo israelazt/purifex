@@ -161,6 +161,7 @@ fn why_of(evidence: Evidence) -> &'static str {
         Evidence::TaskAction => "tarea programada que ejecuta un programa de la app",
         Evidence::ComServer => "clase COM cuyo servidor está en la carpeta de la app",
         Evidence::ContextMenu => "entrada del menú contextual de un programa de la app",
+        Evidence::PartialName => "posible: el nombre se parece al de la app",
     }
 }
 

@@ -5,7 +5,7 @@
 //! orders the steps and refuses the ones that are not safe yet (cleaning an app
 //! that is still installed).
 
-use purifex_domain::app_traces::{propose_with, simple, Trace};
+use purifex_domain::app_traces::{propose_guessing, propose_with, simple, Trace};
 use purifex_domain::apps::InstalledApp;
 use purifex_domain::cleanup_log::{
     is_purged, is_restored, next_seq, CleanReport, CleanupEntry, CleanupState,
@@ -116,7 +116,12 @@ impl Cleaning {
         others: &[InstalledApp],
         found: &purifex_domain::ports::Found,
     ) -> Vec<Trace> {
-        let mut traces = propose_with(app, others, &found.seeds, &found.candidates);
+        let judging = if self.mode == ScanMode::Advanced {
+            propose_guessing
+        } else {
+            propose_with
+        };
+        let mut traces = judging(app, others, &found.seeds, &found.candidates);
         traces.retain(|t| self.mode.allows(t.evidence));
         traces
     }

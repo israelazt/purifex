@@ -89,7 +89,7 @@ fn corner_buttons(m: &Model, report: &CleanReport) -> Vec<Btn> {
         label: format!("Modo: {}", m.scan_mode.label()),
         icon: "sliders-horizontal",
         primary: false,
-        action: Some(Action::SetScanMode(m.scan_mode.other())),
+        action: Some(Action::SetScanMode(m.scan_mode.next())),
     };
     std::iter::once(mode)
         .chain(restart_button(m, report))
@@ -117,6 +117,9 @@ fn traces_body(m: &Model, report: &CleanReport) -> String {
     let mut body = "Esto es lo que quedó después de desinstalar. Marca lo que quieras quitar, o elimina todo de una vez sin elegir.".to_string();
     if m.scan_mode == ScanMode::Safe {
         body.push_str(" Modo Seguro: solo se muestra lo que apunta a la carpeta de la app; lo que se reconoce por el nombre queda fuera.");
+    }
+    if m.scan_mode == ScanMode::Advanced {
+        body.push_str(" Modo Avanzado: incluye lo que solo se parece por el nombre, marcado «posible» y sin marcar: míralo antes de quitarlo. «Eliminar todo rastro» no lo toma si no lo marcas.");
     }
     if report.incomplete {
         body.push_str(" La búsqueda se cortó por tiempo y puede faltar algo: pulsa «Buscar otra vez» para completarla.");

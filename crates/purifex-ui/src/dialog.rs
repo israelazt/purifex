@@ -774,17 +774,22 @@ mod tests {
     }
 
     #[test]
-    fn the_window_offers_the_other_mode_and_says_when_it_is_the_safe_one() {
+    fn the_window_goes_round_the_modes_and_says_when_it_is_the_safe_or_the_advanced_one() {
         use purifex_domain::scan_mode::ScanMode;
         let mut m = model_with_traces(2);
         let (_, actions) = render(&view(&m).unwrap(), 1.0);
-        assert!(actions.contains(&Action::SetScanMode(ScanMode::Safe)));
+        assert!(actions.contains(&Action::SetScanMode(ScanMode::Advanced)));
         assert_eq!(view(&m).unwrap().corner[0].label, "Modo: Moderado");
         m.scan_mode = ScanMode::Safe;
         let v = view(&m).unwrap();
         assert!(v.body.contains("Modo Seguro"));
         let (_, actions) = render(&v, 1.0);
         assert!(actions.contains(&Action::SetScanMode(ScanMode::Moderate)));
+        m.scan_mode = ScanMode::Advanced;
+        let v = view(&m).unwrap();
+        assert!(v.body.contains("Modo Avanzado") && v.body.contains("posible"));
+        let (_, actions) = render(&v, 1.0);
+        assert!(actions.contains(&Action::SetScanMode(ScanMode::Safe)));
     }
 
     #[test]

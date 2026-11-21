@@ -59,6 +59,9 @@ pub enum Evidence {
     ComServer,
     /// An entry of the context menu that runs or loads a program inside the app's folder.
     ContextMenu,
+    /// A name that only resembles the app's (it contains it, or is contained in it), in a fixed
+    /// place. A guess: only the Advanced mode proposes it, and it is never checked by default.
+    PartialName,
 }
 
 impl Evidence {
@@ -76,9 +79,19 @@ impl Evidence {
             Evidence::TaskAction => "tarea programada que ejecuta un programa de la app",
             Evidence::ComServer => "clase COM cuyo servidor está en la carpeta de la app",
             Evidence::ContextMenu => "entrada del menú contextual de un programa de la app",
+            Evidence::PartialName => "posible: el nombre se parece al de la app",
         }
     }
+
+    /// Only a guess from a resemblance: it must be looked at before removing it.
+    pub fn is_guess(self) -> bool {
+        self == Evidence::PartialName
+    }
 }
+
+mod by_name;
+use by_name::judge_by_name;
+pub use by_name::{names_of, names_relate};
 
 /// A place that might belong to the app, as the finder found it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -181,15 +194,6 @@ pub(crate) const BROAD: [&str; 19] = [
     "temp",
 ];
 
-/// Places that belong to Windows, whatever their name.
-const SYSTEM_PREFIXES: [&str; 5] = [
-    r"c:\windows",
-    r"hklm\software\microsoft",
-    r"hkcu\software\microsoft",
-    r"hklm\system",
-    r"hklm\software\classes",
-];
-
 /// Lowercase with only letters and digits, to compare names (`Riot Games` = `riot-games`).
 pub fn simple(name: &str) -> String {
     name.chars()
@@ -226,31 +230,6 @@ fn is_task_path(location: &str) -> bool {
             .any(|p| p.is_empty() || p == ".." || p == ".")
 }
 
-/// The name under which an app puts its things: its own full name without the
-/// words that are versions (`Git 2.55` is `git`). Never a word of it alone (`Google`
-/// of `Google Chrome` is the folder of the whole publisher) and never the name of
-/// its install folder (`Application`).
-pub fn names_of(app: &InstalledApp) -> Vec<String> {
-    let without_version: Vec<&str> = app
-        .name
-        .split_whitespace()
-        .filter(|w| !w.chars().next().is_some_and(|c| c.is_ascii_digit()))
-        .collect();
-    let name = simple(&without_version.join(" "));
-    if name.len() >= 3 && !BROAD.contains(&name.as_str()) {
-        vec![name]
-    } else {
-        Vec::new()
-    }
-}
-
-fn same_publisher(a: &InstalledApp, b: &InstalledApp) -> bool {
-    match (&a.publisher, &b.publisher) {
-        (Some(x), Some(y)) => simple(x) == simple(y) && !simple(x).is_empty(),
-        _ => false,
-    }
-}
-
 /// Decides whether `candidate` is a trace of `app` that may be removed. `others` are
 /// the apps still installed. The seeds are the ones the registry entry alone gives.
 pub fn judge(
@@ -268,6 +247,27 @@ pub fn judge_with(
     seeds: &Seeds,
     candidate: &Candidate,
 ) -> Result<Trace, Refusal> {
+    judge_inner(app, others, seeds, candidate, false)
+}
+
+/// `judge_with`, and a name that only resembles the app's is proposed too (as a guess:
+/// `Evidence::PartialName`). Only for the Advanced mode.
+pub fn judge_guessing(
+    app: &InstalledApp,
+    others: &[InstalledApp],
+    seeds: &Seeds,
+    candidate: &Candidate,
+) -> Result<Trace, Refusal> {
+    judge_inner(app, others, seeds, candidate, true)
+}
+
+fn judge_inner(
+    app: &InstalledApp,
+    others: &[InstalledApp],
+    seeds: &Seeds,
+    candidate: &Candidate,
+    guess: bool,
+) -> Result<Trace, Refusal> {
     let location = candidate.location.trim().trim_end_matches('\\');
     let placed = if candidate.kind == TraceKind::Task {
         is_task_path(location)
@@ -284,105 +284,7 @@ pub fn judge_with(
     if matches!(candidate.kind, TraceKind::RegistryValue | TraceKind::Task) {
         return Err(Refusal::NotTheApps);
     }
-    judge_by_name(app, others, candidate, location)
-}
-
-/// The classic rule: a place with the app's name (or the folder it registered), that is
-/// not Windows', not too broad and not something another installed app needs.
-fn judge_by_name(
-    app: &InstalledApp,
-    others: &[InstalledApp],
-    candidate: &Candidate,
-    location: &str,
-) -> Result<Trace, Refusal> {
-    let lower = location.to_lowercase();
-    refuse_system_place(&lower)?;
-    let own = simple(last_part(location));
-    refuse_too_broad(&lower, &own)?;
-    refuse_shared(app, others, &lower, &own)?;
-    if !candidate.registered_install && !names_of(app).contains(&own) {
-        return Err(Refusal::NotTheApps);
-    }
-    Ok(trace_by_name(candidate, location, &lower))
-}
-
-fn refuse_system_place(lower: &str) -> Result<(), Refusal> {
-    let system = SYSTEM_PREFIXES
-        .iter()
-        .any(|p| lower == *p || lower.starts_with(&format!("{p}\\")));
-    if system {
-        Err(Refusal::SystemPlace)
-    } else {
-        Ok(())
-    }
-}
-
-fn refuse_too_broad(lower: &str, own: &str) -> Result<(), Refusal> {
-    if BROAD.contains(&last_part(lower)) || own.is_empty() || lower.matches('\\').count() < 2 {
-        Err(Refusal::TooBroad)
-    } else {
-        Ok(())
-    }
-}
-
-/// Something another installed app needs: its folder is this one or inside it, or this
-/// folder is the publisher's shared one and the publisher has other apps.
-fn refuse_shared(
-    app: &InstalledApp,
-    others: &[InstalledApp],
-    lower: &str,
-    own: &str,
-) -> Result<(), Refusal> {
-    let publisher_folder =
-        app.publisher.as_deref().map(simple).is_some_and(|p| {
-            p.len() >= 3 && (p == own || p.starts_with(own) || own.starts_with(&p))
-        });
-    let needed = others.iter().filter(|o| o.id != app.id).any(|other| {
-        let inside = other.install_location.as_deref().is_some_and(|l| {
-            let l = l.trim_end_matches('\\').to_lowercase();
-            !l.is_empty() && (l == lower || l.starts_with(&format!("{lower}\\")))
-        });
-        inside || (publisher_folder && same_publisher(app, other))
-    });
-    if needed {
-        Err(Refusal::SharedWithOtherApp)
-    } else {
-        Ok(())
-    }
-}
-
-/// The trace of a place proposed by name or as the registered install folder. The
-/// folder the app installed itself in is the program, not the user's data, even when
-/// it lives under AppData (`AppData\Local\Programs`).
-fn trace_by_name(candidate: &Candidate, location: &str, lower: &str) -> Trace {
-    let registered = candidate.registered_install;
-    let user_data = !registered
-        && ["\\appdata\\", "\\documents\\", "\\saved games\\"]
-            .iter()
-            .any(|p| lower.contains(p));
-    let why = if registered {
-        "la carpeta de instalación que registró la app".to_string()
-    } else if candidate.kind == TraceKind::RegistryKey {
-        format!(
-            "clave del registro con el nombre de la app: {}",
-            last_part(location)
-        )
-    } else {
-        format!("lleva el nombre de la app: {}", last_part(location))
-    };
-    Trace {
-        kind: candidate.kind,
-        location: location.to_string(),
-        bytes: candidate.bytes,
-        why,
-        user_data,
-        evidence: if registered {
-            Evidence::RegisteredInstall
-        } else {
-            Evidence::NameMatch
-        },
-        ..Default::default()
-    }
+    judge_by_name(app, others, candidate, location, guess)
 }
 
 /// The traces to propose: every candidate that passes `judge`, the biggest first,
@@ -401,9 +303,30 @@ pub fn propose_with(
     seeds: &Seeds,
     candidates: &[Candidate],
 ) -> Vec<Trace> {
+    propose_inner(app, others, seeds, candidates, false)
+}
+
+/// `propose_with`, with the guesses of a name that only resembles the app's.
+pub fn propose_guessing(
+    app: &InstalledApp,
+    others: &[InstalledApp],
+    seeds: &Seeds,
+    candidates: &[Candidate],
+) -> Vec<Trace> {
+    propose_inner(app, others, seeds, candidates, true)
+}
+
+fn propose_inner(
+    app: &InstalledApp,
+    others: &[InstalledApp],
+    seeds: &Seeds,
+    candidates: &[Candidate],
+    guess: bool,
+) -> Vec<Trace> {
+    let judge = if guess { judge_guessing } else { judge_with };
     let mut traces: Vec<Trace> = candidates
         .iter()
-        .filter_map(|c| judge_with(app, others, seeds, c).ok())
+        .filter_map(|c| judge(app, others, seeds, c).ok())
         .collect();
     traces.sort_by(|a, b| {
         b.bytes
@@ -625,6 +548,38 @@ mod tests {
             judge(&a, &[b], &folder(r"C:\Program Files\Alpha Tool")),
             Err(Refusal::SharedWithOtherApp)
         );
+    }
+
+    #[test]
+    fn a_resemblance_is_a_guess_only_when_asked_and_never_the_publishers_folder_or_another_apps() {
+        let names = |n: &str| names_of(&app(n, "X", None));
+        assert!(names_relate(&names("Discord"), "discordptb"));
+        assert!(names_relate(&names("Discord"), "discord"));
+        // Never the other way round, and never with a short name.
+        assert!(!names_relate(&names("Google Chrome"), "google"));
+        assert!(!names_relate(&names("Git"), "gitlab"));
+        assert!(!names_relate(&names("Discord"), "disc"));
+
+        let discord = app("Discord", "Discord Inc.", None);
+        let ptb = folder(r"C:\Users\u\AppData\Local\DiscordPTB");
+        // The strict rules never guess.
+        assert_eq!(
+            judge_with(&discord, &[], &seeds_of(&discord), &ptb),
+            Err(Refusal::NotTheApps)
+        );
+        let guess = judge_guessing(&discord, &[], &seeds_of(&discord), &ptb).unwrap();
+        assert_eq!(guess.evidence, Evidence::PartialName);
+        assert!(guess.evidence.is_guess() && guess.why.starts_with("posible"));
+        // Another installed app that has the same claim keeps it.
+        let other = app("Discord PTB", "Discord Inc.", None);
+        assert_eq!(
+            judge_guessing(&discord, &[other], &seeds_of(&discord), &ptb),
+            Err(Refusal::SharedWithOtherApp)
+        );
+        // The folder of a whole publisher is not a resemblance of one of its apps.
+        let chrome = app("Google Chrome", "Google LLC", None);
+        let google = folder(r"C:\Program Files\Google");
+        assert!(judge_guessing(&chrome, &[], &seeds_of(&chrome), &google).is_err());
     }
 
     #[test]

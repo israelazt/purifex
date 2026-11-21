@@ -51,7 +51,24 @@ impl Scene {
         }
         let command = format!("\"{}\" /silent", scene.program());
         reg(&["add", RUN, "/v", &scene.name, "/d", &command, "/f"]).unwrap();
+        scene.wait_until_listed();
         Some(scene)
+    }
+
+    /// The scheduler can take a moment to list a task it has just created (more when the
+    /// computer is busy): the finder reads that list, so the test waits for the task to be in it.
+    fn wait_until_listed(&self) {
+        let marker = format!("<!-- {} -->", self.task);
+        for _ in 0..100 {
+            let listed = Command::new("schtasks")
+                .args(["/query", "/xml"])
+                .output()
+                .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&marker));
+            if listed {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
     }
 
     fn program(&self) -> String {

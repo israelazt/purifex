@@ -7,7 +7,7 @@ use std::fs;
 use std::os::windows::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
-use purifex_domain::app_traces::{names_of, simple, Candidate, TraceKind};
+use purifex_domain::app_traces::{names_of, names_relate, simple, Candidate, TraceKind};
 use purifex_domain::apps::InstalledApp;
 use purifex_domain::ports::{Found, TraceFinder};
 use purifex_domain::seeds::{seeds_of, Seeds};
@@ -158,7 +158,7 @@ fn places_named(names: &[String], extra_roots: &[PathBuf]) -> Vec<Candidate> {
         .filter(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
             let stem = name.strip_suffix(".lnk").unwrap_or(&name).to_string();
-            names.contains(&simple(&stem))
+            names_relate(names, &simple(&stem))
         })
         .filter_map(|entry| candidate_at(&entry.path(), false))
         .collect()
@@ -178,7 +178,7 @@ fn keys_named(names: &[String]) -> Vec<Candidate> {
             parent
                 .subkeys()
                 .into_iter()
-                .filter(|sub| names.contains(&simple(sub)))
+                .filter(|sub| names_relate(names, &simple(sub)))
                 .map(move |sub| Candidate {
                     kind: TraceKind::RegistryKey,
                     location: format!(r"{label}\{path}\{sub}"),

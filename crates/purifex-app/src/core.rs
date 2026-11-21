@@ -1202,10 +1202,7 @@ mod tests {
         Core,
         std::rc::Rc<std::cell::RefCell<crate::testing::CleanLog>>,
     ) {
-        use crate::testing::{CleanLog, FakeCleaning, FakeFinder};
-        use crate::Cleaning;
         use purifex_domain::app_traces::{Candidate, TraceKind};
-        let log = std::rc::Rc::new(std::cell::RefCell::new(CleanLog::default()));
         let found = ["obs-studio", "OBS Studio"]
             .map(|n| Candidate {
                 kind: TraceKind::Folder,
@@ -1214,6 +1211,21 @@ mod tests {
                 ..Default::default()
             })
             .to_vec();
+        core_finding(installed, processes, found)
+    }
+
+    /// A core whose finder always finds `found`.
+    fn core_finding(
+        installed: &crate::testing::FakeApps,
+        processes: crate::testing::FakeProcesses,
+        found: Vec<purifex_domain::app_traces::Candidate>,
+    ) -> (
+        Core,
+        std::rc::Rc<std::cell::RefCell<crate::testing::CleanLog>>,
+    ) {
+        use crate::testing::{CleanLog, FakeCleaning, FakeFinder};
+        use crate::Cleaning;
+        let log = std::rc::Rc::new(std::cell::RefCell::new(CleanLog::default()));
         let core = Core::new(Box::new(
             App::new(
                 Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
@@ -1354,6 +1366,48 @@ mod tests {
         assert_eq!(c.model().uninstalled.as_deref(), Some("OBS Studio"));
         let said = c.model().message.clone().unwrap();
         assert!(said.contains("sin su desinstalador"), "{said}");
+    }
+
+    #[test]
+    fn in_advanced_mode_a_name_that_only_resembles_the_app_is_listed_unchecked_and_never_taken_by_everything(
+    ) {
+        use crate::testing::{FakeApps, FakeProcesses};
+        use purifex_domain::app_traces::{Candidate, Evidence, TraceKind};
+        use purifex_domain::scan_mode::ScanMode;
+        let folder = |n: &str| Candidate {
+            kind: TraceKind::Folder,
+            location: format!(r"C:\ProgramData\{n}"),
+            bytes: 10,
+            ..Default::default()
+        };
+        let found = vec![folder("OBS Studio"), folder("OBS Studio Beta")];
+        let (mut c, log) = core_finding(&FakeApps::default(), FakeProcesses::default(), found);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        let listed = |c: &Core| c.model().traces.as_ref().unwrap().proposed.len();
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        c.tick();
+        assert_eq!(listed(&c), 1, "Moderate does not guess");
+        c.apply(Action::SetScanMode(ScanMode::Advanced));
+        c.tick();
+        let report = c.model().traces.clone().unwrap();
+        assert_eq!(listed(&c), 2);
+        let guess = report
+            .proposed
+            .iter()
+            .find(|t| t.evidence == Evidence::PartialName)
+            .expect("the resemblance is a guess");
+        assert!(guess.location.ends_with("OBS Studio Beta"));
+        assert_eq!(
+            c.model().unchecked,
+            [guess.key()],
+            "a guess starts unchecked"
+        );
+        // «Everything» leaves the guess alone; checking it takes it too.
+        c.apply(Action::AskCleanAll("OBS Studio".into()));
+        c.apply(Action::Confirm);
+        assert_eq!(log.borrow().removed, [r"C:\ProgramData\OBS Studio"]);
     }
 
     #[test]

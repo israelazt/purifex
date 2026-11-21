@@ -106,7 +106,7 @@ Pendiente, anotado:
 - El punto de restauración **no se ha probado de verdad**: sin administrador solo falla de forma
   controlada. Hay que probarlo con «Reiniciar como administrador».
 
-## R3 · Escaneo completo y por modos (casi cerrado, 2026-11-20)
+## R3 · Escaneo completo y por modos (cerrado salvo lo anotado, 2026-11-21)
 
 Hecho, cada punto con su prueba, y una prueba de punta a punta con el sistema real (carpeta, tarea
 y entrada de inicio de una app de prueba: salen a la cuarentena y vuelven):
@@ -132,8 +132,7 @@ y entrada de inicio de una app de prueba: salen a la cuarentena y vuelven):
 - **Modos Seguro y Moderado** (`8dec8de`): el botón «Modo» junto al título de la ventana de restos.
   Seguro deja solo lo que apunta a la carpeta de la app; Moderado es lo de siempre. El modo llega
   también a la eliminación: «Eliminar todo rastro» en Seguro nunca toma lo que la ventana no mostró.
-  **Avanzado** (nombres parciales, «posible» y desmarcado por defecto) queda pendiente: necesita una
-  búsqueda más amplia y es lo más arriesgado.
+  (Avanzado: ver abajo.)
 - **Lista desplazable** (`7a26391`): se acabó el tope de 9 filas. La ventana lista todo y las filas
   se mueven con la rueda dentro de una ventana de altura fija, con barra fina; «Eliminar marcados»
   ya cubre todas las filas, no solo las que cabían. Es una lista plana agrupada con cabeceras
@@ -141,8 +140,25 @@ y entrada de inicio de una app de prueba: salen a la cuarentena y vuelven):
 - Hallazgo de seguridad que destapó una prueba: otra app instalada en la misma carpeta ahora bloquea
   también servicios y tareas.
 
-Falta de R3: bibliotecas de tipos (TypeLib), otros sitios de Windows (SharedDLLs, Installer), escanear
-a todos los usuarios, el modo Avanzado y, si se quiere, plegar los grupos de la lista.
+- **Bibliotecas de tipos, DLL compartidas y carpetas del instalador** (2026-11-21): `Classes\TypeLib\{GUID}`
+  se propone solo si **todos** los archivos que nombra están en la carpeta de la app (una biblioteca
+  que nombra también un archivo fuera es compartida y se deja). `SharedDLLs` e `Installer\Folders` son
+  valores cuyo nombre es una ruta de la carpeta de la app (en las dos vistas del registro). Se probó
+  con una rama de prueba del registro. La búsqueda entera sigue en ~1 s.
+- **Todos los usuarios** (2026-11-21): se buscan archivos, carpetas, accesos y volcados también en los
+  perfiles de los demás usuarios de `C:\Users` que se pueden leer (con administrador, todos). Los que
+  no se pueden leer se cuentan y la ventana dice «Solo se miró tu usuario: hay N usuarios más que solo
+  un administrador puede leer». **El registro de otros usuarios no se mira** (haría falta cargar sus
+  colmenas `HKEY_USERS` y que las reglas entiendan esas rutas): decisión abierta.
+- **Modo Avanzado** (2026-11-21): el botón «Modo» da ahora la vuelta Seguro → Moderado → Avanzado.
+  Avanzado suma los nombres que solo se parecen al de la app (el candidato **contiene el nombre
+  completo** de la app y ambos tienen 5 letras o más: `DiscordPTB` para `Discord`; nunca al revés,
+  que es la carpeta del editor entero: `Google` para `Google Chrome`). Se muestran como «posible»,
+  **sin marcar**, y «Eliminar todo rastro» no los toma si no los marcas. Se rechazan si otra app
+  instalada tiene la misma pretensión. Las reglas estrictas no cambian: solo se piden conjeturas en
+  Avanzado.
+
+Falta de R3: plegar los grupos de la lista (opcional) y el registro de otros usuarios (ver arriba).
 
 Notas:
 - Las tareas siempre se marcan «requiere administrador»: las de máquina las crea un instalador con

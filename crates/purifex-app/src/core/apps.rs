@@ -74,8 +74,15 @@ impl Core {
     /// Removes the traces of an app to the quarantine: all of them, or only the ones
     /// the user left checked.
     pub(super) fn cleaned(&mut self, name: &str, everything: bool) {
+        // «Everything» is everything that is not a guess; a guess goes only if it was checked.
         let checked: Option<Vec<String>> = if everything {
-            None
+            self.model.traces.as_ref().map(|r| {
+                r.listed()
+                    .into_iter()
+                    .filter(|t| !t.evidence.is_guess() || !self.model.unchecked.contains(&t.key()))
+                    .map(|t| t.key())
+                    .collect()
+            })
         } else {
             self.model.traces.as_ref().map(|r| {
                 r.listed()

@@ -116,7 +116,13 @@ impl Core {
         };
         self.model.running = self.running_programs_of(name, report.still_installed);
         self.model.traces_open = !report.proposed.is_empty();
-        self.model.unchecked = Vec::new();
+        // What only resembles the app is a guess: it starts unchecked, for the person to look at.
+        self.model.unchecked = report
+            .listed()
+            .into_iter()
+            .filter(|t| t.evidence.is_guess())
+            .map(|t| t.key())
+            .collect();
         let counts = Counts::of(&report.proposed).to_text();
         self.model.message = Some(
             match (report.proposed.is_empty(), self.model.message.take()) {

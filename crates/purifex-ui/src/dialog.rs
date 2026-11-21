@@ -122,6 +122,12 @@ pub fn view(m: &Model) -> Option<DialogView> {
             "Reiniciar",
             "shield-check",
         )),
+        (Some(Confirm::DeleteAtReboot(name)), _) => Some(confirm_view(
+            format!("¿Borrar al reiniciar lo que {name} dejó abierto?"),
+            "Estos archivos los tiene abiertos un programa y no se pueden mover a la cuarentena. Windows los borrará la próxima vez que reinicies el PC, y NO se podrán devolver. Hace falta ser administrador.",
+            "Borrar al reiniciar",
+            "trash-2",
+        )),
         (Some(Confirm::Uninstall(id)), _) => {
             let name = m
                 .apps

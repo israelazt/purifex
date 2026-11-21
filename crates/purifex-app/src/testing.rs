@@ -320,6 +320,10 @@ pub struct CleanLog {
     pub remembered: Vec<purifex_domain::apps::InstalledApp>,
     /// Locations that refuse to be removed (in use).
     pub stuck: Vec<String>,
+    /// What was handed to Windows to be deleted at the next restart.
+    pub scheduled: Vec<String>,
+    /// Whether that is refused (no administrator).
+    pub refuse_reboot: bool,
     /// The removals whose quarantine copy was deleted, and the ones that refuse to be.
     pub purged: Vec<u64>,
     pub stuck_purge: Vec<u64>,
@@ -357,6 +361,17 @@ impl purifex_domain::ports::CleanupStore for FakeCleaning {
         }
         log.removed.push(trace.location.clone());
         Ok(format!("q/{seq}"))
+    }
+    fn delete_at_reboot(
+        &mut self,
+        trace: &purifex_domain::app_traces::Trace,
+    ) -> Result<(), String> {
+        let mut log = self.0.borrow_mut();
+        if log.refuse_reboot {
+            return Err("hace falta ejecutar Purifex como administrador".into());
+        }
+        log.scheduled.push(trace.location.clone());
+        Ok(())
     }
     fn is_locked(&self, trace: &purifex_domain::app_traces::Trace) -> bool {
         self.0.borrow().stuck.contains(&trace.location)

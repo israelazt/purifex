@@ -3,6 +3,8 @@
 
 use std::time::Instant;
 
+use purifex_domain::view::InUse;
+
 use super::{Core, WATCH_EVERY, WATCH_FOR};
 
 impl Core {
@@ -77,7 +79,24 @@ impl Core {
                     if failed > 0 { format!(" ({failed} no se pudieron quitar)") } else { String::new() }
                 ));
                 (self.model.traces, self.model.apps) = (None, None);
+                self.model.in_use = (!report.in_use.is_empty()).then(|| InUse {
+                    app: name.to_string(),
+                    items: report.in_use.len(),
+                });
                 self.expect_reading();
+            }
+            Err(error) => self.model.error = Some(error),
+        }
+    }
+
+    /// Leaves to Windows, after the person confirmed, what the app left open.
+    pub(super) fn deleted_at_reboot(&mut self, name: &str) {
+        match self.services.delete_app_leftovers_at_reboot(name) {
+            Ok(report) => {
+                self.model.message = Some(report.to_text());
+                if report.failed.is_empty() {
+                    self.model.in_use = None;
+                }
             }
             Err(error) => self.model.error = Some(error),
         }

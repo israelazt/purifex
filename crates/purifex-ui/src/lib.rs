@@ -15,6 +15,7 @@ mod drivers_filters;
 pub mod drivers_page;
 mod fix_history;
 pub mod fixes_page;
+mod in_use_panel;
 mod lead_list;
 mod overview_cards;
 pub mod overview_page;

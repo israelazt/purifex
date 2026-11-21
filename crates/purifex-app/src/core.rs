@@ -90,6 +90,7 @@ impl Core {
             Action::AskEmptyQuarantine => self.ask(Confirm::EmptyQuarantine),
             Action::RestoreApp(app) => self.apps_restored(&app),
             Action::AskRestartAsAdmin(name) => self.ask(Confirm::RestartAsAdmin(name)),
+            Action::AskDeleteAtReboot(name) => self.ask(Confirm::DeleteAtReboot(name)),
             Action::FindTraces(name) => self.find_traces(name),
             Action::RefreshApps => self.refresh_apps(),
             Action::StopWaiting => self.stop_waiting(),
@@ -116,6 +117,7 @@ impl Core {
             Confirm::CleanAll(name) => return self.cleaned(&name, true),
             Confirm::EmptyQuarantine => return self.quarantine_emptied(),
             Confirm::RestartAsAdmin(name) => return self.restarted_as_admin(&name),
+            Confirm::DeleteAtReboot(name) => return self.deleted_at_reboot(&name),
         };
         match result {
             Ok(report) => {
@@ -1280,6 +1282,78 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains("sigue instalada"));
+    }
+
+    #[test]
+    fn what_is_open_is_offered_for_the_next_restart_only_after_a_warning_and_is_never_quarantined()
+    {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        let (mut c, log) = two_traces_core(&installed);
+        let open = r"C:\ProgramData\obs-studio".to_string();
+        log.borrow_mut().stuck.push(open.clone());
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        c.tick();
+        c.apply(Action::AskCleanAll("OBS Studio".into()));
+        c.apply(Action::Confirm);
+        assert_eq!(log.borrow().removed, [r"C:\ProgramData\OBS Studio"]);
+        let in_use = c.model().in_use.clone().expect("it says what is open");
+        assert_eq!((in_use.app.as_str(), in_use.items), ("OBS Studio", 1));
+        assert!(
+            log.borrow().scheduled.is_empty(),
+            "nothing until it is confirmed"
+        );
+        // Asking is not enough: the warning comes first, and saying no changes nothing.
+        c.apply(Action::AskDeleteAtReboot("OBS Studio".into()));
+        assert_eq!(
+            c.model().confirm,
+            Some(Confirm::DeleteAtReboot("OBS Studio".into()))
+        );
+        c.apply(Action::CancelConfirm);
+        assert!(log.borrow().scheduled.is_empty() && c.model().in_use.is_some());
+        c.apply(Action::AskDeleteAtReboot("OBS Studio".into()));
+        c.apply(Action::Confirm);
+        assert_eq!(log.borrow().scheduled, [open]);
+        assert!(c.model().in_use.is_none());
+        assert!(c.model().message.as_deref().unwrap().contains("reinicies"));
+        let line = log.borrow().entries.last().cloned().unwrap();
+        assert_eq!(
+            line.state,
+            purifex_domain::cleanup_log::CleanupState::Scheduled
+        );
+    }
+
+    #[test]
+    fn a_refused_delete_at_restart_says_why_and_keeps_the_offer() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        let (mut c, log) = two_traces_core(&installed);
+        log.borrow_mut()
+            .stuck
+            .push(r"C:\ProgramData\obs-studio".into());
+        log.borrow_mut().refuse_reboot = true;
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        c.tick();
+        c.apply(Action::AskCleanAll("OBS Studio".into()));
+        c.apply(Action::Confirm);
+        c.apply(Action::AskDeleteAtReboot("OBS Studio".into()));
+        c.apply(Action::Confirm);
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("administrador"));
+        assert!(
+            c.model().in_use.is_some(),
+            "it can be tried again as administrator"
+        );
     }
 
     #[test]

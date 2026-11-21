@@ -18,7 +18,7 @@ use purifex_domain::ports::{
     AppInventory, Clock, Elevation, PerformanceSampler, SessionArchive, SessionFile,
     SystemInventory, UrlOpener,
 };
-use purifex_domain::quarantine::{PurgeReport, QuarantineInfo, RestoreReport};
+use purifex_domain::quarantine::{PurgeReport, QuarantineInfo, RebootReport, RestoreReport};
 use purifex_domain::report::{ScanReport, Scope};
 use purifex_domain::safeguard::{BackupEntry, Started};
 use purifex_domain::session_list::SessionRow;
@@ -97,6 +97,8 @@ pub trait Services {
     fn cleanup_history(&self) -> Result<Vec<CleanupEntry>, String>;
     /// What the quarantine holds: how many traces, how big, how old.
     fn quarantine(&mut self) -> Result<QuarantineInfo, String>;
+    /// Asks Windows to delete at the next restart what the app left open. It cannot be undone.
+    fn delete_app_leftovers_at_reboot(&mut self, query: &str) -> Result<RebootReport, String>;
     /// Puts back every trace of the app that is still in the quarantine.
     fn restore_app_cleanup(&mut self, app: &str) -> Result<RestoreReport, String>;
     /// Deletes for good what the quarantine holds; without `confirmed` it only says how much.
@@ -338,6 +340,16 @@ where
             .apps()?;
         let listed = listed(all.clone());
         self.cleaning.clean(&listed, &all, query, confirmed, only)
+    }
+
+    fn delete_app_leftovers_at_reboot(&mut self, query: &str) -> Result<RebootReport, String> {
+        let all = self
+            .inventory
+            .as_ref()
+            .ok_or("esta versión no sabe leer las apps instaladas")?
+            .apps()?;
+        let listed = listed(all.clone());
+        self.cleaning.delete_at_reboot(&listed, &all, query)
     }
 
     fn restore_cleanup(&mut self, seq: u64) -> Result<CleanupEntry, String> {

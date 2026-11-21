@@ -138,6 +138,35 @@ pub struct PurgeReport {
     pub failed: Vec<(u64, String)>,
 }
 
+/// What handing the open leftovers of an app to Windows (to delete at the next restart) did.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct RebootReport {
+    pub app: String,
+    /// What Windows will delete at the next restart.
+    pub scheduled: Vec<crate::app_traces::Trace>,
+    /// What it could not be asked to delete, with why.
+    pub failed: Vec<(crate::app_traces::Trace, String)>,
+}
+
+impl RebootReport {
+    pub fn to_text(&self) -> String {
+        let mut text = match self.scheduled.len() {
+            0 => format!(
+                "No hay restos de {} abiertos que borrar al reiniciar.",
+                self.app
+            ),
+            n => format!(
+                "Windows borrará {n} restos de {} cuando reinicies el PC. No se podrán devolver.",
+                self.app
+            ),
+        };
+        for (trace, why) in &self.failed {
+            text.push_str(&format!("\nno se pudo programar {}: {why}", trace.location));
+        }
+        text
+    }
+}
+
 impl PurgeReport {
     pub fn to_text(&self) -> String {
         let size = size_text(Some(self.bytes.div_ceil(1024)));

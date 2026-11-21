@@ -18,6 +18,7 @@ use purifex_domain::safeguard::{RestorePointOutcome, Started};
 
 mod backing_up;
 mod purging;
+mod rebooting;
 mod restoring;
 
 #[derive(Default)]

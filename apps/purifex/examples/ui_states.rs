@@ -152,6 +152,10 @@ mod states {
     /// The apps page with the copies of the registration of two apps that are gone.
     fn with_backups(mut model: Model) -> Model {
         model.traces_open = false;
+        model.in_use = Some(purifex_domain::view::InUse {
+            app: "Inkscape".into(),
+            items: 3,
+        });
         model.backups = Some(vec![
             purifex_domain::safeguard::BackupEntry {
                 app: "Kdenlive".into(),

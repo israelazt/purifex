@@ -89,6 +89,9 @@ pub trait CleanupStore {
     /// Whether a program has the file, or a file inside the folder, open right now. It is what
     /// tells "in use" (it can wait for the next restart) from the other reasons not to remove.
     fn is_locked(&self, trace: &crate::app_traces::Trace) -> bool;
+    /// Asks Windows to delete the file or folder at the next restart, for what a program has
+    /// open and cannot be moved. Nothing is kept: it cannot be put back. Needs an administrator.
+    fn delete_at_reboot(&mut self, trace: &crate::app_traces::Trace) -> Result<(), String>;
     /// Puts the removed thing back where it was (it must not exist there now).
     fn restore(&mut self, entry: &crate::cleanup_log::CleanupEntry) -> Result<(), String>;
     fn entries(&self) -> Result<Vec<crate::cleanup_log::CleanupEntry>, String>;

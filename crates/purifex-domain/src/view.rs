@@ -52,6 +52,15 @@ pub enum Confirm {
     /// Start the program again as an administrator, to look again for the traces of the
     /// app with this name.
     RestartAsAdmin(String),
+    /// Ask Windows to delete, at the next restart, what the app left open. Cannot be undone.
+    DeleteAtReboot(String),
+}
+
+/// The leftovers of an app that could not be moved because a program has them open.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InUse {
+    pub app: String,
+    pub items: usize,
 }
 
 /// Which devices the drivers table lists.
@@ -103,6 +112,9 @@ pub struct Model {
     /// The copies of the registration of apps taken before uninstalling them (read on the
     /// apps page), newest first.
     pub backups: Option<Vec<crate::safeguard::BackupEntry>>,
+    /// Leftovers of an app that a program has open: they were not removed, and can be left to
+    /// Windows to delete at the next restart.
+    pub in_use: Option<InUse>,
     /// Whether the program runs as an administrator (read on the apps page).
     pub elevated: Option<bool>,
     /// The window with the list of traces is open.
@@ -156,6 +168,8 @@ pub enum Action {
     /// Asks to restart as an administrator (to remove what needs it): the user is asked
     /// to confirm, and Windows asks once more.
     AskRestartAsAdmin(String),
+    /// Asks to leave the open leftovers of this app to Windows, to delete at the next restart.
+    AskDeleteAtReboot(String),
     SetFilter(DriverFilter),
     SetQuery(String),
     SelectSession(String),

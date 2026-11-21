@@ -165,6 +165,15 @@ impl CleanupStore for LocalCleanup {
             && super::locks::is_locked(Path::new(&trace.location))
     }
 
+    fn delete_at_reboot(&mut self, trace: &Trace) -> Result<(), String> {
+        match trace.kind {
+            TraceKind::Folder | TraceKind::File => {
+                super::reboot::schedule(Path::new(&trace.location))
+            }
+            _ => Err("solo los archivos y carpetas se pueden borrar al reiniciar".into()),
+        }
+    }
+
     fn restore(&mut self, entry: &CleanupEntry) -> Result<(), String> {
         match entry.trace.kind {
             TraceKind::Folder | TraceKind::File => {

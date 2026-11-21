@@ -17,6 +17,9 @@ pub enum CleanupState {
     Restored,
     /// A line that says the quarantine copy of a removal was deleted for good.
     Purged,
+    /// A line that says an open file or folder was handed to Windows to be deleted at the next
+    /// restart. No copy is kept: it cannot be put back.
+    Scheduled,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -244,6 +247,7 @@ pub fn cleanup_to_text(entries: &[CleanupEntry]) -> String {
             CleanupState::Removed => "quitado",
             CleanupState::Restored => "devuelto",
             CleanupState::Purged => "copia de la cuarentena borrada",
+            CleanupState::Scheduled => "borrado programado para el próximo reinicio (sin copia)",
         };
         let _ = writeln!(out, "#{} {} — {}: {}", e.seq, what, e.app, e.trace.location);
     }

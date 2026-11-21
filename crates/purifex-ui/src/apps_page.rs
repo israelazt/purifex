@@ -13,6 +13,7 @@ use purifex_domain::view::{Action, Model};
 use crate::backups_panel::backups_panel;
 use crate::canvas::Canvas;
 use crate::drivers_page::search_box;
+use crate::in_use_panel::in_use_panel;
 use crate::page;
 use crate::theme::{self, Tone};
 use crate::widgets::{button, button_width, icon_box, panel, tag};
@@ -400,6 +401,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
     if let Some(name) = &m.uninstalled {
         y += cleanup_panel(c, m, name, area, y);
     }
+    y += in_use_panel(c, m, area, y);
     y += quarantine_panel(c, m, area, y);
     y += backups_panel(c, m, area, y);
     y += search_box(

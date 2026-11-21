@@ -46,7 +46,7 @@ en una VM y compararla pantalla por pantalla).
 | Servicios, tareas, inicio, firewall, menú contextual, asociaciones | Falta |
 | Punto de restauración, página de copias de seguridad | Falta |
 | Modos de escaneo, desinstalación forzada, cazador, monitor, lote, autorun, limpiadores | Falta |
-| Fecha de instalación, tipo 32/64 bits, ordenar por columna, menú de clic derecho | Falta (la lista solo tiene nombre, editor, versión y tamaño) |
+| Fecha de instalación, tipo 32/64 bits, ordenar por columna, menú de clic derecho | Hecho (R10) |
 
 ## Reglas que no cambian
 
@@ -194,15 +194,15 @@ y lo convierte en una app ya borrada, que pasa por las mismas reglas de siempre.
 carpeta demasiado amplia, de Windows o compartida (`Program Files`, `Common Files`, `Microsoft*`...),
 un nombre corto o genérico, y una carpeta que usa una app aún instalada (en cualquier dirección:
 la misma, dentro o por encima). Sirve desde la caja de la página Apps («Buscar sus restos») y desde
-`purifex apps traces|clean <ruta>`. Punto 4 hecho: si de la app borrada siguen corriendo programas desde su carpeta, un panel los
+`purifex apps traces|clean <ruta>`.
+Punto 4 hecho: si de la app borrada siguen corriendo programas desde su carpeta, un panel los
 lista («X sigue abierta») y ofrece «Cerrar programas (N)» con una advertencia (se cierran a la
 fuerza y lo no guardado se pierde); después se busca otra vez. Solo se cierra lo que corre desde
 dentro de esa carpeta, nunca Purifex ni una carpeta vecina (`Old Tool` no es `Old Tool Two`); una
 app aún instalada no se toca. Probado con un programa real arrancado desde una carpeta temporal.
 Punto 2 hecho en lo esencial: **Ctrl+F** lleva a Apps y da el teclado a la caja, que ya acepta un
-nombre, una carpeta o un `.exe` (la caja muestra «Ctrl F» en esa página). La entrada en el menú de
-clic derecho de una app cuyo desinstalador falló no se hizo: la interfaz no tiene menús contextuales
-y crear uno solo para esto no compensa; una app rota se fuerza escribiendo su carpeta.
+nombre, una carpeta o un `.exe` (la caja muestra «Ctrl F» en esa página). Y la entrada del menú de
+clic derecho, «Desinstalación forzada», quita una app instalada sin su desinstalador (ver R10).
 **R4 cerrado (2026-11-21).**
 
 Para apps rotas, sin desinstalador o ya borradas a medias.
@@ -278,14 +278,15 @@ Hecho (puntos 1, 2 y 5): se leen `InstallDate`, `URLInfoAbout` y `HelpLink` (sol
 dirección `http(s)`). La lista muestra fecha de instalación, tamaño y tipo («64 bits», «32 bits»,
 «Usuario», «Tienda»); las cabeceras «App y editor», «Instalada» y «Tamaño» ordenan; y los filtros
 «Todas / Programas / Apps de Windows / Instaladas hace poco (30 días)» llevan su cuenta. Las apps de
-la Tienda no dicen cuándo se instalaron: no cuentan como recientes. Punto 3 hecho: **clic derecho** sobre una app abre un menú con Desinstalar, Desinstalación
+la Tienda no dicen cuándo se instalaron: no cuentan como recientes.
+Punto 3 hecho: **clic derecho** sobre una app abre un menú con Desinstalar, Desinstalación
 forzada, Abrir carpeta de instalación, Abrir clave de registro, Sitio web y Propiedades (lo que no
 aplica a esa app se ve apagado). «Propiedades» (o pulsar la fila) abre los detalles bajo la fila:
 carpeta, web, clave de registro y comando de desinstalación, con botones para abrirlos. Solo se
 abre una carpeta, una página o una clave que una app de la lista registró; las páginas son `https`;
 la clave se abre con Regedit (escribe su ajuste `LastKey` y Windows pide permiso).
 Punto 4 hecho: dos vistas, «Detalles» y «Lista» (compacta), y el filtro, el orden y la vista se
-recuerdan en `%LOCALAPPDATA%\Purifexpps-view.json`.
+recuerdan en `%LOCALAPPDATA%Purifexpps-view.json`.
 **Desinstalación forzada de una app instalada** (la del menú y la que faltaba en R4): no se usa su
 desinstalador; tras el mismo punto de restauración y copia del registro, su entrada de `Uninstall`
 va a la cuarentena (se puede devolver) y se buscan y muestran sus restos como siempre. Se rechaza

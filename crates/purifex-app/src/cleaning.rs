@@ -272,6 +272,7 @@ impl Cleaning {
                 preview: true,
                 proposed,
                 incomplete: found.incomplete,
+                other_users_unread: found.other_users_unread,
                 still_installed: installed,
                 ..Default::default()
             });
@@ -713,7 +714,7 @@ mod tests {
             Ok(purifex_domain::ports::Found {
                 seeds: self.1.clone(),
                 candidates: self.0.clone(),
-                incomplete: false,
+                ..Default::default()
             })
         }
     }

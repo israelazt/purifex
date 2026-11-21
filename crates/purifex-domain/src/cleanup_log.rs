@@ -85,12 +85,29 @@ pub struct CleanReport {
     /// The search ran out of time (reading shortcuts on a slow disk) and may have missed
     /// some traces: it should be looked for again.
     pub incomplete: bool,
+    /// Profiles of other people of this computer that could not be read, so only part of the
+    /// computer was looked at (an administrator reads them all).
+    pub other_users_unread: usize,
     /// The app is still installed: its traces are in use and are not removed until its
     /// uninstaller has finished.
     pub still_installed: bool,
 }
 
 impl CleanReport {
+    /// What to tell the person when the search could not read the profile of someone else of
+    /// this computer: only their own was looked at. `None` when everything was read.
+    pub fn other_users_note(&self) -> Option<String> {
+        let n = self.other_users_unread;
+        (n > 0).then(|| {
+            let who = if n == 1 {
+                "hay 1 usuario más".to_string()
+            } else {
+                format!("hay {n} usuarios más")
+            };
+            format!("Solo se miró tu usuario: {who} que solo un administrador puede leer.")
+        })
+    }
+
     /// How many of the proposed traces only an administrator can remove.
     pub fn needing_admin(&self) -> usize {
         self.proposed.iter().filter(|t| t.needs_admin()).count()
@@ -250,6 +267,20 @@ pub fn cleanup_to_text(entries: &[CleanupEntry]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_report_says_that_only_the_users_own_profile_was_looked_at_when_others_were_unreadable() {
+        let mut report = CleanReport::default();
+        assert_eq!(report.other_users_note(), None);
+        report.other_users_unread = 1;
+        let one = report.other_users_note().unwrap();
+        assert!(one.contains("Solo se miró tu usuario") && one.contains("1 usuario más"));
+        report.other_users_unread = 3;
+        assert!(report
+            .other_users_note()
+            .unwrap()
+            .contains("3 usuarios más"));
+    }
+
     use super::*;
     fn report_of(files: usize, registry: usize) -> CleanReport {
         let file = |i: usize| Trace {

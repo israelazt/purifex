@@ -82,18 +82,21 @@ pub trait TraceFinder {
         Ok(Found {
             seeds: crate::seeds::seeds_of(app),
             candidates: self.candidates(app)?,
-            incomplete: false,
+            ..Found::default()
         })
     }
 }
 
 /// What a search found, and the seeds it used.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Found {
     pub seeds: crate::seeds::Seeds,
     pub candidates: Vec<crate::app_traces::Candidate>,
     /// The search ran out of time and may have missed some candidates.
     pub incomplete: bool,
+    /// Profiles of other people of this computer that could not be read (only an
+    /// administrator can): the search did not look in them.
+    pub other_users_unread: usize,
 }
 
 /// Looks at an app that is still installed and says what its traces will be

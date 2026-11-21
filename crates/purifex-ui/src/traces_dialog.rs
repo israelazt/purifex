@@ -121,6 +121,10 @@ fn traces_body(m: &Model, report: &CleanReport) -> String {
     if report.incomplete {
         body.push_str(" La búsqueda se cortó por tiempo y puede faltar algo: pulsa «Buscar otra vez» para completarla.");
     }
+    if let Some(note) = report.other_users_note() {
+        body.push(' ');
+        body.push_str(&note);
+    }
     let admin = report.needing_admin();
     if admin > 0 && m.elevated == Some(false) {
         body.push_str(&format!(

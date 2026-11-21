@@ -15,6 +15,7 @@ mod finder;
 mod launcher;
 mod lnk;
 mod locks;
+mod profiles;
 mod quarantine;
 mod reboot;
 pub(crate) mod registry_write;

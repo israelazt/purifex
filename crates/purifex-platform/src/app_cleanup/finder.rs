@@ -21,6 +21,7 @@ use super::find_registry::{
 use super::find_services::find_services;
 use super::find_shell::find_shell;
 use super::find_typelib::find_typelibs;
+use super::profiles::{other_users, OtherUsers};
 use super::tasks::find_tasks;
 use crate::registry::{Key, View};
 
@@ -145,12 +146,13 @@ fn observed_seeds(app: &InstalledApp, hives: &Hives) -> (Seeds, Vec<Candidate>) 
 }
 
 /// Folders, files and shortcuts in the usual places named exactly like the app.
-fn places_named(names: &[String]) -> Vec<Candidate> {
+fn places_named(names: &[String], extra_roots: &[PathBuf]) -> Vec<Candidate> {
     if names.is_empty() {
         return Vec::new();
     }
     roots()
         .iter()
+        .chain(extra_roots)
         .filter_map(|root| fs::read_dir(root).ok())
         .flat_map(|read| read.flatten().take(10_000))
         .filter(|entry| {
@@ -209,6 +211,24 @@ fn system_places(seeds: &Seeds) -> Vec<Candidate> {
     })
 }
 
+/// The files of this user and of the other people whose profile can be read, within one budget
+/// of time for reading shortcuts.
+fn files_of_everyone(
+    others: &OtherUsers,
+    names: &[String],
+    seeds: &Seeds,
+) -> (Vec<Candidate>, bool) {
+    let deadline = std::time::Instant::now() + FILES_BUDGET;
+    let (mut found, mut complete) = find_files(&UserPlaces::real(), names, seeds, FILES_BUDGET);
+    for places in others.places() {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        let (files, done) = find_files(&places, names, seeds, left);
+        found.extend(files);
+        complete &= done;
+    }
+    (found, complete)
+}
+
 impl TraceFinder for WindowsTraceFinder {
     fn candidates(&self, app: &InstalledApp) -> Result<Vec<Candidate>, String> {
         self.search(app).map(|f| f.candidates)
@@ -218,7 +238,8 @@ impl TraceFinder for WindowsTraceFinder {
         let names = names_of(app);
         let hives = Hives::real();
         let (seeds, values) = observed_seeds(app, &hives);
-        let (files, complete) = find_files(&UserPlaces::real(), &names, &seeds, FILES_BUDGET);
+        let others = other_users();
+        let (files, complete) = files_of_everyone(&others, &names, &seeds);
         if !complete {
             purifex_domain::log_warn!(
                 "the search for shortcuts of {} ran out of time: the list may be incomplete",
@@ -231,7 +252,7 @@ impl TraceFinder for WindowsTraceFinder {
             values,
             find_associations(&hives, &seeds),
             find_program_keys(&hives, &names, &seeds),
-            places_named(&names),
+            places_named(&names, &others.roots()),
             keys_named(&names),
             system_places(&seeds),
         ]
@@ -240,6 +261,7 @@ impl TraceFinder for WindowsTraceFinder {
             seeds,
             candidates,
             incomplete: !complete,
+            other_users_unread: others.unread,
         })
     }
 }

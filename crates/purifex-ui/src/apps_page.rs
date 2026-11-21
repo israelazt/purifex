@@ -75,9 +75,15 @@ fn traces_summary(m: &Model, report: Option<&CleanReport>) -> String {
         None if m.waiting => "Esperando a que termine el desinstalador. Puedes seguir usando Purifex: cuando la app desaparezca, busco lo que dejó.".to_string(),
         None if m.finding.is_some() => "Buscando lo que dejó…".to_string(),
         None => "Cuando el desinstalador termine, Purifex busca lo que dejó. No se borra nada al buscar.".to_string(),
-        Some(r) if r.proposed.is_empty() => "No se encontraron restos.".to_string(),
+        Some(r) if r.proposed.is_empty() => match r.other_users_note() {
+            Some(note) => format!("No se encontraron restos. {note}"),
+            None => "No se encontraron restos.".to_string(),
+        },
         Some(r) => {
-            let found = format!("Se encontraron: {}.", Counts::of(&r.proposed).to_text());
+            let mut found = format!("Se encontraron: {}.", Counts::of(&r.proposed).to_text());
+            if let Some(note) = r.other_users_note() {
+                found = format!("{found} {note}");
+            }
             if r.incomplete {
                 format!("{found} La búsqueda se cortó por tiempo: pulsa «Buscar otra vez».")
             } else {

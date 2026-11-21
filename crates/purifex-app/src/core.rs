@@ -92,6 +92,7 @@ impl Core {
             Action::AskRestartAsAdmin(name) => self.ask(Confirm::RestartAsAdmin(name)),
             Action::FindTraces(name) => self.find_traces(name),
             Action::RefreshApps => self.refresh_apps(),
+            Action::StopWaiting => self.stop_waiting(),
             Action::SetFilter(filter) => self.model.filter = filter,
             Action::SetQuery(query) => self.model.query = query,
             Action::SelectSession(id) => self.select_session(id),
@@ -1247,6 +1248,36 @@ mod tests {
             .unwrap()
             .contains("ya se desinstaló"));
         assert!(!c.needs_tick(), "it stopped watching");
+    }
+
+    #[test]
+    fn waiting_for_an_uninstaller_can_be_given_up_and_a_very_long_wait_says_so() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        installed.0.borrow_mut().push(fake_app("OBS Studio"));
+        let (mut c, _) = two_traces_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::AskUninstall("HKLM64:OBS Studio".into()));
+        c.apply(Action::Confirm);
+        assert!(c.model().waiting);
+        c.apply(Action::StopWaiting);
+        assert!(!c.model().waiting && !c.needs_tick());
+        // The wait that is never answered ends by itself and says what happened.
+        c.apply(Action::AskUninstall("HKLM64:OBS Studio".into()));
+        c.apply(Action::Confirm);
+        let long_ago = Instant::now() - WATCH_FOR - Duration::from_secs(1);
+        let (app, _, _) = c.watching.take().unwrap();
+        c.watching = Some((app, long_ago, long_ago));
+        assert!(c.tick());
+        assert!(!c.model().waiting && !c.needs_tick());
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("sigue instalada"));
     }
 
     #[test]

@@ -67,6 +67,7 @@ fn cleanup_panel(c: &mut Canvas, m: &Model, name: &str, area: Rect, y: f32) -> f
 /// many traces and how big.
 fn traces_summary(m: &Model, report: Option<&CleanReport>) -> String {
     match report {
+        None if m.waiting => "Esperando a que termine el desinstalador. Puedes seguir usando Purifex: cuando la app desaparezca, busco lo que dejó.".to_string(),
         None if m.finding.is_some() => "Buscando lo que dejó…".to_string(),
         None => "Cuando el desinstalador termine, Purifex busca lo que dejó. No se borra nada al buscar.".to_string(),
         Some(r) if r.proposed.is_empty() => "No se encontraron restos.".to_string(),
@@ -100,6 +101,9 @@ fn cleanup_buttons(
     );
     let busy = m.finding.is_some();
     let x = rect.right() - 16.0 - find_w;
+    if m.waiting {
+        return stop_waiting_button(c, rect);
+    }
     button(
         c,
         Rect::new(x, rect.y + 20.0, find_w, 44.0),
@@ -119,6 +123,19 @@ fn cleanup_buttons(
             Some(Action::OpenTraces),
         );
     }
+}
+
+/// While the uninstaller runs there is nothing to search yet: the only button lets go.
+fn stop_waiting_button(c: &mut Canvas, rect: Rect) {
+    let w = button_width(c, "Dejar de esperar");
+    button(
+        c,
+        Rect::new(rect.right() - 16.0 - w, rect.y + 20.0, w, 44.0),
+        "Dejar de esperar",
+        "x",
+        false,
+        Some(Action::StopWaiting),
+    );
 }
 
 /// A name short enough to go on a button.
@@ -567,6 +584,17 @@ mod tests {
         let (texts, actions) = render(&m);
         assert!(texts.contains(&"No se encontraron restos.".to_string()));
         assert!(!actions.contains(&Action::OpenTraces));
+    }
+
+    #[test]
+    fn while_the_uninstaller_runs_the_panel_waits_and_the_only_button_lets_go() {
+        let mut m = model();
+        m.uninstalled = Some("Discord".into());
+        m.waiting = true;
+        let (texts, actions) = render(&m);
+        assert!(texts.join(" ").contains("Esperando a que termine"));
+        assert!(actions.contains(&Action::StopWaiting));
+        assert!(!actions.contains(&Action::FindTraces("Discord".into())));
     }
 
     #[test]

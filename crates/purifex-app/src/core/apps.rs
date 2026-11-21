@@ -38,6 +38,7 @@ impl Core {
                 ));
                 (self.model.uninstalled, self.model.traces) = (Some(app.name.clone()), None);
                 self.model.traces_open = false;
+                self.model.waiting = true;
                 // From now on the list is read now and then: when the app is gone the
                 // uninstaller has finished and its traces are looked for.
                 self.watching = Some((app, Instant::now(), Instant::now()));
@@ -114,6 +115,15 @@ impl Core {
         }
     }
 
+    /// The person does not want to wait any more: nothing else changes.
+    pub(super) fn stop_waiting(&mut self) {
+        self.watching = None;
+        self.model.waiting = false;
+        self.expect_reading();
+        self.model.message =
+            Some("Dejé de esperar al desinstalador. Cuando termine, pulsa «Buscar restos».".into());
+    }
+
     /// While an uninstaller started here runs: reads the list now and then, and when the
     /// app is gone, remembers it and asks for its traces. Returns whether the model changed.
     pub(super) fn check_watch(&mut self) -> bool {
@@ -121,8 +131,13 @@ impl Core {
             return false;
         };
         if started.elapsed() > WATCH_FOR {
+            let name = app.name.clone();
             self.watching = None;
-            return false;
+            self.model.waiting = false;
+            self.model.message = Some(format!(
+                "{name} sigue instalada después de esperar a su desinstalador. Si ya la desinstalaste, pulsa «Buscar restos»."
+            ));
+            return true;
         }
         if last.elapsed() < WATCH_EVERY {
             return false;
@@ -136,6 +151,7 @@ impl Core {
             return false;
         }
         self.watching = None;
+        self.model.waiting = false;
         self.model.apps = Some(now);
         let _ = self.services.note_uninstalled(&app);
         self.model.uninstalled = Some(app.name.clone());

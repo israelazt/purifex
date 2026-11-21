@@ -96,6 +96,8 @@ pub struct Model {
     pub traces: Option<CleanReport>,
     /// The name of an app whose traces are being looked for.
     pub finding: Option<String>,
+    /// An uninstaller started here is running: Purifex waits for the app to disappear.
+    pub waiting: bool,
     /// What the quarantine holds (read on the apps page).
     pub quarantine: Option<QuarantineInfo>,
     /// Whether the program runs as an administrator (read on the apps page).
@@ -127,6 +129,8 @@ pub enum Action {
     /// The window came back to the front: read the apps again (the user may have
     /// uninstalled one meanwhile).
     RefreshApps,
+    /// Stop waiting for the uninstaller that was started here.
+    StopWaiting,
     /// Asks to remove the checked traces: the user is asked to confirm.
     AskClean(String),
     /// Asks to remove every trace without selecting: same, it must be confirmed.

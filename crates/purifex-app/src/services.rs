@@ -18,7 +18,7 @@ use purifex_domain::ports::{
     AppInventory, Clock, Elevation, PerformanceSampler, SessionArchive, SessionFile,
     SystemInventory, UrlOpener,
 };
-use purifex_domain::quarantine::{PurgeReport, QuarantineInfo};
+use purifex_domain::quarantine::{PurgeReport, QuarantineInfo, RestoreReport};
 use purifex_domain::report::{ScanReport, Scope};
 use purifex_domain::session_list::SessionRow;
 
@@ -96,6 +96,8 @@ pub trait Services {
     fn cleanup_history(&self) -> Result<Vec<CleanupEntry>, String>;
     /// What the quarantine holds: how many traces, how big, how old.
     fn quarantine(&mut self) -> Result<QuarantineInfo, String>;
+    /// Puts back every trace of the app that is still in the quarantine.
+    fn restore_app_cleanup(&mut self, app: &str) -> Result<RestoreReport, String>;
     /// Deletes for good what the quarantine holds; without `confirmed` it only says how much.
     fn empty_quarantine(&mut self, confirmed: bool) -> Result<PurgeReport, String>;
     /// Lets go of what has been in the quarantine for seven days.
@@ -343,6 +345,10 @@ where
 
     fn quarantine(&mut self) -> Result<QuarantineInfo, String> {
         self.cleaning.quarantine_info()
+    }
+
+    fn restore_app_cleanup(&mut self, app: &str) -> Result<RestoreReport, String> {
+        self.cleaning.restore_app(app)
     }
 
     fn empty_quarantine(&mut self, confirmed: bool) -> Result<PurgeReport, String> {

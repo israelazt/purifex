@@ -187,6 +187,10 @@ mod states {
                     bytes: 205_569_471,
                     oldest: purifex_domain::date::Date::new(2026, 11, 14),
                     expired: 0,
+                    latest: Some(purifex_domain::quarantine::Latest {
+                        app: "Kdenlive".into(),
+                        items: 14,
+                    }),
                 });
                 if extra == Some("empty") {
                     model.confirm = Some(Confirm::EmptyQuarantine);

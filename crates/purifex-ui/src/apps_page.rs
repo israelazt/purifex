@@ -6,6 +6,7 @@
 use purifex_domain::apps::{size_text, InstalledApp};
 use purifex_domain::cleanup_log::CleanReport;
 use purifex_domain::draw::Rect;
+use purifex_domain::quarantine::QuarantineInfo;
 use purifex_domain::trace_text::Counts;
 use purifex_domain::view::{Action, Model};
 
@@ -120,10 +121,52 @@ fn cleanup_buttons(
     }
 }
 
-/// What the quarantine holds and the button to empty it. Nothing is drawn when it holds
+/// A name short enough to go on a button.
+fn short(name: &str) -> String {
+    const MAX: usize = 18;
+    if name.chars().count() <= MAX {
+        return name.to_string();
+    }
+    let head: String = name.chars().take(MAX - 1).collect();
+    format!("{}…", head.trim_end())
+}
+
+/// The button to empty the quarantine, and beside it the one that puts back the traces of the
+/// app cleaned last.
+fn quarantine_buttons(c: &mut Canvas, info: &QuarantineInfo, rect: Rect) {
+    let label = "Vaciar cuarentena";
+    let width = button_width(c, label);
+    button(
+        c,
+        Rect::new(rect.right() - 16.0 - width, rect.y + 14.0, width, 44.0),
+        label,
+        "trash-2",
+        false,
+        Some(Action::AskEmptyQuarantine),
+    );
+    if let Some(latest) = &info.latest {
+        let label = format!("Devolver {}", short(&latest.app));
+        let put_back = button_width(c, &label);
+        button(
+            c,
+            Rect::new(
+                rect.right() - 16.0 - width - 12.0 - put_back,
+                rect.y + 14.0,
+                put_back,
+                44.0,
+            ),
+            &label,
+            "undo-2",
+            false,
+            Some(Action::RestoreApp(latest.app.clone())),
+        );
+    }
+}
+
+/// What the quarantine holds and the buttons to put things back or empty it. Nothing is drawn when it holds
 /// nothing: there is nothing to say.
 fn quarantine_panel(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
-    let Some(info) = m.quarantine.filter(|q| q.items > 0) else {
+    let Some(info) = m.quarantine.as_ref().filter(|q| q.items > 0) else {
         return 0.0;
     };
     let rect = Rect::new(area.x, y, area.w, 72.0);
@@ -144,21 +187,12 @@ fn quarantine_panel(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     c.paragraph(
         rect.x + 46.0,
         rect.y + 38.0,
-        rect.w - 300.0,
+        rect.w - if info.latest.is_some() { 600.0 } else { 300.0 },
         &info.to_text(),
         theme::mono(12.0, theme::TEXT_2),
         Some(2),
     );
-    let label = "Vaciar cuarentena";
-    let width = button_width(c, label);
-    button(
-        c,
-        Rect::new(rect.right() - 16.0 - width, rect.y + 14.0, width, 44.0),
-        label,
-        "trash-2",
-        false,
-        Some(Action::AskEmptyQuarantine),
-    );
+    quarantine_buttons(c, info, rect);
     rect.h + 16.0
 }
 
@@ -464,8 +498,32 @@ mod tests {
             bytes: 3 * 1024 * 1024,
             oldest: None,
             expired: 0,
+            ..Default::default()
         });
         m
+    }
+
+    #[test]
+    fn the_app_cleaned_last_can_be_put_back_with_a_button_that_names_it() {
+        use purifex_domain::quarantine::Latest;
+        let mut m = with_quarantine(7);
+        let (_, none) = render(&m);
+        assert!(!none.iter().any(|a| matches!(a, Action::RestoreApp(_))));
+        m.quarantine.as_mut().unwrap().latest = Some(Latest {
+            app: "Kdenlive".into(),
+            items: 7,
+        });
+        let (texts, actions) = render(&m);
+        assert!(
+            texts.contains(&"DEVOLVER KDENLIVE".to_string()),
+            "{texts:?}"
+        );
+        assert!(actions.contains(&Action::RestoreApp("Kdenlive".into())));
+        assert_eq!(
+            short("Un nombre de aplicación larguísimo"),
+            "Un nombre de apli…"
+        );
+        assert_eq!(short("Kdenlive"), "Kdenlive");
     }
 
     #[test]

@@ -14,6 +14,7 @@ use purifex_domain::date::Date;
 use purifex_domain::ports::{CleanupStore, Clock, SeedProbe, TraceFinder, Uninstaller};
 
 mod purging;
+mod restoring;
 
 #[derive(Default)]
 pub struct Cleaning {

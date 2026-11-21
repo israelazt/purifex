@@ -64,10 +64,9 @@ Pendiente (actualizado 2026-11-20):
 
 - **Servicios, tareas programadas, entradas de inicio, reglas de firewall, menú contextual y asociaciones de archivos**: no se buscan aún (la limpieza profunda de `DEEP_CLEAN_PLAN.md` cubre archivos, accesos directos y claves del registro, no estos).
 - **Punto de restauración** del sistema antes de desinstalar: no se crea (pediría administrador; ahora que existe el reinicio como administrador se puede ofrecer); la cuarentena y la copia de las claves son la red de seguridad.
-- **Deshacer desde la pantalla**: el historial se devuelve con `purifex apps restore N`; falta el botón en la página de Apps.
 - Probado con una app de mentira y con Kdenlive real (solo lectura), **no desinstalando apps reales** de este PC.
 
-Hecho desde entonces: vaciar y caducar la cuarentena a los 7 días (`DEEP_CLEAN_PLAN.md`, fase 7), buscador de la página de Apps, y las apps de la Tienda (abajo).
+Hecho desde entonces: **deshacer desde la pantalla** (el panel de Cuarentena tiene «Devolver <app>»: devuelve a su sitio todos los restos de la última app limpiada que siguen en la cuarentena; nunca sobrescribe, lo que no puede volver se dice sin parar el resto; por restos sueltos sigue `purifex apps restore N`), vaciar y caducar la cuarentena a los 7 días (`DEEP_CLEAN_PLAN.md`, fase 7), buscador de la página de Apps, y las apps de la Tienda (abajo).
 
 ### Apps de la Tienda (MSIX) (2026-11-20)
 

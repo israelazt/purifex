@@ -88,6 +88,7 @@ impl Core {
             Action::OpenTraces => self.open_traces(),
             Action::CloseTraces => self.close_traces(),
             Action::AskEmptyQuarantine => self.ask(Confirm::EmptyQuarantine),
+            Action::RestoreApp(app) => self.apps_restored(&app),
             Action::AskRestartAsAdmin(name) => self.ask(Confirm::RestartAsAdmin(name)),
             Action::FindTraces(name) => self.find_traces(name),
             Action::RefreshApps => self.refresh_apps(),
@@ -649,7 +650,7 @@ mod tests {
         let AppsFixture { mut core, log, .. } =
             apps_page_holding(vec![removal(1, 10), removal(2, 2)]);
         assert_eq!(log.borrow().purged, [1], "seven days old: let go");
-        assert_eq!(core.model().quarantine.map(|q| q.items), Some(1));
+        assert_eq!(core.model().quarantine.as_ref().map(|q| q.items), Some(1));
         let said = core.model().message.as_deref().unwrap();
         assert!(said.contains("Se soltaron de la cuarentena"), "{said}");
         // Reading again (a rescan) does not tidy again in the same run.
@@ -657,7 +658,48 @@ mod tests {
         core.apply(Action::Rescan);
         core.tick();
         assert_eq!(log.borrow().purged, [1]);
-        assert_eq!(core.model().quarantine.map(|q| q.items), Some(2));
+        assert_eq!(core.model().quarantine.as_ref().map(|q| q.items), Some(2));
+    }
+
+    #[test]
+    fn putting_back_an_app_returns_all_its_traces_and_leaves_the_rest_in_the_quarantine() {
+        let AppsFixture { mut core, log, .. } =
+            apps_page_holding(vec![removal(1, 1), removal(2, 2)]);
+        let latest = core
+            .model()
+            .quarantine
+            .as_ref()
+            .unwrap()
+            .latest
+            .clone()
+            .unwrap();
+        assert_eq!((latest.app.as_str(), latest.items), ("Discord", 2));
+        core.apply(Action::RestoreApp("Discord".into()));
+        assert_eq!(log.borrow().restored.len(), 2);
+        let said = core.model().message.as_deref().unwrap();
+        assert!(
+            said.contains("Se devolvieron 2 restos de Discord"),
+            "{said}"
+        );
+        core.tick();
+        assert_eq!(
+            core.model().quarantine.as_ref().map(|q| q.items),
+            Some(0),
+            "read again: nothing left to put back"
+        );
+    }
+
+    #[test]
+    fn putting_back_an_app_that_the_quarantine_does_not_hold_is_said_and_changes_nothing() {
+        let AppsFixture { mut core, log, .. } = apps_page_holding(vec![removal(1, 1)]);
+        core.apply(Action::RestoreApp("Otra".into()));
+        assert!(log.borrow().restored.is_empty());
+        assert!(core
+            .model()
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("no guarda restos de Otra"));
     }
 
     #[test]
@@ -676,7 +718,7 @@ mod tests {
         assert!(said.contains("Se borraron para siempre 2 restos"), "{said}");
         core.tick();
         assert_eq!(
-            core.model().quarantine.map(|q| q.items),
+            core.model().quarantine.as_ref().map(|q| q.items),
             Some(0),
             "read again, now empty"
         );

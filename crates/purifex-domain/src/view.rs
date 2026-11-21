@@ -141,6 +141,9 @@ pub enum Action {
     CloseTraces,
     /// Asks to empty the quarantine: the user is asked to confirm, it cannot be undone.
     AskEmptyQuarantine,
+    /// Puts back the traces of this app that are in the quarantine (it never overwrites,
+    /// so it needs no question).
+    RestoreApp(String),
     /// Asks to restart as an administrator (to remove what needs it): the user is asked
     /// to confirm, and Windows asks once more.
     AskRestartAsAdmin(String),

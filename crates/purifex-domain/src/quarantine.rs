@@ -26,6 +26,14 @@ pub fn open_removals(entries: &[CleanupEntry]) -> Vec<&CleanupEntry> {
         .collect()
 }
 
+/// The open removals of one app (what putting its traces back means).
+pub fn open_removals_of<'a>(entries: &'a [CleanupEntry], app: &str) -> Vec<&'a CleanupEntry> {
+    open_removals(entries)
+        .into_iter()
+        .filter(|e| e.app == app)
+        .collect()
+}
+
 /// The open removals that are `QUARANTINE_DAYS` days old or more on `today`. A removal
 /// written before the date was kept has no age: it never expires by itself, only when the
 /// person empties the quarantine.
@@ -38,8 +46,16 @@ pub fn expired(entries: &[CleanupEntry], today: Date) -> Vec<&CleanupEntry> {
         .collect()
 }
 
+/// The app that was cleaned last and how many of its traces are still in the quarantine:
+/// what the button to put things back refers to.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Latest {
+    pub app: String,
+    pub items: usize,
+}
+
 /// What the quarantine holds now.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct QuarantineInfo {
     /// Traces that can still be put back.
     pub items: usize,
@@ -49,6 +65,8 @@ pub struct QuarantineInfo {
     pub oldest: Option<Date>,
     /// How many are old enough to be let go now.
     pub expired: usize,
+    /// The app whose removal is the most recent one still open.
+    pub latest: Option<Latest>,
 }
 
 impl QuarantineInfo {
@@ -59,6 +77,10 @@ impl QuarantineInfo {
             bytes,
             oldest: open.iter().filter_map(|e| e.on).min(),
             expired: expired(entries, today).len(),
+            latest: open.iter().max_by_key(|e| e.seq).map(|last| Latest {
+                app: last.app.clone(),
+                items: open_removals_of(entries, &last.app).len(),
+            }),
         }
     }
 
@@ -73,6 +95,31 @@ impl QuarantineInfo {
         );
         if let Some(day) = self.oldest {
             text.push_str(&format!(" El más antiguo es del {day}."));
+        }
+        text
+    }
+}
+
+/// What putting back the traces of one app did.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct RestoreReport {
+    pub app: String,
+    pub restored: usize,
+    /// The ones that could not be put back (the place is taken, the copy is gone), with why.
+    pub failed: Vec<(u64, String)>,
+}
+
+impl RestoreReport {
+    pub fn to_text(&self) -> String {
+        let mut text = format!(
+            "Se devolvieron {} restos de {} a su sitio.",
+            self.restored, self.app
+        );
+        for (seq, why) in &self.failed {
+            text.push_str(&format!(
+                "
+no se pudo devolver #{seq}: {why}"
+            ));
         }
         text
     }
@@ -186,6 +233,34 @@ mod tests {
             QuarantineInfo::of(&[], 0, day(1)).to_text(),
             "La cuarentena está vacía."
         );
+    }
+
+    #[test]
+    fn the_latest_app_is_the_one_of_the_most_recent_open_removal_with_all_its_traces() {
+        let of = |seq: u64, app: &str| CleanupEntry {
+            seq,
+            app: app.into(),
+            ..Default::default()
+        };
+        let latest = |log: &[CleanupEntry]| QuarantineInfo::of(log, 0, day(1)).latest;
+        let mut log = vec![of(1, "Kdenlive"), of(2, "Discord"), of(3, "Kdenlive")];
+        assert_eq!(
+            latest(&log),
+            Some(Latest {
+                app: "Kdenlive".into(),
+                items: 2
+            })
+        );
+        // Putting #3 back leaves Discord's #2 as the most recent one still open.
+        log.push(closing(4, CleanupState::Restored, 3));
+        assert_eq!(
+            latest(&log),
+            Some(Latest {
+                app: "Discord".into(),
+                items: 1
+            })
+        );
+        assert_eq!(latest(&[]), None);
     }
 
     #[test]

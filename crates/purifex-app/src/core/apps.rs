@@ -88,6 +88,19 @@ impl Core {
         }
     }
 
+    /// Puts back the traces of an app from the quarantine and says what happened.
+    pub(super) fn apps_restored(&mut self, app: &str) {
+        self.model.error = None;
+        match self.services.restore_app_cleanup(app) {
+            Ok(report) => {
+                self.model.message = Some(report.to_text());
+                self.model.quarantine = None;
+                self.expect_reading();
+            }
+            Err(error) => self.model.error = Some(error),
+        }
+    }
+
     /// Deletes for good what the quarantine holds, after the person confirmed.
     pub(super) fn quarantine_emptied(&mut self) {
         match self.services.empty_quarantine(true) {

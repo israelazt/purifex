@@ -515,6 +515,7 @@ mod tests {
                 bytes: 2 * 1024 * 1024,
                 oldest: None,
                 expired: 0,
+                ..Default::default()
             }),
             ..Model::default()
         };

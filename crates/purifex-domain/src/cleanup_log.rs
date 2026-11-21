@@ -76,6 +76,10 @@ pub struct CleanReport {
     /// What was proposed (for a preview) and what could not be removed, with why.
     pub proposed: Vec<Trace>,
     pub failed: Vec<(Trace, String)>,
+    /// Of the ones that failed: the files and folders that a program has open. They can be
+    /// deleted at the next restart, but not put back (they cannot be moved to the quarantine).
+    #[serde(default)]
+    pub in_use: Vec<Trace>,
     /// The search ran out of time (reading shortcuts on a slow disk) and may have missed
     /// some traces: it should be looked for again.
     pub incomplete: bool,
@@ -135,6 +139,13 @@ Para quitarlos (a cuarentena, con deshacer): purifex apps clean \"{}\" --yes",
         }
         for (t, why) in &self.failed {
             let _ = writeln!(out, "no se pudo quitar {}: {why}", t.location);
+        }
+        if !self.in_use.is_empty() {
+            let _ = writeln!(
+                out,
+                "{} están en uso: se pueden borrar al reiniciar, pero entonces no se podrán devolver.",
+                self.in_use.len()
+            );
         }
         if !self.removed.is_empty() {
             let removed: Vec<Trace> = self.removed.iter().map(|e| e.trace.clone()).collect();

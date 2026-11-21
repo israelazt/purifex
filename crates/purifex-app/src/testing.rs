@@ -358,6 +358,9 @@ impl purifex_domain::ports::CleanupStore for FakeCleaning {
         log.removed.push(trace.location.clone());
         Ok(format!("q/{seq}"))
     }
+    fn is_locked(&self, trace: &purifex_domain::app_traces::Trace) -> bool {
+        self.0.borrow().stuck.contains(&trace.location)
+    }
     fn restore(&mut self, entry: &purifex_domain::cleanup_log::CleanupEntry) -> Result<(), String> {
         self.0
             .borrow_mut()

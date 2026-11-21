@@ -160,6 +160,11 @@ impl CleanupStore for LocalCleanup {
         }
     }
 
+    fn is_locked(&self, trace: &Trace) -> bool {
+        matches!(trace.kind, TraceKind::Folder | TraceKind::File)
+            && super::locks::is_locked(Path::new(&trace.location))
+    }
+
     fn restore(&mut self, entry: &CleanupEntry) -> Result<(), String> {
         match entry.trace.kind {
             TraceKind::Folder | TraceKind::File => {

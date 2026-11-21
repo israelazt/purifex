@@ -62,7 +62,12 @@ pub fn find<'a>(apps: &'a [InstalledApp], query: &str) -> Result<&'a InstalledAp
 
 /// What removing a selection of traces did: the entries logged, and what could not be
 /// removed with why.
-type Removals = (Vec<CleanupEntry>, Vec<(Trace, String)>);
+struct Removals {
+    removed: Vec<CleanupEntry>,
+    failed: Vec<(Trace, String)>,
+    /// The ones that failed because a program has them open.
+    in_use: Vec<Trace>,
+}
 
 /// With a selection only those places go, and only if the rules still propose them: what
 /// is asked for is always checked against what `propose` returned.
@@ -252,11 +257,12 @@ impl Cleaning {
             return Err(format!("{} sigue instalada: termina su desinstalador primero (los restos de una app en uso no se tocan)", app.name));
         }
         let chosen = select(proposed, only);
-        let (removed, failed) = self.remove_all(&app.name, &chosen)?;
+        let done = self.remove_all(&app.name, &chosen)?;
         Ok(CleanReport {
             app: app.name,
-            removed,
-            failed,
+            removed: done.removed,
+            failed: done.failed,
+            in_use: done.in_use,
             incomplete: found.incomplete,
             ..Default::default()
         })
@@ -268,7 +274,11 @@ impl Cleaning {
         let today = self.today();
         let store = self.store()?;
         let mut log = store.entries()?;
-        let (mut removed, mut failed) = (Vec::new(), Vec::new());
+        let mut done = Removals {
+            removed: Vec::new(),
+            failed: Vec::new(),
+            in_use: Vec::new(),
+        };
         for trace in traces {
             let seq = next_seq(&log);
             match store.remove(trace, seq) {
@@ -284,12 +294,17 @@ impl Cleaning {
                     };
                     store.append(&entry)?;
                     log.push(entry.clone());
-                    removed.push(entry);
+                    done.removed.push(entry);
                 }
-                Err(why) => failed.push((trace.clone(), why)),
+                Err(why) => {
+                    if store.is_locked(trace) {
+                        done.in_use.push(trace.clone());
+                    }
+                    done.failed.push((trace.clone(), why));
+                }
             }
         }
-        Ok((removed, failed))
+        Ok(done)
     }
 
     /// Puts back what removal `seq` took out.
@@ -562,7 +577,14 @@ mod tests {
         let report = c.clean(&apps, &apps, "Discord", true, None).unwrap();
         assert_eq!(report.removed.len(), 1);
         assert_eq!(report.failed.len(), 1);
-        assert!(report.to_text().contains("no se pudo quitar"));
+        assert_eq!(
+            report.in_use.len(),
+            1,
+            "it is open elsewhere: it can wait for a restart"
+        );
+        assert_eq!(report.in_use[0].location, LOCAL);
+        let text = report.to_text();
+        assert!(text.contains("no se pudo quitar") && text.contains("al reiniciar"));
     }
 
     #[test]

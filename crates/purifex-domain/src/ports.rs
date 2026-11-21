@@ -86,6 +86,9 @@ pub trait Uninstaller {
 pub trait CleanupStore {
     /// Moves the trace to the quarantine; returns where it is kept.
     fn remove(&mut self, trace: &crate::app_traces::Trace, seq: u64) -> Result<String, String>;
+    /// Whether a program has the file, or a file inside the folder, open right now. It is what
+    /// tells "in use" (it can wait for the next restart) from the other reasons not to remove.
+    fn is_locked(&self, trace: &crate::app_traces::Trace) -> bool;
     /// Puts the removed thing back where it was (it must not exist there now).
     fn restore(&mut self, entry: &crate::cleanup_log::CleanupEntry) -> Result<(), String>;
     fn entries(&self) -> Result<Vec<crate::cleanup_log::CleanupEntry>, String>;

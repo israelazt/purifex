@@ -42,7 +42,7 @@ fn services_in(root: HKEY, label: &str, path: &str, seeds: &Seeds) -> Vec<Candid
 
 /// `%ProgramFiles%\App\a.exe` as the path it names: `ImagePath` is an expandable string.
 /// A variable that does not exist is left as it is.
-fn expand(text: &str) -> String {
+pub(super) fn expand(text: &str) -> String {
     let mut out = String::new();
     let mut rest = text;
     while let Some(start) = rest.find('%') {

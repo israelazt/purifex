@@ -2,7 +2,7 @@
 //! terminal prints it. The window builds its own wording (`purifex-ui`); this is the
 //! command line and the logs.
 
-use crate::app_traces::Trace;
+use crate::app_traces::{Trace, TraceGroup};
 use crate::apps::InstalledApp;
 
 /// How many traces of each kind, and their size.
@@ -12,6 +12,8 @@ pub struct Counts {
     pub files: usize,
     /// Registry keys and values.
     pub registry: usize,
+    /// Scheduled tasks.
+    pub tasks: usize,
     pub bytes: u64,
 }
 
@@ -19,10 +21,10 @@ impl Counts {
     pub fn of<'a>(traces: impl IntoIterator<Item = &'a Trace>) -> Counts {
         let mut c = Counts::default();
         for t in traces {
-            if t.is_registry() {
-                c.registry += 1;
-            } else {
-                c.files += 1;
+            match t.group() {
+                TraceGroup::Registry => c.registry += 1,
+                TraceGroup::Tasks => c.tasks += 1,
+                TraceGroup::Files => c.files += 1,
             }
             c.bytes += t.bytes;
         }
@@ -31,8 +33,13 @@ impl Counts {
 
     /// `Archivos y carpetas: 18 · Registro: 19 · 83 KB`
     pub fn to_text(&self) -> String {
+        let tasks = if self.tasks > 0 {
+            format!(" · Tareas: {}", self.tasks)
+        } else {
+            String::new()
+        };
         format!(
-            "Archivos y carpetas: {} · Registro: {} · {}",
+            "Archivos y carpetas: {} · Registro: {}{tasks} · {}",
             self.files,
             self.registry,
             crate::apps::size_text(Some(self.bytes.div_ceil(1024)))
@@ -96,6 +103,19 @@ mod tests {
             evidence: Evidence::NameMatch,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn tasks_are_counted_apart_and_named_only_when_there_are_some() {
+        let task = Trace {
+            kind: TraceKind::Task,
+            location: r"\Kdenlive\Updater".into(),
+            ..Default::default()
+        };
+        let counts = Counts::of([&task]);
+        assert_eq!((counts.files, counts.registry, counts.tasks), (0, 0, 1));
+        assert!(counts.to_text().contains("Tareas: 1"));
+        assert!(!Counts::default().to_text().contains("Tareas"));
     }
 
     #[test]

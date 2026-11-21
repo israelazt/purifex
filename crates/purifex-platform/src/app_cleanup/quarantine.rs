@@ -16,7 +16,7 @@ use purifex_domain::ports::CleanupStore;
 
 use super::finder::folder_size;
 
-use super::registry_write;
+use super::{registry_write, tasks};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -140,6 +140,11 @@ impl CleanupStore for LocalCleanup {
                 registry_write::delete_key_tree(&trace.location).map_err(|e| e.message())?;
                 Ok(file_text)
             }
+            TraceKind::Task => {
+                let file = folder.join("tarea.xml").to_string_lossy().into_owned();
+                tasks::take_out(&trace.location, &file)?;
+                Ok(file)
+            }
             TraceKind::RegistryValue => {
                 let name = trace.value.as_deref().ok_or("falta el nombre del valor")?;
                 let raw = registry_write::read_value_raw(&trace.location, name)
@@ -168,6 +173,7 @@ impl CleanupStore for LocalCleanup {
                 fs::rename(&entry.kept, target).map_err(|e| io_message(&e, "no se pudo devolver"))
             }
             TraceKind::RegistryKey => reg(&["import", &entry.kept]),
+            TraceKind::Task => tasks::put_back(&entry.trace.location, &entry.kept),
             TraceKind::RegistryValue => {
                 let text = fs::read_to_string(&entry.kept)
                     .map_err(|e| format!("no se pudo leer la copia del valor: {e}"))?;

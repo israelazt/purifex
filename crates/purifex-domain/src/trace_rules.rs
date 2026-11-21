@@ -72,6 +72,7 @@ const KEY_RULES: [Rule; 5] = [
     tile_key,
     service_key,
 ];
+const TASK_RULES: [Rule; 1] = [task_action];
 const FILE_RULES: [Rule; 4] = [
     settings_file,
     crash_dump,
@@ -92,6 +93,7 @@ pub fn judge_by_evidence(
         TraceKind::RegistryValue => (value_evidence(seeds, &lower, candidate)?, None),
         TraceKind::RegistryKey => decide(&KEY_RULES, app, seeds, candidate, &lower)?,
         TraceKind::File => decide(&FILE_RULES, app, seeds, candidate, &lower)?,
+        TraceKind::Task => decide(&TASK_RULES, app, seeds, candidate, &lower)?,
         TraceKind::Folder => return None,
     };
     if seed_shared(others, app, seeds, evidence) {
@@ -144,6 +146,7 @@ fn why_of(evidence: Evidence) -> &'static str {
         Evidence::NameMatch => "lleva el nombre de la app",
         Evidence::RegisteredInstall => "la carpeta de instalación que registró la app",
         Evidence::ServicePath => "servicio de Windows cuyo programa está en la carpeta de la app",
+        Evidence::TaskAction => "tarea programada que ejecuta un programa de la app",
     }
 }
 
@@ -155,7 +158,10 @@ fn seed_shared(others: &[InstalledApp], app: &InstalledApp, seeds: &Seeds, e: Ev
     };
     let rests_on_folder = matches!(
         e,
-        Evidence::PathReference | Evidence::Association | Evidence::ServicePath
+        Evidence::PathReference
+            | Evidence::Association
+            | Evidence::ServicePath
+            | Evidence::TaskAction
     );
     if !rests_on_folder {
         return false;
@@ -253,6 +259,22 @@ fn service_key(c: &Ctx) -> Option<Found> {
             Evidence::ServicePath,
             format!(
                 "servicio de Windows cuyo programa está en la carpeta de la app: {}",
+                c.name
+            ),
+        )
+    })
+}
+
+/// A scheduled task whose action (`text`: the commands it runs, read by the finder) runs a
+/// program inside the app's folder: the updater or the starter that an uninstaller left.
+fn task_action(c: &Ctx) -> Option<Found> {
+    let folder = c.seeds.folder.as_deref()?;
+    let text = c.candidate.text.as_deref()?;
+    path_refers_to(text, folder).then(|| {
+        (
+            Evidence::TaskAction,
+            format!(
+                "tarea programada que ejecuta un programa de la app: {}",
                 c.name
             ),
         )
@@ -457,6 +479,36 @@ mod tests {
     }
 
     const SERVICES: &str = r"HKLM\SYSTEM\CurrentControlSet\Services";
+
+    #[test]
+    fn a_task_that_runs_a_program_of_the_apps_folder_is_proposed_and_a_name_alone_is_not() {
+        let task = |path: &str, text: &str| cand(TraceKind::Task, path, None, Some(text));
+        let own = task(
+            r"\Kdenlive\Updater",
+            "\"C:\\Program Files\\Kdenlive\\update.exe\"\n/silent\n",
+        );
+        let t = judge(&own, &[]).unwrap();
+        assert_eq!(
+            (t.evidence, t.kind),
+            (Evidence::TaskAction, TraceKind::Task)
+        );
+        assert!(t.needs_admin());
+        // Named like the app but running something else.
+        let by_name = task(r"\Kdenlive", r"C:\Windows\System32\cmd.exe /c echo");
+        assert!(judge(&by_name, &[]).is_err());
+        // No text read: nothing to go by.
+        let blind = cand(TraceKind::Task, r"\Kdenlive\Updater", None, None);
+        assert!(judge(&blind, &[]).is_err());
+        // A path that climbs out is not a task path.
+        let escaping = task(r"\..\Kdenlive", r"C:\Program Files\Kdenlive\x.exe");
+        assert_eq!(judge(&escaping, &[]).unwrap_err(), Refusal::NotAbsolute);
+        // Another installed app lives in the folder: not taken.
+        let shared = InstalledApp {
+            install_location: Some(DIR.into()),
+            ..app("Other app", None)
+        };
+        assert!(judge(&own, &[shared]).is_err());
+    }
 
     #[test]
     fn a_service_whose_program_is_in_the_apps_folder_is_proposed_and_only_through_the_folder() {

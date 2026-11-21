@@ -12,6 +12,7 @@ mod lnk;
 mod quarantine;
 mod registry_write;
 mod seed_probe;
+mod tasks;
 
 pub use backup::LocalBackups;
 pub use finder::WindowsTraceFinder;

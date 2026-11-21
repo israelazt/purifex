@@ -659,6 +659,36 @@ mod tests {
     }
 
     #[test]
+    fn the_tasks_have_their_own_group_between_the_files_and_the_registry() {
+        let make = |kind: TraceKind, location: &str| Trace {
+            kind,
+            location: location.into(),
+            ..Default::default()
+        };
+        let m = Model {
+            traces_open: true,
+            traces: Some(CleanReport {
+                app: "OBS Studio".into(),
+                preview: true,
+                proposed: vec![
+                    make(TraceKind::RegistryKey, r"HKCU\Software\obs"),
+                    make(TraceKind::Task, r"\OBS\Updater"),
+                    make(TraceKind::Folder, r"C:\ProgramData\obs"),
+                ],
+                ..Default::default()
+            }),
+            ..Model::default()
+        };
+        let rows = view(&m).unwrap().rows;
+        let headings: Vec<&str> = rows.iter().filter_map(|r| r.heading.as_deref()).collect();
+        assert_eq!(headings.len(), 3);
+        assert!(headings[0].starts_with("Archivos y carpetas (1)"));
+        assert_eq!(headings[1], "Tareas programadas (1)");
+        assert_eq!(headings[2], "Registro (1)");
+        assert_eq!(rows[1].label, r"\OBS\Updater");
+    }
+
+    #[test]
     fn an_app_still_installed_offers_to_uninstall_it_and_not_to_clean_it() {
         let mut m = model_with_traces(2);
         m.traces.as_mut().unwrap().still_installed = true;

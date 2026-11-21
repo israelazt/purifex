@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::app_traces::Trace;
+use crate::app_traces::{Trace, TraceGroup};
 use crate::date::Date;
 use crate::view::{REGISTRY_ROOM, TRACES_LISTED};
 
@@ -94,8 +94,10 @@ impl CleanReport {
     /// then the registry, each biggest first. At most `TRACES_LISTED`; when both kinds exist
     /// the registry keeps some room. What does not fit is only removed by taking all.
     pub fn listed(&self) -> Vec<&Trace> {
-        let (registry, files): (Vec<&Trace>, Vec<&Trace>) =
+        let (registry, mut files): (Vec<&Trace>, Vec<&Trace>) =
             self.proposed.iter().partition(|t| t.is_registry());
+        // The tasks go after the files (the sort keeps what was already in order).
+        files.sort_by_key(|t| t.group() == TraceGroup::Tasks);
         let files_room = TRACES_LISTED - registry.len().min(REGISTRY_ROOM);
         let shown_files = files.len().min(files_room);
         let shown_registry = registry.len().min(TRACES_LISTED - shown_files);

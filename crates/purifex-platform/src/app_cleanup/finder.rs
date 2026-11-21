@@ -18,6 +18,7 @@ use super::find_registry::{
     discover_extensions, exes_in_values, find_associations, find_program_keys, find_values, Hives,
 };
 use super::find_services::find_services;
+use super::tasks::find_tasks;
 use crate::registry::{Key, View};
 
 const REPARSE_POINT: u32 = 0x400;
@@ -207,6 +208,7 @@ impl TraceFinder for WindowsTraceFinder {
             places_named(&names),
             keys_named(&names),
             find_services(&seeds),
+            find_tasks(&seeds),
         ]
         .concat();
         Ok(Found {

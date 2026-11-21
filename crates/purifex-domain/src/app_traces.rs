@@ -20,6 +20,16 @@ pub enum TraceKind {
     /// One value inside a registry key that is not the app's (`MuiCache`): only that
     /// value is the app's. `Trace.location` is the key and `Trace.value` the name.
     RegistryValue,
+    /// A scheduled task of Windows, by its path in the Task Scheduler (`\Vendor\Task`).
+    Task,
+}
+
+/// How the window groups the traces: what the person sees as one kind of thing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraceGroup {
+    Files,
+    Tasks,
+    Registry,
 }
 
 /// What proves a trace is the app's. Without evidence nothing is proposed.
@@ -43,6 +53,8 @@ pub enum Evidence {
     CrashDump,
     /// A service of Windows whose program is inside the app's folder.
     ServicePath,
+    /// A scheduled task whose action runs a program inside the app's folder.
+    TaskAction,
 }
 
 impl Evidence {
@@ -57,6 +69,7 @@ impl Evidence {
             Evidence::AssociatedExtension => "extensión de archivo de la app",
             Evidence::CrashDump => "volcado de error",
             Evidence::ServicePath => "servicio cuyo programa está en la carpeta de la app",
+            Evidence::TaskAction => "tarea programada que ejecuta un programa de la app",
         }
     }
 }
@@ -108,11 +121,21 @@ impl Trace {
         matches!(self.kind, TraceKind::RegistryKey | TraceKind::RegistryValue)
     }
 
+    pub fn group(&self) -> TraceGroup {
+        match self.kind {
+            TraceKind::Folder | TraceKind::File => TraceGroup::Files,
+            TraceKind::Task => TraceGroup::Tasks,
+            TraceKind::RegistryKey | TraceKind::RegistryValue => TraceGroup::Registry,
+        }
+    }
+
     /// Whether Windows lets only an administrator remove it: anything in the registry of the
     /// machine (`HKLM`), and what is inside Program Files. (The rest the user may remove.)
     pub fn needs_admin(&self) -> bool {
         let lower = self.location.to_lowercase();
-        lower.starts_with(r"hklm\")
+        // Tasks of the machine are created by installers that were administrators.
+        self.kind == TraceKind::Task
+            || lower.starts_with(r"hklm\")
             || lower
                 .get(1..)
                 .is_some_and(|rest| rest.starts_with(r":\program files"))
@@ -186,6 +209,17 @@ fn is_absolute(location: &str) -> bool {
     (drive || registry) && !l.split(['\\', '/']).any(|p| p == ".." || p == ".")
 }
 
+/// A task of the Task Scheduler: `\Name` or `\Folder\Name`, nothing that climbs out of it.
+fn is_task_path(location: &str) -> bool {
+    let l = location.trim();
+    l.len() > 1
+        && l.starts_with('\\')
+        && !l
+            .split('\\')
+            .skip(1)
+            .any(|p| p.is_empty() || p == ".." || p == ".")
+}
+
 /// The name under which an app puts its things: its own full name without the
 /// words that are versions (`Git 2.55` is `git`). Never a word of it alone (`Google`
 /// of `Google Chrome` is the folder of the whole publisher) and never the name of
@@ -229,14 +263,19 @@ pub fn judge_with(
     candidate: &Candidate,
 ) -> Result<Trace, Refusal> {
     let location = candidate.location.trim().trim_end_matches('\\');
-    if !is_absolute(location) {
+    let placed = if candidate.kind == TraceKind::Task {
+        is_task_path(location)
+    } else {
+        is_absolute(location)
+    };
+    if !placed {
         return Err(Refusal::NotAbsolute);
     }
     if let Some(decided) = judge_by_evidence(app, others, seeds, candidate, location) {
         return decided;
     }
-    // A value is the app's only by evidence: it has no name of its own to go by.
-    if candidate.kind == TraceKind::RegistryValue {
+    // A value or a task is the app's only by evidence: a name alone proves nothing.
+    if matches!(candidate.kind, TraceKind::RegistryValue | TraceKind::Task) {
         return Err(Refusal::NotTheApps);
     }
     judge_by_name(app, others, candidate, location)

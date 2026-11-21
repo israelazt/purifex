@@ -2,7 +2,7 @@
 //! grouped (files and folders, registry) with what proves each one. The list that is shown
 //! is the domain's (`CleanReport::listed`), the same one the marks refer to.
 
-use purifex_domain::app_traces::Trace;
+use purifex_domain::app_traces::{Trace, TraceGroup};
 use purifex_domain::apps::size_text;
 use purifex_domain::cleanup_log::CleanReport;
 use purifex_domain::trace_text::Counts;
@@ -115,15 +115,14 @@ fn traces_body(m: &Model, report: &CleanReport) -> String {
 
 /// The rows the window lists, grouped: the first row of each group carries its heading.
 fn trace_rows(m: &Model, report: &CleanReport) -> Vec<Row> {
-    let mut previous_registry = None;
+    let mut previous = None;
     report
         .listed()
         .into_iter()
         .map(|t| {
-            let registry = t.is_registry();
-            let heading =
-                (previous_registry != Some(registry)).then(|| group_heading(report, registry));
-            previous_registry = Some(registry);
+            let group = t.group();
+            let heading = (previous != Some(group)).then(|| group_heading(report, group));
+            previous = Some(group);
             Row {
                 heading,
                 label: t.location.clone(),
@@ -141,22 +140,19 @@ fn trace_rows(m: &Model, report: &CleanReport) -> Vec<Row> {
         .collect()
 }
 
-/// «Archivos y carpetas (7) · 196 MB» or «Registro (10)»: how many there are of the group
-/// in the whole report, not only in the list.
-fn group_heading(report: &CleanReport, registry: bool) -> String {
-    let group = report
-        .proposed
-        .iter()
-        .filter(|t| t.is_registry() == registry);
-    let counts = Counts::of(group);
-    if registry {
-        format!("Registro ({})", counts.registry)
-    } else {
-        format!(
+/// «Archivos y carpetas (7) · 196 MB», «Registro (10)» or «Tareas programadas (1)»: how many
+/// there are of the group in the whole report, not only in the list.
+fn group_heading(report: &CleanReport, group: TraceGroup) -> String {
+    let of_group = report.proposed.iter().filter(|t| t.group() == group);
+    let counts = Counts::of(of_group);
+    match group {
+        TraceGroup::Registry => format!("Registro ({})", counts.registry),
+        TraceGroup::Tasks => format!("Tareas programadas ({})", counts.tasks),
+        TraceGroup::Files => format!(
             "Archivos y carpetas ({}) · {}",
             counts.files,
             size_text(Some(counts.bytes.div_ceil(1024)))
-        )
+        ),
     }
 }
 

@@ -188,8 +188,10 @@ mod states {
             version: Some("1.0".into()),
             uninstall: Some("u.exe".into()),
             size_kb: Some(kb),
+            install_date: purifex_domain::date::Date::new(2026, 11, (kb % 27) as u8 + 1),
             ..Default::default()
         };
+        model.today = purifex_domain::date::Date::new(2026, 11, 21);
         model.page = Page::Apps;
         model.apps = Some(vec![
             app("Discord", "Discord Inc.", 110_000),

@@ -91,6 +91,8 @@ impl Core {
             Action::RestoreApp(app) => self.apps_restored(&app),
             Action::AskRestartAsAdmin(name) => self.ask(Confirm::RestartAsAdmin(name)),
             Action::AskDeleteAtReboot(name) => self.ask(Confirm::DeleteAtReboot(name)),
+            Action::SetAppFilter(filter) => self.model.app_filter = filter,
+            Action::SetAppSort(sort) => self.model.app_sort = sort,
             Action::AskCloseProcesses(name) => self.ask(Confirm::CloseProcesses(name)),
             Action::SetScanMode(mode) => self.scan_mode_set(mode),
             Action::FindTraces(name) => self.find_traces(name),
@@ -1222,6 +1224,49 @@ mod tests {
             ),
         ));
         (core, log)
+    }
+
+    #[test]
+    fn the_list_of_apps_is_filtered_and_sorted_from_the_model_and_judges_recent_by_the_clock() {
+        use crate::testing::FakeApps;
+        use purifex_domain::app_list::{AppFilter, AppSort};
+        let installed = FakeApps::default();
+        let day = |n: i64| {
+            Some(purifex_domain::date::Date::from_days(FakeClock::DAY.days() - n).unwrap())
+        };
+        let app = |name: &str, kb, on| purifex_domain::apps::InstalledApp {
+            id: format!("HKLM64:{name}"),
+            name: name.into(),
+            uninstall: Some("u.exe".into()),
+            size_kb: Some(kb),
+            install_date: on,
+            ..Default::default()
+        };
+        *installed.0.borrow_mut() = vec![
+            app("Old", 900, day(400)),
+            app("Fresh", 100, day(3)),
+            app("Mid", 500, day(20)),
+        ];
+        let (mut c, _log) = two_traces_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        let names = |c: &Core| -> Vec<String> {
+            c.model()
+                .visible_apps()
+                .iter()
+                .map(|a| a.name.clone())
+                .collect()
+        };
+        assert_eq!(names(&c), ["Fresh", "Mid", "Old"]);
+        c.apply(Action::SetAppSort(AppSort::Size));
+        assert_eq!(names(&c), ["Old", "Mid", "Fresh"]);
+        c.apply(Action::SetAppSort(AppSort::Date));
+        assert_eq!(names(&c), ["Fresh", "Mid", "Old"]);
+        c.apply(Action::SetAppFilter(AppFilter::Recent));
+        assert_eq!(names(&c), ["Fresh", "Mid"]);
+        c.apply(Action::SetAppFilter(AppFilter::Store));
+        assert!(names(&c).is_empty());
     }
 
     #[test]

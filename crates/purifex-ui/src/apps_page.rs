@@ -3,12 +3,14 @@
 //! and the list of traces are dialogs (`dialog`); what may be removed is decided in
 //! the domain (`app_traces`). This only shows and asks.
 
+use purifex_domain::app_list::AppSort;
 use purifex_domain::apps::{size_text, InstalledApp};
 use purifex_domain::cleanup_log::CleanReport;
 use purifex_domain::draw::Rect;
 use purifex_domain::trace_text::Counts;
 use purifex_domain::view::{Action, Model};
 
+use crate::apps_filters::app_filters;
 use crate::backups_panel::backups_panel;
 use crate::canvas::Canvas;
 use crate::drivers_page::search_box;
@@ -155,6 +157,13 @@ fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
     );
     icon_box(c, bar.x + 16.0, bar.y + 10.0, 40.0, "package", Tone::Gray);
     app_labels(c, app, bar);
+    let installed = app.install_date.map_or("–".to_string(), |d| d.to_string());
+    c.text(
+        bar.right() - 450.0,
+        bar.y + 21.0,
+        &installed,
+        theme::mono(12.0, theme::TEXT_2),
+    );
     c.text(
         bar.right() - 330.0,
         bar.y + 21.0,
@@ -178,7 +187,7 @@ fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
 
 /// The name of the app and, below it, its publisher and version.
 fn app_labels(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
-    let room = bar.w - 470.0;
+    let room = bar.w - 600.0;
     c.text_cut(
         bar.x + 70.0,
         bar.y + 10.0,
@@ -186,11 +195,15 @@ fn app_labels(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
         theme::sans(13.5, theme::TEXT).bold(),
         room,
     );
-    let detail = format!(
-        "{}  {}",
+    let detail = [
         app.publisher.as_deref().unwrap_or("editor desconocido"),
-        app.version.as_deref().unwrap_or("")
-    );
+        app.version.as_deref().unwrap_or(""),
+        app.type_label(),
+    ]
+    .into_iter()
+    .filter(|part| !part.is_empty())
+    .collect::<Vec<_>>()
+    .join("  ");
     c.text_cut(
         bar.x + 70.0,
         bar.y + 32.0,
@@ -218,6 +231,23 @@ fn uninstall_tag(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
     c.hit(tag_rect, Action::AskUninstall(app.id.clone()));
 }
 
+/// A heading that orders the list by its column when clicked; the one in use is lit.
+fn sort_head(c: &mut Canvas, m: &Model, head: Rect, x: f32, text: &str, sort: AppSort) {
+    let active = m.app_sort == sort;
+    let color = if active { theme::ACCENT } else { theme::TEXT_3 };
+    let style = theme::eyebrow(color);
+    let label = if active {
+        format!("{text} ↓")
+    } else {
+        text.to_string()
+    };
+    let width = c.text_in(x, head, &label, style);
+    c.hit(
+        Rect::new(x - 4.0, head.y, width + 8.0, head.h),
+        Action::SetAppSort(sort),
+    );
+}
+
 fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     let apps = m.visible_apps();
     let height = 48.0 + apps.len().max(1) as f32 * ROW_H;
@@ -225,8 +255,9 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     panel(c, rect);
     let head = Rect::new(rect.x, rect.y, rect.w, 48.0);
     let label = theme::eyebrow(theme::TEXT_3);
-    c.text_in(rect.x + 16.0, head, "APP Y EDITOR", label);
-    c.text_in(rect.right() - 330.0, head, "TAMAÑO", label);
+    sort_head(c, m, head, rect.x + 16.0, "APP Y EDITOR", AppSort::Name);
+    sort_head(c, m, head, rect.right() - 450.0, "INSTALADA", AppSort::Date);
+    sort_head(c, m, head, rect.right() - 330.0, "TAMAÑO", AppSort::Size);
     c.text_in(rect.right() - 220.0, head, "ACCIÓN", label);
     c.line(
         rect.x,
@@ -338,6 +369,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
         y,
         "Filtrar por nombre o editor… (si ya la desinstalaste, escribe su nombre, su carpeta o su .exe)",
     );
+    y += app_filters(c, m, area, y);
     y += already_gone(c, m, area, y);
     y += table(c, m, area, y);
     y - area.y

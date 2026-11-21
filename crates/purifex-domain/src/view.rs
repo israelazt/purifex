@@ -94,6 +94,11 @@ pub struct Model {
     /// The recording shown in the Sessions page.
     pub selected: Option<String>,
     pub filter: DriverFilter,
+    /// Which apps the list of apps shows, and by which column it is ordered.
+    pub app_filter: crate::app_list::AppFilter,
+    pub app_sort: crate::app_list::AppSort,
+    /// Today, as read with the apps (to judge «installed recently»).
+    pub today: Option<crate::date::Date>,
     pub query: String,
     /// What Windows Update offers (only asked when the user asks).
     pub offers: Offers,
@@ -181,6 +186,8 @@ pub enum Action {
     /// Change how much of what the search finds is proposed, and look again.
     SetScanMode(crate::scan_mode::ScanMode),
     SetFilter(DriverFilter),
+    SetAppFilter(crate::app_list::AppFilter),
+    SetAppSort(crate::app_list::AppSort),
     SetQuery(String),
     SelectSession(String),
     /// Asks to apply a fix: nothing changes yet, the user is asked to confirm.
@@ -196,9 +203,11 @@ impl Model {
     /// The apps the page lists, by name; the search filters by name and publisher.
     pub fn visible_apps(&self) -> Vec<&InstalledApp> {
         let query = self.query.trim().to_lowercase();
-        self.apps
+        let mut apps: Vec<&InstalledApp> = self
+            .apps
             .iter()
             .flatten()
+            .filter(|a| self.app_filter.allows(a, self.today))
             .filter(|a| {
                 query.is_empty()
                     || a.name.to_lowercase().contains(&query)
@@ -208,7 +217,9 @@ impl Model {
                         .to_lowercase()
                         .contains(&query)
             })
-            .collect()
+            .collect();
+        self.app_sort.order(&mut apps);
+        apps
     }
 
     /// The proposal of the user's AI for a device, the newest one.

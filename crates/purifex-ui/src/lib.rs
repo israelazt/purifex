@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod anim;
+mod apps_filters;
 mod apps_page;
 mod backups_panel;
 pub mod canvas;

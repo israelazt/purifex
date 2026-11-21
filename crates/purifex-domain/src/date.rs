@@ -80,6 +80,19 @@ impl Date {
         parts.next().is_none().then_some(date)
     }
 
+    /// `20261118`, as `InstallDate` is written in the registry: eight digits and a real day.
+    pub fn parse_compact(text: &str) -> Option<Date> {
+        let text = text.trim();
+        if text.len() != 8 || !text.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        Date::new(
+            text[..4].parse().ok()?,
+            text[4..6].parse().ok()?,
+            text[6..].parse().ok()?,
+        )
+    }
+
     /// Whole days from `self` to `later` (negative if `later` is earlier).
     pub fn days_until(self, later: Date) -> i64 {
         later.days() - self.days()
@@ -122,6 +135,23 @@ mod tests {
 
     fn date(y: u16, m: u8, d: u8) -> Date {
         Date::new(y, m, d).unwrap()
+    }
+
+    #[test]
+    fn the_compact_form_of_the_registry_is_read_and_a_bad_one_is_not() {
+        assert_eq!(Date::parse_compact("20261118"), Date::new(2026, 11, 18));
+        assert_eq!(Date::parse_compact(" 20240229 "), Date::new(2024, 2, 29));
+        for bad in [
+            "",
+            "2026118",
+            "20261318",
+            "20230229",
+            "2026-11-1",
+            "abcdefgh",
+            "202611180",
+        ] {
+            assert_eq!(Date::parse_compact(bad), None, "{bad}");
+        }
     }
 
     #[test]

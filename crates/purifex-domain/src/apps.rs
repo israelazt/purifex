@@ -43,6 +43,12 @@ pub struct InstalledApp {
     /// and file extensions), kept because afterwards nothing is left to look at.
     #[serde(default)]
     pub observed: crate::seeds::Seeds,
+    /// The day the app registered itself (`InstallDate`), when it says.
+    #[serde(default)]
+    pub install_date: Option<crate::date::Date>,
+    /// Its web page (`URLInfoAbout`, else `HelpLink`), when it gives one.
+    #[serde(default)]
+    pub website: Option<String>,
 }
 
 impl InstalledApp {
@@ -60,6 +66,18 @@ impl InstalledApp {
         !self.hidden
             && !self.name.trim().is_empty()
             && (self.uninstall.is_some() || self.kind == AppKind::Store)
+    }
+
+    /// What kind of install it is, for the list: «Tienda», «64 bits», «32 bits» or «Usuario»
+    /// (installed only for the person who runs it).
+    pub fn type_label(&self) -> &'static str {
+        match (self.kind, self.id.split_once(':').map(|(place, _)| place)) {
+            (AppKind::Store, _) => "Tienda",
+            (_, Some("HKLM32")) => "32 bits",
+            (_, Some("HKLM64")) => "64 bits",
+            (_, Some("HKCU")) => "Usuario",
+            _ => "",
+        }
     }
 
     /// The registry key where the app registered itself (under `Uninstall`), to keep a copy
@@ -204,6 +222,21 @@ pub fn apps_to_text(apps: &[InstalledApp]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_type_of_install_comes_from_where_it_registered_or_from_the_store() {
+        let of = |id: &str, kind| super::InstalledApp {
+            id: id.into(),
+            kind,
+            ..Default::default()
+        };
+        use super::AppKind::{Desktop, Store};
+        assert_eq!(of("HKLM32:x", Desktop).type_label(), "32 bits");
+        assert_eq!(of("HKLM64:x", Desktop).type_label(), "64 bits");
+        assert_eq!(of("HKCU:x", Desktop).type_label(), "Usuario");
+        assert_eq!(of("Pkg_1_x64__abc", Store).type_label(), "Tienda");
+        assert_eq!(of("name:x", Desktop).type_label(), "");
+    }
+
     use super::*;
 
     #[test]

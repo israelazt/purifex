@@ -2,6 +2,7 @@
 //! `Uninstall` (the list that Windows' own "Installed apps" shows). Read only.
 
 use purifex_domain::apps::InstalledApp;
+use purifex_domain::date::Date;
 use purifex_domain::ports::AppInventory;
 use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
@@ -30,6 +31,25 @@ fn is_hidden(key: &Key, sub: &str) -> bool {
         || sub.to_uppercase().starts_with("KB")
 }
 
+/// `InstallDate` is text (`20261118`) in most apps and a number in a few.
+fn install_date(key: &Key) -> Option<Date> {
+    key.text("InstallDate")
+        .or_else(|| key.number("InstallDate").map(|n| n.to_string()))
+        .and_then(|text| Date::parse_compact(&text))
+}
+
+/// The page of the app: only a web address is kept (some apps write a path or an e-mail there).
+fn website(key: &Key) -> Option<String> {
+    ["URLInfoAbout", "HelpLink"]
+        .into_iter()
+        .filter_map(|name| key.text(name))
+        .map(|url| url.trim().to_string())
+        .find(|url| {
+            let lower = url.to_lowercase();
+            lower.starts_with("https://") || lower.starts_with("http://")
+        })
+}
+
 impl AppInventory for RegistryApps {
     fn apps(&self) -> Result<Vec<InstalledApp>, String> {
         let mut apps = Vec::new();
@@ -55,6 +75,8 @@ impl AppInventory for RegistryApps {
                     size_kb: key.number("EstimatedSize").map(u64::from),
                     hidden: is_hidden(&key, &sub),
                     display_icon: key.text("DisplayIcon"),
+                    install_date: install_date(&key),
+                    website: website(&key),
                     ..Default::default()
                 });
             }

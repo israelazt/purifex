@@ -272,7 +272,14 @@ Cada una es independiente y puede quedarse fuera sin romper lo anterior.
    de que **no se puede deshacer** (la única función que no pasa por cuarentena).
 5. **Complementos de navegador:** listar y quitar extensiones.
 
-## R10 · Lista de apps al nivel de Revo
+## R10 · Lista de apps al nivel de Revo (en curso, 2026-11-21)
+
+Hecho (puntos 1, 2 y 5): se leen `InstallDate`, `URLInfoAbout` y `HelpLink` (solo se guarda una
+dirección `http(s)`). La lista muestra fecha de instalación, tamaño y tipo («64 bits», «32 bits»,
+«Usuario», «Tienda»); las cabeceras «App y editor», «Instalada» y «Tamaño» ordenan; y los filtros
+«Todas / Programas / Apps de Windows / Instaladas hace poco (30 días)» llevan su cuenta. Las apps de
+la Tienda no dicen cuándo se instalaron: no cuentan como recientes. Falta: menú de clic derecho
+(punto 3: no hay menús contextuales en la interfaz) y recordar la elección de vista (punto 4).
 
 1. Columnas: nombre, editor, versión, tamaño, **fecha de instalación**, tipo (32/64 bits, Tienda).
 2. Ordenar por columna; filtros «Todas / Programas / Apps de Windows / Instaladas hace poco».

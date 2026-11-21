@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 pub mod analysis;
+pub mod app_list;
 pub mod app_traces;
 pub mod apps;
 pub mod cleanup_log;

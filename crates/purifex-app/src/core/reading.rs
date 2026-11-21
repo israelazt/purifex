@@ -59,6 +59,7 @@ impl Core {
         let refreshing = std::mem::take(&mut self.refreshing_apps);
         if self.model.apps.is_none() || refreshing {
             // A failed reading keeps the list that is on the screen.
+            self.model.today = Some(self.services.today());
             if let Some(apps) = read(self.services.apps(), "apps", errors) {
                 let old = self.model.apps.replace(apps);
                 if let Some(gone) = old.as_deref().and_then(|o| self.vanished(o)) {

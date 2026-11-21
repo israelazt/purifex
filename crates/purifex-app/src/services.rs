@@ -84,6 +84,8 @@ pub trait Services {
     fn open_page(&mut self, url: &str) -> Result<(), String>;
     /// The apps installed (the ones worth listing, by name).
     fn apps(&self) -> Result<Vec<InstalledApp>, String>;
+    /// Today's day, by the clock of the program.
+    fn today(&self) -> purifex_domain::date::Date;
     /// Starts the uninstaller of an app (by name or id), after asking Windows for a restore point.
     fn uninstall_app(&mut self, query: &str) -> Result<Started, String>;
     /// The traces of an app; with `confirmed` (and the app already uninstalled) it
@@ -330,6 +332,10 @@ where
             .as_ref()
             .ok_or("esta versión no puede abrir páginas")?
             .open(url)
+    }
+
+    fn today(&self) -> purifex_domain::date::Date {
+        self.scanner.today()
     }
 
     fn apps(&self) -> Result<Vec<InstalledApp>, String> {

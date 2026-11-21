@@ -10,13 +10,13 @@ use crate::theme::{self, Tone};
 use crate::widgets::dot;
 
 /// What a filter chip says and does.
-struct Chip<'a> {
-    label: &'a str,
-    count: usize,
-    active: bool,
+pub(crate) struct Chip<'a> {
+    pub(crate) label: &'a str,
+    pub(crate) count: usize,
+    pub(crate) active: bool,
     /// The chip of what needs attention: red, with a dot.
-    red: bool,
-    action: Action,
+    pub(crate) red: bool,
+    pub(crate) action: Action,
 }
 
 impl Chip<'_> {
@@ -50,7 +50,7 @@ impl Chip<'_> {
 }
 
 /// A filter chip; returns its width.
-fn chip(c: &mut Canvas, x: f32, y: f32, chip: &Chip) -> f32 {
+pub(crate) fn chip(c: &mut Canvas, x: f32, y: f32, chip: &Chip) -> f32 {
     let (style, count_style) = chip.styles();
     let count_text = chip.count.to_string();
     let count_width = c.width(&count_text, &count_style);

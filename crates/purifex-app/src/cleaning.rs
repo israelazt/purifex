@@ -5,12 +5,13 @@
 //! orders the steps and refuses the ones that are not safe yet (cleaning an app
 //! that is still installed).
 
-use purifex_domain::app_traces::{names_of, propose_with, simple, Trace};
+use purifex_domain::app_traces::{propose_with, simple, Trace};
 use purifex_domain::apps::InstalledApp;
 use purifex_domain::cleanup_log::{
     is_purged, is_restored, next_seq, CleanReport, CleanupEntry, CleanupState,
 };
 use purifex_domain::date::Date;
+use purifex_domain::forced::{forced_app, installed_there, is_path};
 use purifex_domain::ports::{
     Backups, CleanupStore, Clock, RestorePoints, SeedProbe, TraceFinder, Uninstaller,
 };
@@ -211,7 +212,7 @@ impl Cleaning {
                 && !wanted.is_empty()
                 && (n.contains(&wanted) || (n.len() >= 4 && wanted.contains(&n)))
         };
-        if all.iter().any(|a| overlaps(&a.name)) {
+        if !is_path(query) && all.iter().any(|a| overlaps(&a.name)) {
             return Err(format!(
                 "«{query}» coincide con una app que sigue instalada: escribe su nombre completo"
             ));
@@ -229,17 +230,14 @@ impl Cleaning {
         if let Some(app) = remembered {
             return Ok((app, false));
         }
-        // Never seen: only its name is known. The rules of the domain still apply, and
-        // a name too short or too common to be safe is refused.
-        let name = query.trim();
-        let unknown = InstalledApp {
-            id: format!("name:{name}"),
-            name: name.to_string(),
-            ..Default::default()
-        };
-        if names_of(&unknown).is_empty() {
+        // Never seen: only what the person wrote is known (a name, a folder or a `.exe`).
+        // The rules of the domain still apply: what is too short, too common or too broad
+        // to be safe is refused, and so is a folder that an installed app uses.
+        let unknown = forced_app(query)?;
+        if let Some(other) = installed_there(&unknown, all) {
             return Err(format!(
-                "«{query}» es demasiado corto o genérico para buscar sus restos sin riesgo"
+                "esa carpeta es de {}, que sigue instalada: sus archivos están en uso",
+                other.name
             ));
         }
         Ok((unknown, false))
@@ -636,6 +634,29 @@ mod tests {
         let done = c.clean(&[], &[], "Discord", true, None).unwrap();
         assert_eq!(done.removed.len(), 1);
         assert_eq!(log.borrow().removed, [DATA]);
+    }
+
+    #[test]
+    fn a_broken_app_can_be_forced_by_its_folder_but_never_a_broad_one_or_one_in_use() {
+        const OLD: &str = r"D:\Games\Discord";
+        let (mut c, log) = cleaning(vec![folder(OLD), folder(DATA)]);
+        let preview = c.clean(&[], &[], OLD, false, None).unwrap();
+        assert_eq!(preview.app, "Discord");
+        assert!(!preview.still_installed);
+        // A folder an installed app uses is refused, whichever way it is written.
+        let kept = vec![app("Other Tool", "O")];
+        let mut in_use = kept[0].clone();
+        in_use.install_location = Some(OLD.into());
+        let all = vec![in_use];
+        let err = c
+            .clean(&[], &all, r"D:\Games\Discord\bin\x.exe", true, None)
+            .unwrap_err();
+        assert!(err.contains("sigue instalada"), "{err}");
+        // Broad places are refused before anything is looked at or removed.
+        for broad in [r"C:\Program Files", r"C:\Windows\System32", r"C:\"] {
+            assert!(c.clean(&[], &kept, broad, true, None).is_err(), "{broad}");
+        }
+        assert!(log.borrow().removed.is_empty());
     }
 
     /// A finder that also says which seeds it used (extensions it found in the registry).

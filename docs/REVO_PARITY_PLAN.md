@@ -187,7 +187,15 @@ Aquí está lo que más distingue a Revo: cuántos sitios mira.
 (archivos, claves, servicio, tarea, inicio, firewall, menú) y el Seguro solo lo evidente; y
 ninguna ejecución toca nada de las reglas duras.
 
-## R4 · Desinstalación forzada
+## R4 · Desinstalación forzada (en curso, 2026-11-21)
+
+Hecho (puntos 1 y 3): `forced_app` (dominio) lee lo que escribe la persona (nombre, carpeta o `.exe`)
+y lo convierte en una app ya borrada, que pasa por las mismas reglas de siempre. Se rechaza una
+carpeta demasiado amplia, de Windows o compartida (`Program Files`, `Common Files`, `Microsoft*`...),
+un nombre corto o genérico, y una carpeta que usa una app aún instalada (en cualquier dirección:
+la misma, dentro o por encima). Sirve desde la caja de la página Apps («Buscar sus restos») y desde
+`purifex apps traces|clean <ruta>`. Falta: el atajo Ctrl+F / entrada en el menú de una app cuyo
+desinstalador falló (punto 2) y cerrar los procesos de la carpeta (punto 4).
 
 Para apps rotas, sin desinstalador o ya borradas a medias.
 

@@ -409,7 +409,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
         m,
         area,
         y,
-        "Filtrar por nombre o editor… (si ya la desinstalaste, escribe su nombre)",
+        "Filtrar por nombre o editor… (si ya la desinstalaste, escribe su nombre, su carpeta o su .exe)",
     );
     y += already_gone(c, m, area, y);
     y += table(c, m, area, y);

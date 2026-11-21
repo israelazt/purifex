@@ -286,7 +286,7 @@ carpeta, web, clave de registro y comando de desinstalación, con botones para a
 abre una carpeta, una página o una clave que una app de la lista registró; las páginas son `https`;
 la clave se abre con Regedit (escribe su ajuste `LastKey` y Windows pide permiso).
 Punto 4 hecho: dos vistas, «Detalles» y «Lista» (compacta), y el filtro, el orden y la vista se
-recuerdan en `%LOCALAPPDATA%Purifexpps-view.json`.
+recuerdan en `%LOCALAPPDATA%\Purifex\apps-view.json`.
 **Desinstalación forzada de una app instalada** (la del menú y la que faltaba en R4): no se usa su
 desinstalador; tras el mismo punto de restauración y copia del registro, su entrada de `Uninstall`
 va a la cuarentena (se puede devolver) y se buscan y muestran sus restos como siempre. Se rechaza

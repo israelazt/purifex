@@ -66,7 +66,7 @@ pub struct DialogView {
 
 const CLEAN_BODY: &str = "Los restos se mueven a una cuarentena (las claves del registro se guardan antes) y quedan en el historial, donde puedes devolverlos. Incluye datos tuyos de la app, como ajustes y partidas guardadas.";
 
-fn confirm_view(title: String, body: &str, yes: &str, icon: &'static str) -> DialogView {
+pub(crate) fn confirm_view(title: String, body: &str, yes: &str, icon: &'static str) -> DialogView {
     DialogView {
         width: 520.0,
         icon: "triangle-alert",
@@ -96,6 +96,11 @@ fn confirm_view(title: String, body: &str, yes: &str, icon: &'static str) -> Dia
 
 /// The dialog the model asks for, if any.
 pub fn view(m: &Model) -> Option<DialogView> {
+    crate::hunter_dialog::view(m).or_else(|| page_view(m))
+}
+
+/// The question or the list of traces the apps page asks for.
+fn page_view(m: &Model) -> Option<DialogView> {
     let traces = m.traces.as_ref().filter(|_| m.traces_open);
     match (&m.confirm, traces) {
         (Some(Confirm::Clean(name)), _) => Some(confirm_view(

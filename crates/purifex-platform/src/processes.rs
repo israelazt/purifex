@@ -48,7 +48,7 @@ fn pids() -> Result<Vec<u32>, String> {
 }
 
 /// The path of the `.exe` of a program, if it can be read (a system one may refuse).
-fn image_path(pid: u32) -> Option<String> {
+pub(crate) fn image_path(pid: u32) -> Option<String> {
     // SAFETY: the handle is closed by `Handle`; the buffer is as long as `size` says.
     unsafe {
         let process = Handle(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?);

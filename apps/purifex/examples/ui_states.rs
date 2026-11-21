@@ -230,6 +230,7 @@ mod states {
                 }
             }
             Some("backups") => model = with_backups(model),
+            Some("hunted" | "aiming") => model = hunt_state(model, extra == Some("aiming")),
             Some("list") => {
                 model.traces_open = false;
                 model.app_view = purifex_domain::app_list::AppView::List;
@@ -242,6 +243,23 @@ mod states {
                 model.unchecked = vec![r"C:\Users\yo\AppData\Local\Programs\Inkscape".into()];
             }
             _ => {}
+        }
+        model
+    }
+
+    /// Hunter mode: the sight held (`aiming`) or let go over a window of Discord.
+    fn hunt_state(mut model: Model, aiming: bool) -> Model {
+        model.traces_open = false;
+        if aiming {
+            model.hunt.aiming = true;
+        } else {
+            model.hunt.found = Some(purifex_domain::hunter::Hunted {
+                process: purifex_domain::forced::RunningProcess {
+                    pid: 4242,
+                    path: r"C:\Users\yo\AppData\Local\Discord\app-1.0.9\Discord.exe".into(),
+                },
+                app: Some(sample_app("Discord", "Discord Inc.", 360_000)),
+            });
         }
         model
     }

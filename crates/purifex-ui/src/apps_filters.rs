@@ -27,12 +27,13 @@ pub(crate) fn app_filters(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 
         };
         x += chip(c, x, y, &spec) + GAP;
     }
-    view_toggle(c, m, area, y);
+    let left = view_toggle(c, m, area, y);
+    sight(c, m, left, y);
     38.0 + 16.0
 }
 
 /// «Detalles» and «Lista», at the right end of the row: how each app is drawn.
-fn view_toggle(c: &mut Canvas, m: &Model, area: Rect, y: f32) {
+fn view_toggle(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     let mut right = area.right();
     for view in [AppView::List, AppView::Details] {
         let label = if view == AppView::List {
@@ -60,6 +61,35 @@ fn view_toggle(c: &mut Canvas, m: &Model, area: Rect, y: f32) {
         c.hit(rect, Action::SetAppView(view));
         right = rect.x - GAP;
     }
+    right
+}
+
+/// The sight of hunter mode: held down and dragged onto a window of any program, it says which
+/// app that window belongs to. It acts when it is let go, not when it is pressed.
+fn sight(c: &mut Canvas, m: &Model, right: f32, y: f32) {
+    let label = if m.hunt.aiming {
+        "Suelta sobre una ventana…"
+    } else {
+        "Cazador: arrastra"
+    };
+    let style = theme::mono(12.5, theme::TEXT_2);
+    let width = c.width(label, &style) + 48.0;
+    let rect = Rect::new(right - width, y, width, 38.0);
+    let hover = c.hover(rect);
+    if m.hunt.aiming {
+        c.fill(rect, 6.0, theme::ACCENT_2);
+    } else {
+        c.fill(rect, 6.0, theme::PANEL);
+        c.stroke(rect, 6.0, 1.0, theme::LINE.mix(theme::TEXT_3, hover));
+    }
+    let color = if m.hunt.aiming {
+        theme::ON_ACCENT
+    } else {
+        theme::TEXT_2
+    };
+    c.icon("crosshair", rect.x + 12.0, rect.y + 10.0, 18.0, color);
+    c.text_in(rect.x + 36.0, rect, label, theme::mono(12.5, color));
+    c.hit(rect, Action::StartHunt);
 }
 
 #[cfg(test)]

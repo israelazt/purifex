@@ -26,7 +26,7 @@ impl Ui {
             UiEvent::Press { x, y } if self.menu.is_some() => self.press_in_menu(x, y, &mut out),
             UiEvent::Press { x, y } => self.press(x, y, &mut out),
             UiEvent::SecondaryPress { x, y } => self.open_menu(x, y, &mut out),
-            UiEvent::Release => out.redraw = self.bar.release(),
+            UiEvent::Release => self.release(&mut out),
             UiEvent::Focus => {
                 if self.page == Page::Apps {
                     out.actions.push(Action::RefreshApps);
@@ -130,6 +130,16 @@ impl Ui {
 
     /// A press: on the scroll bar it takes the thumb or goes a screen; elsewhere it clicks
     /// what is there and gives or takes the keyboard from the search box.
+    /// The button went up: the scroll bar is let go, and so is the sight, which then looks at
+    /// the window under the pointer.
+    fn release(&mut self, out: &mut UiOutput) {
+        out.redraw = self.bar.release();
+        if std::mem::take(&mut self.aiming) {
+            out.actions.push(Action::DropHunt);
+            out.redraw = true;
+        }
+    }
+
     fn press(&mut self, x: f32, y: f32, out: &mut UiOutput) {
         self.mouse = Some((x, y));
         match self.bar.press(x, y) {
@@ -139,7 +149,9 @@ impl Ui {
             }
             None => {
                 if let Some(index) = self.hit_at(x, y) {
-                    out.actions.push(self.hits[index].action.clone());
+                    let action = self.hits[index].action.clone();
+                    self.aiming = action == Action::StartHunt;
+                    out.actions.push(action);
                 }
                 let focus = self.over_search();
                 out.redraw = focus != self.search_focus || !out.actions.is_empty();

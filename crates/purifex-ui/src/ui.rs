@@ -90,6 +90,8 @@ pub struct Ui {
     /// The context menu, and where it was drawn last (a press outside it closes it).
     menu: Option<Menu>,
     menu_rect: Option<Rect>,
+    /// The sight of hunter mode is held down: the pointer is a crosshair until it is let go.
+    aiming: bool,
 }
 
 impl Default for Ui {
@@ -123,11 +125,17 @@ impl Ui {
             regions: Vec::new(),
             hover_region: None,
             search_box: None,
+            aiming: false,
             search_focus: false,
             query: String::new(),
             menu: None,
             menu_rect: None,
         }
+    }
+
+    /// Whether the sight is being dragged: the pointer is a crosshair.
+    pub fn crosshair_cursor(&self) -> bool {
+        self.aiming
     }
 
     /// Whether the pointer is over something that can be clicked.

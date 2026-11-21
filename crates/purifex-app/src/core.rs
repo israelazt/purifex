@@ -21,6 +21,7 @@ use crate::services::Services;
 
 mod actions;
 mod apps;
+mod hunting;
 mod reading;
 
 pub struct Core {
@@ -107,6 +108,11 @@ impl Core {
             Action::AskForceUninstall(id) => self.ask(Confirm::ForceUninstall(id)),
             Action::AskCloseProcesses(name) => self.ask(Confirm::CloseProcesses(name)),
             Action::SetScanMode(mode) => self.scan_mode_set(mode),
+            Action::StartHunt => self.hunt_started(),
+            Action::DropHunt => self.hunt_dropped(),
+            Action::CloseHunt => self.model.hunt.found = None,
+            Action::AskCloseHunted => self.hunted_close_asked(),
+            Action::OpenHuntedFolder => self.hunted_folder_opened(),
             Action::FindTraces(name) => self.find_traces(name),
             Action::RefreshApps => self.refresh_apps(),
             Action::StopWaiting => self.stop_waiting(),
@@ -137,6 +143,7 @@ impl Core {
             Confirm::DeleteBackup(copy) => return self.backup_deleted(&copy),
             Confirm::ForceUninstall(id) => return self.force_uninstalled(&id),
             Confirm::CloseProcesses(name) => return self.programs_closed(&name),
+            Confirm::CloseHunted(pid) => return self.hunted_closed(pid),
         };
         match result {
             Ok(report) => {
@@ -1814,5 +1821,122 @@ mod tests {
             c.model().traces_open,
             "it can be opened again while the list exists"
         );
+    }
+
+    /// A core on the apps page that knows OBS Studio, with these programs running and
+    /// a sight that lands on whatever `picker` holds.
+    fn hunting_core(
+        processes: &crate::testing::FakeProcesses,
+        picker: &crate::testing::FakeWindowPicker,
+    ) -> Core {
+        use crate::testing::{CleanLog, FakeApps, FakeCleaning, FakeFinder};
+        use purifex_domain::apps::InstalledApp;
+        let obs = InstalledApp {
+            id: "HKLM:OBS".into(),
+            name: "OBS Studio".into(),
+            uninstall: Some(r#""D:\Games\OBS Studio\unins000.exe""#.into()),
+            install_location: Some(r"D:\Games\OBS Studio".into()),
+            ..Default::default()
+        };
+        let log = std::rc::Rc::new(std::cell::RefCell::new(CleanLog::default()));
+        let installed = FakeApps(std::rc::Rc::new(std::cell::RefCell::new(vec![obs])));
+        let mut c = Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_apps(Box::new(installed))
+            .with_window_picker(Box::new(picker.clone()))
+            .with_cleaning(
+                crate::Cleaning::new(
+                    Box::new(FakeFinder(vec![])),
+                    Box::new(FakeCleaning(log.clone())),
+                    Box::new(FakeCleaning(log)),
+                )
+                .with_processes(Box::new(processes.clone())),
+            ),
+        ));
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c
+    }
+
+    fn drop_sight_on(
+        c: &mut Core,
+        picker: &crate::testing::FakeWindowPicker,
+        pid: u32,
+        path: &str,
+    ) {
+        *picker.0.borrow_mut() = Some(purifex_domain::forced::RunningProcess {
+            pid,
+            path: path.into(),
+        });
+        c.apply(Action::StartHunt);
+        c.apply(Action::DropHunt);
+    }
+
+    #[test]
+    fn the_sight_says_which_app_a_window_belongs_to_and_a_drop_with_nothing_held_does_nothing() {
+        use crate::testing::{FakeProcesses, FakeWindowPicker};
+        let (processes, picker) = (FakeProcesses::default(), FakeWindowPicker::default());
+        let mut c = hunting_core(&processes, &picker);
+        c.apply(Action::DropHunt);
+        assert!(c.model().hunt.found.is_none());
+        *picker.0.borrow_mut() = None;
+        c.apply(Action::StartHunt);
+        assert!(c.model().hunt.aiming);
+        c.apply(Action::DropHunt);
+        assert!(!c.model().hunt.aiming && c.model().hunt.found.is_none());
+        assert!(
+            c.model().message.is_some(),
+            "it says nothing could be seen there"
+        );
+        drop_sight_on(&mut c, &picker, 10, r"D:\Games\OBS Studio\bin\obs64.exe");
+        let found = c
+            .model()
+            .hunt
+            .found
+            .clone()
+            .expect("it landed on a program");
+        assert_eq!(found.app.map(|a| a.name).as_deref(), Some("OBS Studio"));
+        drop_sight_on(&mut c, &picker, 14, r"D:\Tools\notes.exe");
+        assert!(c.model().hunt.found.as_ref().unwrap().app.is_none());
+        c.apply(Action::CloseHunt);
+        assert!(c.model().hunt.found.is_none());
+    }
+
+    #[test]
+    fn a_program_the_sight_landed_on_is_closed_only_after_a_warning_and_windows_never() {
+        use crate::testing::{FakeProcesses, FakeWindowPicker};
+        let processes = FakeProcesses::with(&[
+            (10, r"D:\Games\OBS Studio\bin\obs64.exe"),
+            (13, r"C:\Windows\explorer.exe"),
+        ]);
+        let picker = FakeWindowPicker::default();
+        let mut c = hunting_core(&processes, &picker);
+        drop_sight_on(&mut c, &picker, 10, r"D:\Games\OBS Studio\bin\obs64.exe");
+        c.apply(Action::AskCloseHunted);
+        assert_eq!(c.model().confirm, Some(Confirm::CloseHunted(10)));
+        c.apply(Action::CancelConfirm);
+        assert!(
+            processes.closed.borrow().is_empty(),
+            "saying no closes nothing"
+        );
+        c.apply(Action::AskCloseHunted);
+        c.apply(Action::Confirm);
+        assert_eq!(*processes.closed.borrow(), [10]);
+        assert!(c.model().hunt.found.is_none());
+        // Windows' own programs are refused before anything is asked.
+        drop_sight_on(&mut c, &picker, 13, r"C:\Windows\explorer.exe");
+        c.apply(Action::AskCloseHunted);
+        assert!(c.model().confirm.is_none());
+        assert!(c.model().error.as_deref().unwrap().contains("explorer.exe"));
+        assert_eq!(*processes.closed.borrow(), [10]);
     }
 }

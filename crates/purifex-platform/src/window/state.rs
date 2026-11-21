@@ -12,10 +12,10 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetClientRect, KillTimer, LoadCursorW, PostMessageW, PostQuitMessage, SetCursor, SetTimer,
-    SetWindowPos, HTCLIENT, IDC_ARROW, IDC_HAND, MINMAXINFO, SWP_NOACTIVATE, SWP_NOZORDER, WM_APP,
-    WM_CHAR, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONDOWN,
-    WM_SETCURSOR, WM_SETFOCUS, WM_SIZE, WM_TIMER, WS_OVERLAPPEDWINDOW,
+    SetWindowPos, HTCLIENT, IDC_ARROW, IDC_CROSS, IDC_HAND, MINMAXINFO, SWP_NOACTIVATE,
+    SWP_NOZORDER, WM_APP, WM_CHAR, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND,
+    WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+    WM_PAINT, WM_RBUTTONDOWN, WM_SETCURSOR, WM_SETFOCUS, WM_SIZE, WM_TIMER, WS_OVERLAPPEDWINDOW,
 };
 
 use crate::gfx::{Drawn, Renderer};
@@ -335,7 +335,9 @@ impl<H: UiHandler> State<H> {
     }
 
     fn on_set_cursor(&mut self) -> Option<LRESULT> {
-        let cursor = if self.handler().hand_cursor() {
+        let cursor = if self.handler().crosshair_cursor() {
+            IDC_CROSS
+        } else if self.handler().hand_cursor() {
             IDC_HAND
         } else {
             IDC_ARROW

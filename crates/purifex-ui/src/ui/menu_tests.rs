@@ -109,3 +109,33 @@ fn the_menu_goes_away_when_the_page_changes_or_the_app_leaves_the_list() {
     ui.frame(&m, 1440.0, 900.0, &FakeText, Duration::ZERO);
     assert!(ui.menu.is_none());
 }
+
+#[test]
+fn the_sight_is_picked_up_with_a_press_and_looks_under_the_pointer_when_it_is_let_go() {
+    let m = model();
+    let mut ui = Ui::new();
+    drawn(&mut ui, &m);
+    assert!(!ui.crosshair_cursor());
+    let (x, y) = entry(&ui, &Action::StartHunt);
+    assert_eq!(
+        ui.event(UiEvent::Press { x, y }).actions,
+        [Action::StartHunt]
+    );
+    assert!(
+        ui.crosshair_cursor(),
+        "the pointer is a crosshair while it is held"
+    );
+    // Moving does nothing by itself; letting go asks to look.
+    let out = ui.event(UiEvent::Release);
+    assert_eq!(out.actions, [Action::DropHunt]);
+    assert!(!ui.crosshair_cursor());
+    // A release that picked nothing up asks nothing.
+    assert!(ui.event(UiEvent::Release).actions.is_empty());
+    // Pressing something else never picks the sight up.
+    let (x, y) = entry(
+        &ui,
+        &Action::SetAppView(purifex_domain::app_list::AppView::List),
+    );
+    ui.event(UiEvent::Press { x, y });
+    assert!(ui.event(UiEvent::Release).actions.is_empty());
+}

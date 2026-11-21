@@ -133,3 +133,13 @@ impl purifex_domain::ports::AppListStore for FakeAppList {
         Ok(())
     }
 }
+
+/// The program under the pointer, chosen by a test.
+#[derive(Clone, Default)]
+pub struct FakeWindowPicker(pub Rc<RefCell<Option<purifex_domain::forced::RunningProcess>>>);
+
+impl purifex_domain::ports::WindowPicker for FakeWindowPicker {
+    fn under_pointer(&self) -> Result<Option<purifex_domain::forced::RunningProcess>, String> {
+        Ok(self.0.borrow().clone())
+    }
+}

@@ -90,4 +90,8 @@ pub trait UiHandler {
     fn tick(&mut self) -> Reaction;
     /// Whether the pointer is over something that can be clicked.
     fn hand_cursor(&self) -> bool;
+    /// Whether the sight of hunter mode is being dragged: the pointer is a crosshair.
+    fn crosshair_cursor(&self) -> bool {
+        false
+    }
 }

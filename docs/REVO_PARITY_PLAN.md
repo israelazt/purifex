@@ -244,6 +244,26 @@ Para apps rotas, sin desinstalador o ya borradas a medias.
 4. **Interfaz:** icono de la mira siempre visible (flotante, arrastrable) y atajo de teclado.
 5. Prueba automática del tramo «ruta de `.exe` → app» (el arrastre real se prueba a mano).
 
+**Hecho (2026-11-21):**
+
+- **La mira** es un botón de la página Apps («Cazador: arrastra»), no una ventana flotante
+  (decisión abierta 4: se eligió el botón, que no ocupa el escritorio). Se pulsa y se mantiene: el
+  ratón queda capturado, el puntero se vuelve una cruz y, al soltar, Purifex mira qué ventana hay
+  bajo el puntero (`GetCursorPos` → `WindowFromPoint` → proceso → ruta del `.exe`). Una ventana
+  de la Tienda se atribuye a su app y no a `ApplicationFrameHost.exe`.
+- **Resolución** (`hunter::app_of`, probada): la app de la Tienda cuyo paquete contiene el `.exe`;
+  si no, la app instalada cuya carpeta lo contiene (la más profunda si hay una dentro de otra).
+- **Acciones** al soltar: *Desinstalar* (el mismo flujo con confirmación; no sale en las
+  protegidas), *Cerrar programa* (confirmando; nunca los de Windows ni Purifex mismo, y solo el
+  que se mostró si sigue siendo el mismo `.exe`), *Abrir carpeta* y *Cancelar*.
+- **No hecho, y por qué:** *Detener y quitar del inicio* espera al gestor de inicio (R8); los
+  accesos del escritorio y de la bandeja (hay que leer qué icono hay bajo el puntero en otro
+  proceso, y el destino del acceso) no se resuelven: apuntar al escritorio da `explorer.exe`, que
+  se muestra pero no se cierra. El atajo de teclado tampoco.
+- Probado: el tramo ruta → app, el cierre con confirmación y los rechazos (core), el reparto de
+  `Press`/`Release` en la interfaz y, con una ventana real del propio proceso, la lectura de
+  qué programa la tiene. **El arrastre real con el ratón no se ha probado a mano todavía.**
+
 ## R6 · Monitor de instalaciones y base de registros
 
 1. **Instantánea:** `Snapshot` de las ubicaciones del escaneo (R3) con ruta, tamaño y fecha o

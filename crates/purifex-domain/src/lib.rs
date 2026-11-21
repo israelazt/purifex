@@ -21,6 +21,7 @@ pub mod driver_tiers;
 pub mod drivers_view;
 pub mod fix;
 pub mod forced;
+pub mod hunter;
 pub mod icons;
 pub mod log;
 pub mod overview;

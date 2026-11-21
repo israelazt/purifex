@@ -122,6 +122,11 @@ pub trait Services {
     fn delete_app_leftovers_at_reboot(&mut self, query: &str) -> Result<RebootReport, String>;
     /// The programs of an app that is gone and still run from its folder.
     fn running_programs(&mut self, query: &str) -> Result<Vec<RunningProcess>, String>;
+    /// The program that owns the window under the pointer.
+    fn window_under_pointer(&self) -> Result<Option<RunningProcess>, String>;
+    /// Closes one program the sight landed on, if it is still the same one. The person must
+    /// have confirmed.
+    fn close_process(&mut self, expected: &RunningProcess) -> Result<(), String>;
     /// Closes them. The person must have confirmed: a program may lose what it had not saved.
     fn close_programs(&mut self, query: &str) -> Result<CloseReport, String>;
     /// Puts back every trace of the app that is still in the quarantine.
@@ -156,6 +161,7 @@ pub struct App<I, C, S, C2, F, A> {
     folder_opener: Option<Box<dyn purifex_domain::ports::FolderOpener>>,
     registry_viewer: Option<Box<dyn purifex_domain::ports::RegistryViewer>>,
     app_list_store: Option<Box<dyn purifex_domain::ports::AppListStore>>,
+    window_picker: Option<Box<dyn purifex_domain::ports::WindowPicker>>,
     inventory: Option<Box<dyn AppInventory>>,
     cleaning: Cleaning,
     elevation: Option<Box<dyn Elevation>>,
@@ -371,6 +377,17 @@ where
     fn running_programs(&mut self, query: &str) -> Result<Vec<RunningProcess>, String> {
         let (listed, all) = self.installed()?;
         self.cleaning.running_of(&listed, &all, query)
+    }
+
+    fn window_under_pointer(&self) -> Result<Option<RunningProcess>, String> {
+        self.window_picker
+            .as_ref()
+            .ok_or("esta versión no tiene el Modo Cazador")?
+            .under_pointer()
+    }
+
+    fn close_process(&mut self, expected: &RunningProcess) -> Result<(), String> {
+        self.cleaning.close_one(expected)
     }
 
     fn close_programs(&mut self, query: &str) -> Result<CloseReport, String> {

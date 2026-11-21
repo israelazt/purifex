@@ -18,6 +18,7 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
             folder_opener: None,
             registry_viewer: None,
             app_list_store: None,
+            window_picker: None,
             inventory: None,
             cleaning: Cleaning::default(),
             elevation: None,
@@ -59,6 +60,15 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
         viewer: Box<dyn purifex_domain::ports::RegistryViewer>,
     ) -> Self {
         self.registry_viewer = Some(viewer);
+        self
+    }
+
+    /// What tells which program owns the window under the pointer (hunter mode).
+    pub fn with_window_picker(
+        mut self,
+        picker: Box<dyn purifex_domain::ports::WindowPicker>,
+    ) -> Self {
+        self.window_picker = Some(picker);
         self
     }
 

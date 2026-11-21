@@ -63,6 +63,10 @@ impl UiHandler for Handler {
     fn hand_cursor(&self) -> bool {
         self.ui.hand_cursor()
     }
+
+    fn crosshair_cursor(&self) -> bool {
+        self.ui.crosshair_cursor()
+    }
 }
 
 /// Opens the window, or saves a picture of it.

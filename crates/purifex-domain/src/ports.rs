@@ -62,6 +62,13 @@ pub trait Processes {
     fn close(&mut self, pid: u32) -> Result<(), String>;
 }
 
+/// The window under the pointer, for hunter mode. Looking changes nothing.
+pub trait WindowPicker {
+    /// The program that owns the window under the pointer, or `None` when there is none (or it
+    /// cannot be read).
+    fn under_pointer(&self) -> Result<Option<crate::forced::RunningProcess>, String>;
+}
+
 /// The apps installed in the computer. Reading it changes nothing.
 pub trait AppInventory {
     fn apps(&self) -> Result<Vec<crate::apps::InstalledApp>, String>;

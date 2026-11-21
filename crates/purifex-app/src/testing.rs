@@ -417,4 +417,5 @@ pub const PURGE_BYTES: u64 = 1024;
 mod system;
 pub use system::{
     FakeAppList, FakeApps, FakeBackups, FakeElevation, FakeProcesses, FakeRestorePoints,
+    FakeWindowPicker,
 };

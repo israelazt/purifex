@@ -37,6 +37,20 @@ impl Cleaning {
         ))
     }
 
+    /// Closes one program, only if the same `.exe` still runs under that number (a number
+    /// can be given to another program once the first one ends).
+    pub fn close_one(&mut self, expected: &RunningProcess) -> Result<(), String> {
+        let processes = self
+            .processes
+            .as_mut()
+            .ok_or("esta versión no sabe cerrar programas")?;
+        let same = processes.running()?.iter().any(|p| p == expected);
+        if !same {
+            return Err(format!("{} ya no está abierto", expected.name()));
+        }
+        processes.close(expected.pid)
+    }
+
     /// Closes the programs of the app that is gone, each one on its own: one that refuses
     /// does not stop the rest.
     pub fn close_running(

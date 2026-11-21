@@ -44,8 +44,8 @@ fn build_app() -> impl purifex_app::Services + 'static {
         BrowserOpener, ExplorerOpener, JsonlCandidates, JsonlHistory, LocalAppList, LocalBackups,
         LocalCleanup, LocalSessionArchive, LocalSessionFile, RegeditViewer, RegisteredUninstaller,
         RegistryApps, SetupApiInventory, StorePackages, StoreUninstaller, SystemClock, SystemFixes,
-        WindowsElevation, WindowsProcesses, WindowsRestorePoints, WindowsSampler, WindowsSeedProbe,
-        WindowsTraceFinder, WindowsUpdateOffers,
+        WindowsElevation, WindowsPicker, WindowsProcesses, WindowsRestorePoints, WindowsSampler,
+        WindowsSeedProbe, WindowsTraceFinder, WindowsUpdateOffers,
     };
 
     let scanner = Scanner::new(SetupApiInventory, SystemClock::new());
@@ -76,6 +76,7 @@ fn build_app() -> impl purifex_app::Services + 'static {
         .with_folder_opener(Box::new(ExplorerOpener))
         .with_app_list_store(Box::new(LocalAppList::new()))
         .with_registry_viewer(Box::new(RegeditViewer))
+        .with_window_picker(Box::new(WindowsPicker))
         .with_apps(Box::new(AllApps::new(vec![
             Box::new(RegistryApps),
             Box::new(StorePackages),

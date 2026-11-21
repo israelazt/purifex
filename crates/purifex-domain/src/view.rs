@@ -52,6 +52,8 @@ pub enum Confirm {
     DeleteBackup(String),
     /// Close the programs an app that is gone still runs from its folder.
     CloseProcesses(String),
+    /// Close the program (by its pid) the sight was dropped on.
+    CloseHunted(u32),
 }
 
 /// Programs of an app that is gone that still run from its folder.
@@ -131,6 +133,8 @@ pub struct Model {
     pub in_use: Option<InUse>,
     /// Programs of the app being cleaned that are still running (closing them lets go of its files).
     pub running: Option<Running>,
+    /// Hunter mode: the sight being dragged and what it landed on.
+    pub hunt: crate::hunter::Hunt,
     /// How much of what the search finds is proposed (the window switches it).
     pub scan_mode: crate::scan_mode::ScanMode,
     /// Whether the program runs as an administrator (read on the apps page).
@@ -192,6 +196,16 @@ pub enum Action {
     AskCloseProcesses(String),
     /// Change how much of what the search finds is proposed, and look again.
     SetScanMode(crate::scan_mode::ScanMode),
+    /// The sight was picked up (the button is held).
+    StartHunt,
+    /// The sight was let go: the program under the pointer is looked up.
+    DropHunt,
+    /// Closes the window that says what the sight landed on.
+    CloseHunt,
+    /// Asks to close the program the sight landed on.
+    AskCloseHunted,
+    /// Opens the folder of the program the sight landed on.
+    OpenHuntedFolder,
     SetFilter(DriverFilter),
     SetAppFilter(crate::app_list::AppFilter),
     SetAppSort(crate::app_list::AppSort),

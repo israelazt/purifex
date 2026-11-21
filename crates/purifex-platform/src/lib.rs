@@ -49,6 +49,8 @@ mod store_apps;
 #[cfg(windows)]
 mod window;
 #[cfg(windows)]
+mod window_picker;
+#[cfg(windows)]
 mod windows_update;
 
 #[cfg(windows)]
@@ -93,5 +95,7 @@ pub use session_file::LocalSessionFile;
 pub use store_apps::{StorePackages, StoreUninstaller};
 #[cfg(windows)]
 pub use window::run as run_window;
+#[cfg(windows)]
+pub use window_picker::WindowsPicker;
 #[cfg(windows)]
 pub use windows_update::WindowsUpdateOffers;

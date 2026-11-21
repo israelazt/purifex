@@ -5,6 +5,7 @@
 use purifex_domain::app_traces::{Trace, TraceGroup};
 use purifex_domain::apps::size_text;
 use purifex_domain::cleanup_log::CleanReport;
+use purifex_domain::scan_mode::ScanMode;
 use purifex_domain::trace_text::Counts;
 use purifex_domain::view::{Action, Model};
 
@@ -34,7 +35,7 @@ pub(crate) fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
             primary: false,
             action: Some(Action::SelectTraces(!all_checked)),
         }),
-        corner: restart_button(m, report),
+        corner: corner_buttons(m, report),
         buttons: buttons(m, report, checked),
         cancel: Action::CloseTraces,
     }
@@ -82,6 +83,20 @@ fn buttons(m: &Model, report: &CleanReport, checked: usize) -> Vec<Btn> {
     ]
 }
 
+/// What sits beside the title: the mode of the search, and the way out for the traces that
+/// only an administrator can remove.
+fn corner_buttons(m: &Model, report: &CleanReport) -> Vec<Btn> {
+    let mode = Btn {
+        label: format!("Modo: {}", m.scan_mode.label()),
+        icon: "sliders-horizontal",
+        primary: false,
+        action: Some(Action::SetScanMode(m.scan_mode.other())),
+    };
+    std::iter::once(mode)
+        .chain(restart_button(m, report))
+        .collect()
+}
+
 /// The way out for the traces that only an administrator can remove.
 fn restart_button(m: &Model, report: &CleanReport) -> Option<Btn> {
     (report.needing_admin() > 0 && m.elevated == Some(false)).then(|| Btn {
@@ -101,6 +116,9 @@ fn traces_body(m: &Model, report: &CleanReport) -> String {
         );
     }
     let mut body = "Esto es lo que quedó después de desinstalar. Marca lo que quieras quitar, o elimina todo de una vez sin elegir.".to_string();
+    if m.scan_mode == ScanMode::Safe {
+        body.push_str(" Modo Seguro: solo se muestra lo que apunta a la carpeta de la app; lo que se reconoce por el nombre queda fuera.");
+    }
     if report.incomplete {
         body.push_str(" La búsqueda se cortó por tiempo y puede faltar algo: pulsa «Buscar otra vez» para completarla.");
     }

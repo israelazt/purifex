@@ -115,6 +115,8 @@ pub struct Model {
     /// Leftovers of an app that a program has open: they were not removed, and can be left to
     /// Windows to delete at the next restart.
     pub in_use: Option<InUse>,
+    /// How much of what the search finds is proposed (the window switches it).
+    pub scan_mode: crate::scan_mode::ScanMode,
     /// Whether the program runs as an administrator (read on the apps page).
     pub elevated: Option<bool>,
     /// The window with the list of traces is open.
@@ -170,6 +172,8 @@ pub enum Action {
     AskRestartAsAdmin(String),
     /// Asks to leave the open leftovers of this app to Windows, to delete at the next restart.
     AskDeleteAtReboot(String),
+    /// Change how much of what the search finds is proposed, and look again.
+    SetScanMode(crate::scan_mode::ScanMode),
     SetFilter(DriverFilter),
     SetQuery(String),
     SelectSession(String),

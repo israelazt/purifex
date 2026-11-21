@@ -55,9 +55,9 @@ pub struct DialogView {
     pub more: usize,
     /// A link-like button at the left of the buttons (select all / none).
     pub aside: Option<Btn>,
-    /// A button in the top right corner, beside the title (a way out of what the dialog
-    /// warns about, which does not fit among the buttons).
-    pub corner: Option<Btn>,
+    /// Buttons in the top right corner, beside the title, from the right edge in (a way out
+    /// of what the dialog warns about, or a setting of it: they do not fit among the buttons).
+    pub corner: Vec<Btn>,
     pub buttons: Vec<Btn>,
     /// What Escape does.
     pub cancel: Action,
@@ -75,7 +75,7 @@ fn confirm_view(title: String, body: &str, yes: &str, icon: &'static str) -> Dia
         rows: vec![],
         more: 0,
         aside: None,
-        corner: None,
+        corner: Vec::new(),
         buttons: vec![
             Btn {
                 label: "Cancelar".into(),
@@ -259,10 +259,12 @@ pub fn draw(c: &mut Canvas, v: &DialogView, t: f32, width: f32, height: f32) {
 /// The icon, the title and the paragraph of the dialog; returns where the paragraph ends.
 fn heading_and_body(c: &mut Canvas, v: &DialogView, rect: Rect) -> f32 {
     icon_box(c, rect.x + 24.0, rect.y + 24.0, 40.0, v.icon, v.tone);
-    if let Some(b) = &v.corner {
+    let mut right = rect.right() - 24.0;
+    for b in v.corner.iter().rev() {
         let w = button_width(c, &b.label);
-        let place = Rect::new(rect.right() - 24.0 - w, rect.y + 22.0, w, 44.0);
+        let place = Rect::new(right - w, rect.y + 22.0, w, 44.0);
         button(c, place, &b.label, b.icon, false, b.action.clone());
+        right -= w + 12.0;
     }
     c.text(
         rect.x + 78.0,
@@ -497,7 +499,7 @@ mod tests {
         assert!(v
             .body
             .contains("1 de estos restos solo los quita un administrador"));
-        let corner = v.corner.as_ref().unwrap();
+        let corner = v.corner.last().unwrap();
         assert_eq!(corner.label, "Reiniciar como administrador");
         assert_eq!(
             corner.action,
@@ -505,7 +507,7 @@ mod tests {
         );
         m.elevated = Some(true);
         let v = view(&m).unwrap();
-        assert!(v.corner.is_none());
+        assert_eq!(v.corner.len(), 1, "only the mode is left");
         assert!(v.rows.iter().all(|r| !r.detail.contains("administrador")));
         assert!(!v.body.contains("administrador"));
         m.elevated = None;
@@ -692,6 +694,20 @@ mod tests {
         assert_eq!(headings[1], "Tareas programadas (1)");
         assert_eq!(headings[2], "Registro (1)");
         assert_eq!(rows[1].label, r"\OBS\Updater");
+    }
+
+    #[test]
+    fn the_window_offers_the_other_mode_and_says_when_it_is_the_safe_one() {
+        use purifex_domain::scan_mode::ScanMode;
+        let mut m = model_with_traces(2);
+        let (_, actions) = render(&view(&m).unwrap(), 1.0);
+        assert!(actions.contains(&Action::SetScanMode(ScanMode::Safe)));
+        assert_eq!(view(&m).unwrap().corner[0].label, "Modo: Moderado");
+        m.scan_mode = ScanMode::Safe;
+        let v = view(&m).unwrap();
+        assert!(v.body.contains("Modo Seguro"));
+        let (_, actions) = render(&v, 1.0);
+        assert!(actions.contains(&Action::SetScanMode(ScanMode::Moderate)));
     }
 
     #[test]

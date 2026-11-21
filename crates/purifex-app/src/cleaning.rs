@@ -15,6 +15,7 @@ use purifex_domain::ports::{
     Backups, CleanupStore, Clock, RestorePoints, SeedProbe, TraceFinder, Uninstaller,
 };
 use purifex_domain::safeguard::{RestorePointOutcome, Started};
+use purifex_domain::scan_mode::ScanMode;
 
 mod backing_up;
 mod purging;
@@ -30,6 +31,7 @@ pub struct Cleaning {
     clock: Option<Box<dyn Clock>>,
     restore_points: Option<Box<dyn RestorePoints>>,
     backups: Option<Box<dyn Backups>>,
+    mode: ScanMode,
 }
 
 /// The app that `query` names (its id, its name, or a part of it that only one has).
@@ -93,7 +95,25 @@ impl Cleaning {
             clock: None,
             restore_points: None,
             backups: None,
+            mode: ScanMode::default(),
         }
+    }
+
+    /// How much of what the search finds is proposed (and so removed).
+    pub fn set_mode(&mut self, mode: ScanMode) {
+        self.mode = mode;
+    }
+
+    /// What the rules propose for the app, kept to what the mode allows.
+    fn propose(
+        &self,
+        app: &InstalledApp,
+        others: &[InstalledApp],
+        found: &purifex_domain::ports::Found,
+    ) -> Vec<Trace> {
+        let mut traces = propose_with(app, others, &found.seeds, &found.candidates);
+        traces.retain(|t| self.mode.allows(t.evidence));
+        traces
     }
 
     /// A restore point of Windows is asked for before each uninstaller starts.
@@ -243,7 +263,7 @@ impl Cleaning {
             .ok_or("esta versión no sabe buscar restos")?;
         let others: Vec<InstalledApp> = all.iter().filter(|a| a.id != app.id).cloned().collect();
         let found = finder.search(&app)?;
-        let proposed = propose_with(&app, &others, &found.seeds, &found.candidates);
+        let proposed = self.propose(&app, &others, &found);
         if !confirmed {
             return Ok(CleanReport {
                 app: app.name,
@@ -566,6 +586,25 @@ mod tests {
         let report = c.clean(&apps, &apps, "Discord", true, None).unwrap();
         assert_eq!(log.borrow().removed, [DATA]);
         assert_eq!(report.removed.len(), 1);
+    }
+
+    #[test]
+    fn in_safe_mode_what_is_known_only_by_its_name_is_neither_shown_nor_removed() {
+        let (mut c, log) = cleaning(vec![folder(DATA)]);
+        let apps = vec![app("Discord", "D")];
+        c.uninstall(&apps, "Discord").unwrap();
+        let none: Vec<InstalledApp> = Vec::new();
+        c.set_mode(ScanMode::Safe);
+        let preview = c.clean(&none, &none, "Discord", false, None).unwrap();
+        assert!(
+            preview.proposed.is_empty(),
+            "the folder is only named like the app"
+        );
+        let done = c.clean(&none, &none, "Discord", true, None).unwrap();
+        assert!(done.removed.is_empty() && log.borrow().removed.is_empty());
+        c.set_mode(ScanMode::Moderate);
+        let done = c.clean(&none, &none, "Discord", true, None).unwrap();
+        assert_eq!(done.removed.len(), 1);
     }
 
     #[test]

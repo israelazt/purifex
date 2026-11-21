@@ -3,7 +3,6 @@
 //! what the rules still propose for an app that is gone, that is open right now, and that
 //! the person asked for knowing it. Each one is a line of the log, without a copy.
 
-use purifex_domain::app_traces::propose_with;
 use purifex_domain::apps::InstalledApp;
 use purifex_domain::cleanup_log::{next_seq, CleanupEntry, CleanupState};
 use purifex_domain::quarantine::RebootReport;
@@ -30,7 +29,7 @@ impl Cleaning {
             .ok_or("esta versión no sabe buscar restos")?;
         let others: Vec<InstalledApp> = all.iter().filter(|a| a.id != app.id).cloned().collect();
         let found = finder.search(&app)?;
-        let proposed = propose_with(&app, &others, &found.seeds, &found.candidates);
+        let proposed = self.propose(&app, &others, &found);
         let today = self.today();
         let store = self.store()?;
         let mut log = store.entries()?;

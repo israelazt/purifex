@@ -3,6 +3,7 @@
 
 use std::time::Instant;
 
+use purifex_domain::scan_mode::ScanMode;
 use purifex_domain::view::InUse;
 
 use super::{Core, WATCH_EVERY, WATCH_FOR};
@@ -86,6 +87,18 @@ impl Core {
                 self.expect_reading();
             }
             Err(error) => self.model.error = Some(error),
+        }
+    }
+
+    /// Changes how much is proposed and looks again for the traces being shown.
+    pub(super) fn scan_mode_set(&mut self, mode: ScanMode) {
+        if mode == self.model.scan_mode {
+            return;
+        }
+        self.model.scan_mode = mode;
+        self.services.set_scan_mode(mode);
+        if let Some(name) = self.model.uninstalled.clone() {
+            self.find_traces(name);
         }
     }
 

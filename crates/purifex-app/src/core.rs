@@ -91,6 +91,7 @@ impl Core {
             Action::RestoreApp(app) => self.apps_restored(&app),
             Action::AskRestartAsAdmin(name) => self.ask(Confirm::RestartAsAdmin(name)),
             Action::AskDeleteAtReboot(name) => self.ask(Confirm::DeleteAtReboot(name)),
+            Action::SetScanMode(mode) => self.scan_mode_set(mode),
             Action::FindTraces(name) => self.find_traces(name),
             Action::RefreshApps => self.refresh_apps(),
             Action::StopWaiting => self.stop_waiting(),
@@ -1354,6 +1355,28 @@ mod tests {
             c.model().in_use.is_some(),
             "it can be tried again as administrator"
         );
+    }
+
+    #[test]
+    fn changing_the_mode_looks_again_and_the_safe_mode_hides_what_is_known_by_its_name() {
+        use crate::testing::FakeApps;
+        use purifex_domain::scan_mode::ScanMode;
+        let installed = FakeApps::default();
+        let (mut c, _) = two_traces_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        c.tick();
+        assert_eq!(c.model().traces.as_ref().unwrap().proposed.len(), 2);
+        assert_eq!(c.model().scan_mode, ScanMode::Moderate);
+        c.apply(Action::SetScanMode(ScanMode::Safe));
+        c.tick();
+        assert_eq!(c.model().scan_mode, ScanMode::Safe);
+        assert!(c.model().traces.as_ref().unwrap().proposed.is_empty());
+        c.apply(Action::SetScanMode(ScanMode::Moderate));
+        c.tick();
+        assert_eq!(c.model().traces.as_ref().unwrap().proposed.len(), 2);
     }
 
     #[test]

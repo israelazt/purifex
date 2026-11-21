@@ -21,6 +21,7 @@ use purifex_domain::ports::{
 use purifex_domain::quarantine::{PurgeReport, QuarantineInfo, RebootReport, RestoreReport};
 use purifex_domain::report::{ScanReport, Scope};
 use purifex_domain::safeguard::{BackupEntry, Started};
+use purifex_domain::scan_mode::ScanMode;
 use purifex_domain::session_list::SessionRow;
 
 use crate::archive::Archive;
@@ -97,6 +98,8 @@ pub trait Services {
     fn cleanup_history(&self) -> Result<Vec<CleanupEntry>, String>;
     /// What the quarantine holds: how many traces, how big, how old.
     fn quarantine(&mut self) -> Result<QuarantineInfo, String>;
+    /// How much of what the search finds is proposed from now on.
+    fn set_scan_mode(&mut self, mode: ScanMode);
     /// Asks Windows to delete at the next restart what the app left open. It cannot be undone.
     fn delete_app_leftovers_at_reboot(&mut self, query: &str) -> Result<RebootReport, String>;
     /// Puts back every trace of the app that is still in the quarantine.
@@ -340,6 +343,10 @@ where
             .apps()?;
         let listed = listed(all.clone());
         self.cleaning.clean(&listed, &all, query, confirmed, only)
+    }
+
+    fn set_scan_mode(&mut self, mode: ScanMode) {
+        self.cleaning.set_mode(mode);
     }
 
     fn delete_app_leftovers_at_reboot(&mut self, query: &str) -> Result<RebootReport, String> {

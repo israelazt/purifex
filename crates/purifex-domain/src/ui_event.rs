@@ -16,6 +16,9 @@ pub enum Key {
     Enter,
     /// Ctrl+K: go to the search.
     CtrlK,
+    /// Ctrl+F: forced uninstall, which is the search of the apps page (where a name, a
+    /// folder or a `.exe` of an app that is gone is written).
+    CtrlF,
     /// Scrolling keys.
     Up,
     Down,

@@ -187,7 +187,7 @@ Aquí está lo que más distingue a Revo: cuántos sitios mira.
 (archivos, claves, servicio, tarea, inicio, firewall, menú) y el Seguro solo lo evidente; y
 ninguna ejecución toca nada de las reglas duras.
 
-## R4 · Desinstalación forzada (en curso, 2026-11-21)
+## R4 · Desinstalación forzada (cerrado, 2026-11-21)
 
 Hecho (puntos 1 y 3): `forced_app` (dominio) lee lo que escribe la persona (nombre, carpeta o `.exe`)
 y lo convierte en una app ya borrada, que pasa por las mismas reglas de siempre. Se rechaza una
@@ -199,7 +199,11 @@ lista («X sigue abierta») y ofrece «Cerrar programas (N)» con una advertenci
 fuerza y lo no guardado se pierde); después se busca otra vez. Solo se cierra lo que corre desde
 dentro de esa carpeta, nunca Purifex ni una carpeta vecina (`Old Tool` no es `Old Tool Two`); una
 app aún instalada no se toca. Probado con un programa real arrancado desde una carpeta temporal.
-Falta: el atajo Ctrl+F / entrada en el menú de una app cuyo desinstalador falló (punto 2).
+Punto 2 hecho en lo esencial: **Ctrl+F** lleva a Apps y da el teclado a la caja, que ya acepta un
+nombre, una carpeta o un `.exe` (la caja muestra «Ctrl F» en esa página). La entrada en el menú de
+clic derecho de una app cuyo desinstalador falló no se hizo: la interfaz no tiene menús contextuales
+y crear uno solo para esto no compensa; una app rota se fuerza escribiendo su carpeta.
+**R4 cerrado (2026-11-21).**
 
 Para apps rotas, sin desinstalador o ya borradas a medias.
 

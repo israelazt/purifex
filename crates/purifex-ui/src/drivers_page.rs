@@ -5,7 +5,7 @@
 use purifex_domain::device_category::Category;
 use purifex_domain::draw::Rect;
 use purifex_domain::drivers_view::{DriverRow, RowState};
-use purifex_domain::view::Model;
+use purifex_domain::view::{Model, Page};
 
 use crate::canvas::Canvas;
 use crate::drivers_filters::filters;
@@ -81,7 +81,11 @@ pub(crate) fn search_box(c: &mut Canvas, m: &Model, area: Rect, y: f32, placehol
         c.line(x, input.y + 14.0, x, input.bottom() - 14.0, theme::ACCENT);
     }
     // The shortcut hint, at the right.
-    let hint = "Ctrl K";
+    let hint = if m.page == Page::Apps {
+        "Ctrl F"
+    } else {
+        "Ctrl K"
+    };
     let hint_style = theme::mono(11.0, theme::TEXT_3);
     let w = c.width(hint, &hint_style) + 18.0;
     let key = Rect::new(input.right() - 14.0 - w, input.y + 12.0, w, 24.0);

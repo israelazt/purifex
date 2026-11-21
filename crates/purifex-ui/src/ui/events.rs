@@ -145,6 +145,13 @@ impl Ui {
                 self.search_focus = true;
                 out.redraw = true;
             }
+            Key::CtrlF => {
+                if self.page != Page::Apps {
+                    out.actions.push(Action::Go(Page::Apps));
+                }
+                self.search_focus = true;
+                out.redraw = true;
+            }
             _ => {}
         }
     }

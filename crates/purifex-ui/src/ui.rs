@@ -601,6 +601,21 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_f_goes_to_the_apps_and_gives_the_keyboard_to_the_search() {
+        let mut ui = ui_with_frame(&Model::default());
+        let out = ui.event(UiEvent::Key(Key::CtrlF));
+        assert_eq!(out.actions, [Action::Go(Page::Apps)]);
+        assert!(ui.search_focused());
+        let on_apps = Model {
+            page: Page::Apps,
+            ..Model::default()
+        };
+        let mut ui = ui_with_frame(&on_apps);
+        assert!(ui.event(UiEvent::Key(Key::CtrlF)).actions.is_empty());
+        assert!(ui.search_focused());
+    }
+
+    #[test]
     fn keys_that_arrive_before_the_next_picture_all_count() {
         let model = Model {
             page: Page::Drivers,

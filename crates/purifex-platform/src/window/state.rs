@@ -428,6 +428,7 @@ fn char_event(c: Option<char>) -> Option<UiEvent> {
         '\u{8}' => Some(UiEvent::Key(Key::Backspace)),
         '\u{1b}' => Some(UiEvent::Key(Key::Escape)),
         '\r' => Some(UiEvent::Key(Key::Enter)),
+        '\u{6}' => Some(UiEvent::Key(Key::CtrlF)),
         '\u{b}' => Some(UiEvent::Key(Key::CtrlK)),
         c if !c.is_control() => Some(UiEvent::Char(c)),
         _ => None,
@@ -453,6 +454,7 @@ mod tests {
         );
         assert_eq!(char_event(Some('\r')), Some(UiEvent::Key(Key::Enter)));
         assert_eq!(char_event(Some('\u{b}')), Some(UiEvent::Key(Key::CtrlK)));
+        assert_eq!(char_event(Some('\u{6}')), Some(UiEvent::Key(Key::CtrlF)));
         assert_eq!(char_event(Some('ñ')), Some(UiEvent::Char('ñ')));
         assert_eq!(char_event(Some('\u{7}')), None, "other control characters");
         assert_eq!(char_event(None), None, "not a character at all");

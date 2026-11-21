@@ -55,6 +55,10 @@ pub enum Evidence {
     ServicePath,
     /// A scheduled task whose action runs a program inside the app's folder.
     TaskAction,
+    /// A COM class whose server is inside the app's folder.
+    ComServer,
+    /// An entry of the context menu that runs or loads a program inside the app's folder.
+    ContextMenu,
 }
 
 impl Evidence {
@@ -70,6 +74,8 @@ impl Evidence {
             Evidence::CrashDump => "volcado de error",
             Evidence::ServicePath => "servicio cuyo programa está en la carpeta de la app",
             Evidence::TaskAction => "tarea programada que ejecuta un programa de la app",
+            Evidence::ComServer => "clase COM cuyo servidor está en la carpeta de la app",
+            Evidence::ContextMenu => "entrada del menú contextual de un programa de la app",
         }
     }
 }

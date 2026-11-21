@@ -9,6 +9,7 @@ mod find_files;
 mod find_firewall;
 mod find_registry;
 mod find_services;
+mod find_shell;
 mod finder;
 mod launcher;
 mod lnk;

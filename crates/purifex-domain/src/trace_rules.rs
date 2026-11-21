@@ -8,6 +8,7 @@ use crate::apps::InstalledApp;
 use crate::reference::path_refers_to;
 use crate::seeds::Seeds;
 
+mod shell;
 mod system;
 
 /// Keys (below `HKCU\Software` or `HKLM\SOFTWARE`) that only hold caches and usage
@@ -70,12 +71,14 @@ struct Ctx<'a> {
 /// A rule answers `None` when the candidate is not its case.
 type Rule = fn(&Ctx) -> Option<Found>;
 
-const KEY_RULES: [Rule; 5] = [
+const KEY_RULES: [Rule; 7] = [
     classes_key,
     explorer_extension_key,
     program_key,
     tile_key,
     system::service_key,
+    shell::com_key,
+    shell::context_menu_key,
 ];
 const TASK_RULES: [Rule; 1] = [system::task_action];
 const FILE_RULES: [Rule; 4] = [
@@ -152,6 +155,8 @@ fn why_of(evidence: Evidence) -> &'static str {
         Evidence::RegisteredInstall => "la carpeta de instalación que registró la app",
         Evidence::ServicePath => "servicio de Windows cuyo programa está en la carpeta de la app",
         Evidence::TaskAction => "tarea programada que ejecuta un programa de la app",
+        Evidence::ComServer => "clase COM cuyo servidor está en la carpeta de la app",
+        Evidence::ContextMenu => "entrada del menú contextual de un programa de la app",
     }
 }
 
@@ -167,6 +172,8 @@ fn seed_shared(others: &[InstalledApp], app: &InstalledApp, seeds: &Seeds, e: Ev
             | Evidence::Association
             | Evidence::ServicePath
             | Evidence::TaskAction
+            | Evidence::ComServer
+            | Evidence::ContextMenu
     );
     if !rests_on_folder {
         return false;
@@ -537,6 +544,48 @@ mod tests {
         assert_eq!(t.location, MUI);
         assert_eq!(t.evidence, Evidence::PathReference);
         assert!(t.value.is_some());
+    }
+
+    #[test]
+    fn a_com_class_and_a_context_menu_entry_are_taken_only_through_the_apps_folder() {
+        let key =
+            |location: &str, text: &str| cand(TraceKind::RegistryKey, location, None, Some(text));
+        let inside = r"C:\Program Files\Kdenlive\shell.dll";
+        let class = key(r"HKLM\SOFTWARE\Classes\CLSID\{ABC}", inside);
+        assert_eq!(evidence(&class), Evidence::ComServer);
+        let wow = key(r"HKLM\SOFTWARE\WOW6432Node\Classes\CLSID\{ABC}", inside);
+        assert_eq!(evidence(&wow), Evidence::ComServer);
+        for place in [
+            r"HKLM\SOFTWARE\Classes\*\shell\Abrir con Kdenlive",
+            r"HKCU\Software\Classes\Directory\Background\shell\kdenlive",
+            r"HKLM\SOFTWARE\Classes\*\shellex\ContextMenuHandlers\KdenliveMenu",
+        ] {
+            assert_eq!(
+                evidence(&key(place, inside)),
+                Evidence::ContextMenu,
+                "{place}"
+            );
+        }
+        // The folder of another app, a server elsewhere or an unknown place: nothing.
+        for (place, text) in [
+            (
+                r"HKLM\SOFTWARE\Classes\CLSID\{ABC}",
+                r"C:\Program Files\Kdenlive2\a.dll",
+            ),
+            (
+                r"HKLM\SOFTWARE\Classes\CLSID\{ABC}",
+                r"C:\Windows\System32\shell32.dll",
+            ),
+            (r"HKLM\SOFTWARE\Classes\Foo\shell\x", inside),
+            (r"HKLM\SOFTWARE\Classes\CLSID\{ABC}\InprocServer32", inside),
+        ] {
+            assert!(judge(&key(place, text), &[]).is_err(), "{place}");
+        }
+        let shared = InstalledApp {
+            install_location: Some(DIR.into()),
+            ..app("Other app", None)
+        };
+        assert!(judge(&class, &[shared]).is_err());
     }
 
     #[test]

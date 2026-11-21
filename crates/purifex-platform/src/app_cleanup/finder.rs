@@ -19,6 +19,7 @@ use super::find_registry::{
     discover_extensions, exes_in_values, find_associations, find_program_keys, find_values, Hives,
 };
 use super::find_services::find_services;
+use super::find_shell::find_shell;
 use super::tasks::find_tasks;
 use crate::registry::{Key, View};
 
@@ -184,6 +185,24 @@ fn keys_named(names: &[String]) -> Vec<Candidate> {
         .collect()
 }
 
+/// What Windows runs or allows on its own (services, tasks, firewall, COM and the context
+/// menu). Each step waits on something slow (the registry by thousands, a process), and none
+/// needs another: they run side by side.
+fn system_places(seeds: &Seeds) -> Vec<Candidate> {
+    let steps: [fn(&Seeds) -> Vec<Candidate>; 4] =
+        [find_services, find_tasks, find_firewall_rules, find_shell];
+    std::thread::scope(|scope| {
+        let running: Vec<_> = steps
+            .iter()
+            .map(|step| scope.spawn(|| step(seeds)))
+            .collect();
+        running
+            .into_iter()
+            .flat_map(|step| step.join().unwrap_or_default())
+            .collect()
+    })
+}
+
 impl TraceFinder for WindowsTraceFinder {
     fn candidates(&self, app: &InstalledApp) -> Result<Vec<Candidate>, String> {
         self.search(app).map(|f| f.candidates)
@@ -208,9 +227,7 @@ impl TraceFinder for WindowsTraceFinder {
             find_program_keys(&hives, &names, &seeds),
             places_named(&names),
             keys_named(&names),
-            find_services(&seeds),
-            find_tasks(&seeds),
-            find_firewall_rules(&seeds),
+            system_places(&seeds),
         ]
         .concat();
         Ok(Found {
@@ -273,6 +290,10 @@ mod tests {
         timed("program keys", || {
             ((), find_program_keys(&hives, &names, &seeds).len())
         });
+        timed("services", || ((), find_services(&seeds).len()));
+        timed("tasks", || ((), find_tasks(&seeds).len()));
+        timed("firewall", || ((), find_firewall_rules(&seeds).len()));
+        timed("com + menu", || ((), find_shell(&seeds).len()));
         timed("WHOLE SEARCH", || {
             ((), WindowsTraceFinder.candidates(&app).unwrap().len())
         });

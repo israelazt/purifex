@@ -129,6 +129,42 @@ impl Core {
         }
     }
 
+    /// Opens the details of an app, or closes them if they were open.
+    pub(super) fn select_app(&mut self, id: String) {
+        self.model.app_selected = (self.model.app_selected.as_ref() != Some(&id)).then_some(id);
+    }
+
+    /// Opens the folder of an app of the list. Only a folder some app registered is opened,
+    /// whatever asked for it.
+    pub(super) fn open_app_folder(&mut self, path: &str) {
+        let known = self
+            .model
+            .apps
+            .iter()
+            .flatten()
+            .any(|a| a.install_location.as_deref() == Some(path));
+        self.model.error = if known {
+            self.services.open_folder(path).err()
+        } else {
+            Some("esa carpeta no es de ninguna app de la lista".into())
+        };
+    }
+
+    /// Opens the page an app registered; only the ones the list shows.
+    pub(super) fn open_app_website(&mut self, url: &str) {
+        let known = self
+            .model
+            .apps
+            .iter()
+            .flatten()
+            .any(|a| a.website.as_deref() == Some(url));
+        self.model.error = if known {
+            self.services.open_website(url).err()
+        } else {
+            Some("esa página no es de ninguna app de la lista".into())
+        };
+    }
+
     /// Starts the program again as an administrator after the person confirmed (Windows
     /// asks too). If they said no, nothing changes and the window stays as it was.
     pub(super) fn restarted_as_admin(&mut self, name: &str) {

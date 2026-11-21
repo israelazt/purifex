@@ -186,6 +186,8 @@ mod states {
             version: Some("1.0".into()),
             uninstall: Some("u.exe".into()),
             size_kb: Some(kb),
+            install_location: Some(format!(r"C:\Program Files\{name}")),
+            website: Some("https://example.org".into()),
             install_date: purifex_domain::date::Date::new(2026, 11, (kb % 27) as u8 + 1),
             ..Default::default()
         }
@@ -228,6 +230,10 @@ mod states {
                 }
             }
             Some("backups") => model = with_backups(model),
+            Some("details") => {
+                model.traces_open = false;
+                model.app_selected = Some("HKLM64:Discord".into());
+            }
             Some("unchecked") => {
                 model.unchecked = vec![r"C:\Users\yo\AppData\Local\Programs\Inkscape".into()];
             }

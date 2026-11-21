@@ -54,7 +54,7 @@ pub use app_cleanup::{
 #[cfg(windows)]
 pub use apps_registry::RegistryApps;
 #[cfg(windows)]
-pub use browser::BrowserOpener;
+pub use browser::{BrowserOpener, ExplorerOpener};
 #[cfg(windows)]
 pub use candidates_file::JsonlCandidates;
 #[cfg(windows)]

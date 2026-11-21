@@ -97,6 +97,8 @@ pub struct Model {
     /// Which apps the list of apps shows, and by which column it is ordered.
     pub app_filter: crate::app_list::AppFilter,
     pub app_sort: crate::app_list::AppSort,
+    /// The app whose details are open in the list (its id).
+    pub app_selected: Option<String>,
     /// Today, as read with the apps (to judge «installed recently»).
     pub today: Option<crate::date::Date>,
     pub query: String,
@@ -188,6 +190,12 @@ pub enum Action {
     SetFilter(DriverFilter),
     SetAppFilter(crate::app_list::AppFilter),
     SetAppSort(crate::app_list::AppSort),
+    /// Opens (or closes) the details of an app of the list, by its id.
+    SelectApp(String),
+    /// Opens the install folder of an app in Explorer.
+    OpenFolder(String),
+    /// Opens the web page an app registered.
+    OpenWebsite(String),
     SetQuery(String),
     SelectSession(String),
     /// Asks to apply a fix: nothing changes yet, the user is asked to confirm.

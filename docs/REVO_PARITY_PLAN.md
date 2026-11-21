@@ -278,8 +278,11 @@ Hecho (puntos 1, 2 y 5): se leen `InstallDate`, `URLInfoAbout` y `HelpLink` (sol
 dirección `http(s)`). La lista muestra fecha de instalación, tamaño y tipo («64 bits», «32 bits»,
 «Usuario», «Tienda»); las cabeceras «App y editor», «Instalada» y «Tamaño» ordenan; y los filtros
 «Todas / Programas / Apps de Windows / Instaladas hace poco (30 días)» llevan su cuenta. Las apps de
-la Tienda no dicen cuándo se instalaron: no cuentan como recientes. Falta: menú de clic derecho
-(punto 3: no hay menús contextuales en la interfaz) y recordar la elección de vista (punto 4).
+la Tienda no dicen cuándo se instalaron: no cuentan como recientes. Punto 3, en su forma: la interfaz no tiene menús contextuales, así que pulsar una app abre sus
+**detalles** bajo la fila (carpeta y página que registró) con «Abrir carpeta» y «Sitio web». Solo se
+abre una carpeta o una página que una app de la lista registró, y la carpeta debe existir; las
+direcciones deben ser `https`. «Desinstalar» sigue en la fila y «Desinstalación forzada» es Ctrl+F.
+Falta: «Abrir clave de registro» y «Propiedades», y recordar la elección de vista (punto 4).
 
 1. Columnas: nombre, editor, versión, tamaño, **fecha de instalación**, tipo (32/64 bits, Tienda).
 2. Ordenar por columna; filtros «Todas / Programas / Apps de Windows / Instaladas hace poco».

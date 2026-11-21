@@ -36,6 +36,11 @@ pub trait UrlOpener {
     fn open(&self, url: &str) -> Result<(), String>;
 }
 
+/// Opens a folder in the file explorer. Nothing is run: only a folder that exists is opened.
+pub trait FolderOpener {
+    fn open(&self, folder: &str) -> Result<(), String>;
+}
+
 /// The programs running now. Listing changes nothing; closing ends one of them.
 pub trait Processes {
     /// Every running program whose `.exe` can be read.

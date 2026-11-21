@@ -93,6 +93,9 @@ impl Core {
             Action::AskDeleteAtReboot(name) => self.ask(Confirm::DeleteAtReboot(name)),
             Action::SetAppFilter(filter) => self.model.app_filter = filter,
             Action::SetAppSort(sort) => self.model.app_sort = sort,
+            Action::SelectApp(id) => self.select_app(id),
+            Action::OpenFolder(path) => self.open_app_folder(&path),
+            Action::OpenWebsite(url) => self.open_app_website(&url),
             Action::AskCloseProcesses(name) => self.ask(Confirm::CloseProcesses(name)),
             Action::SetScanMode(mode) => self.scan_mode_set(mode),
             Action::FindTraces(name) => self.find_traces(name),
@@ -1267,6 +1270,41 @@ mod tests {
         assert_eq!(names(&c), ["Fresh", "Mid"]);
         c.apply(Action::SetAppFilter(AppFilter::Store));
         assert!(names(&c).is_empty());
+    }
+
+    #[test]
+    fn an_app_opens_its_details_and_only_what_the_list_registered_is_ever_opened() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        *installed.0.borrow_mut() = vec![purifex_domain::apps::InstalledApp {
+            id: "HKLM64:Tool".into(),
+            name: "Tool".into(),
+            uninstall: Some("u.exe".into()),
+            install_location: Some(r"C:\Program Files\Tool".into()),
+            website: Some("https://tool.example".into()),
+            ..Default::default()
+        }];
+        let (mut c, _log) = two_traces_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::SelectApp("HKLM64:Tool".into()));
+        assert_eq!(c.model().app_selected.as_deref(), Some("HKLM64:Tool"));
+        c.apply(Action::SelectApp("HKLM64:Tool".into()));
+        assert_eq!(c.model().app_selected, None, "a second click closes them");
+        // What was not registered by an app of the list is refused before any opener is asked.
+        c.apply(Action::OpenFolder(r"C:\Windows".into()));
+        assert!(c.model().error.as_deref().unwrap().contains("ninguna app"));
+        c.apply(Action::OpenWebsite("https://evil.example".into()));
+        assert!(c.model().error.as_deref().unwrap().contains("ninguna app"));
+        // What was passes the guard (this core has no opener, and says so).
+        c.apply(Action::OpenFolder(r"C:\Program Files\Tool".into()));
+        assert!(c
+            .model()
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("no puede abrir"));
     }
 
     #[test]

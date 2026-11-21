@@ -10,6 +10,7 @@ use purifex_domain::draw::Rect;
 use purifex_domain::trace_text::Counts;
 use purifex_domain::view::{Action, Model};
 
+use crate::apps_detail::{app_detail, DETAIL_H};
 use crate::apps_filters::app_filters;
 use crate::backups_panel::backups_panel;
 use crate::canvas::Canvas;
@@ -148,6 +149,8 @@ fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
     if hover > 0.01 {
         c.fill(bar, 0.0, theme::TEXT.with_alpha(0.02 * hover));
     }
+    // The whole row opens its details; the tag of the action, drawn after, wins where it is.
+    c.hit(bar, Action::SelectApp(app.id.clone()));
     c.line(
         bar.x,
         bar.bottom() - 0.5,
@@ -250,7 +253,9 @@ fn sort_head(c: &mut Canvas, m: &Model, head: Rect, x: f32, text: &str, sort: Ap
 
 fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     let apps = m.visible_apps();
-    let height = 48.0 + apps.len().max(1) as f32 * ROW_H;
+    let open = |app: &InstalledApp| m.app_selected.as_deref() == Some(app.id.as_str());
+    let opened = apps.iter().filter(|a| open(a)).count() as f32;
+    let height = 48.0 + apps.len().max(1) as f32 * ROW_H + opened * DETAIL_H;
     let rect = Rect::new(area.x, y, area.w, height);
     panel(c, rect);
     let head = Rect::new(rect.x, rect.y, rect.w, 48.0);
@@ -266,13 +271,15 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
         rect.y + 48.0,
         theme::LINE,
     );
+    let mut row_y = rect.y + 48.0;
     for (i, app) in apps.iter().enumerate() {
         c.reveal(if i < 12 { 18 * i as u64 } else { 0 });
-        app_row(
-            c,
-            app,
-            Rect::new(rect.x, rect.y + 48.0 + i as f32 * ROW_H, rect.w, ROW_H),
-        );
+        app_row(c, app, Rect::new(rect.x, row_y, rect.w, ROW_H));
+        row_y += ROW_H;
+        if open(app) {
+            app_detail(c, app, Rect::new(rect.x, row_y, rect.w, DETAIL_H));
+            row_y += DETAIL_H;
+        }
     }
     c.reveal(0);
     if apps.is_empty() {

@@ -6,6 +6,7 @@ mod backup;
 #[cfg(test)]
 mod end_to_end;
 mod find_files;
+mod find_firewall;
 mod find_registry;
 mod find_services;
 mod finder;

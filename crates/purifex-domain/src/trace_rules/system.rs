@@ -1,9 +1,10 @@
-//! The rules for what Windows runs on its own: services and scheduled tasks. Both are the
-//! app's only when what they run is inside its folder.
+//! The rules for what Windows runs or allows on its own: services, scheduled tasks and rules
+//! of the firewall. Each is the app's only when the program it names is inside its folder.
 
 use super::{Ctx, Found};
-use crate::app_traces::Evidence;
+use crate::app_traces::{Candidate, Evidence};
 use crate::reference::path_refers_to;
+use crate::seeds::Seeds;
 
 /// The key where Windows keeps its services, one child per service.
 const SERVICES_KEY: &str = r"hklm\system\currentcontrolset\services";
@@ -43,4 +44,24 @@ pub(super) fn task_action(c: &Ctx) -> Option<Found> {
             ),
         )
     })
+}
+
+/// The key where Windows Firewall keeps its rules, one value per rule.
+const FIREWALL_RULES: &str =
+    r"hklm\system\currentcontrolset\services\sharedaccess\parameters\firewallpolicy\firewallrules";
+
+/// A rule of the firewall is one value of that key whose text (`v2.33|Action=Allow|App=C:\...|`)
+/// names a program inside the app's folder. The name of the rule is a code of Windows or a
+/// guid, so only the program proves it.
+pub(super) fn firewall_value(
+    seeds: &Seeds,
+    lower_key: &str,
+    candidate: &Candidate,
+) -> Option<Evidence> {
+    if lower_key != FIREWALL_RULES || candidate.value.as_deref().is_none_or(str::is_empty) {
+        return None;
+    }
+    let folder = seeds.folder.as_deref()?;
+    let text = candidate.text.as_deref()?;
+    path_refers_to(text, folder).then_some(Evidence::PathReference)
 }

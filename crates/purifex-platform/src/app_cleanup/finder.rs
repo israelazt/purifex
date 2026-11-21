@@ -14,6 +14,7 @@ use purifex_domain::seeds::{seeds_of, Seeds};
 use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
 use super::find_files::{find_files, UserPlaces};
+use super::find_firewall::find_firewall_rules;
 use super::find_registry::{
     discover_extensions, exes_in_values, find_associations, find_program_keys, find_values, Hives,
 };
@@ -209,6 +210,7 @@ impl TraceFinder for WindowsTraceFinder {
             keys_named(&names),
             find_services(&seeds),
             find_tasks(&seeds),
+            find_firewall_rules(&seeds),
         ]
         .concat();
         Ok(Found {

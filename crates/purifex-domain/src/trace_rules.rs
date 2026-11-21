@@ -184,6 +184,9 @@ fn seed_shared(others: &[InstalledApp], app: &InstalledApp, seeds: &Seeds, e: Ev
 /// A value of one of the fixed keys whose name or data points into the app's folder.
 fn value_evidence(seeds: &Seeds, lower_key: &str, candidate: &Candidate) -> Option<Evidence> {
     let value = candidate.value.as_deref().filter(|v| !v.is_empty())?;
+    if let Some(found) = system::firewall_value(seeds, lower_key, candidate) {
+        return Some(found);
+    }
     let hive_len = ["hkcu\\software", "hklm\\software"]
         .iter()
         .find(|h| lower_key.starts_with(*h))?
@@ -534,6 +537,31 @@ mod tests {
         assert_eq!(t.location, MUI);
         assert_eq!(t.evidence, Evidence::PathReference);
         assert!(t.value.is_some());
+    }
+
+    #[test]
+    fn a_firewall_rule_is_taken_when_its_program_is_in_the_apps_folder_and_not_by_its_name() {
+        const RULES: &str = r"HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules";
+        let rule = |name: &str, app: &str, key: &str| {
+            let text = format!("v2.33|Action=Allow|Dir=In|App={app}|Name={name}|");
+            cand(TraceKind::RegistryValue, key, Some(name), Some(&text))
+        };
+        let own = rule("{3A1F}", r"C:\Program Files\Kdenlive\bin\melt.exe", RULES);
+        let t = judge(&own, &[]).unwrap();
+        assert_eq!(t.evidence, Evidence::PathReference);
+        assert_eq!(t.value.as_deref(), Some("{3A1F}"));
+        assert!(t.needs_admin());
+        let named = rule("Kdenlive", r"C:\Windows\System32\svchost.exe", RULES);
+        assert_eq!(judge(&named, &[]), Err(Refusal::NotTheApps));
+        let other = rule("x", r"C:\Program Files\Kdenlive2\a.exe", RULES);
+        assert_eq!(judge(&other, &[]), Err(Refusal::NotTheApps));
+        // The same text under another key is not a rule of the firewall.
+        let elsewhere = rule(
+            "x",
+            r"C:\Program Files\Kdenlive\a.exe",
+            r"HKLM\SOFTWARE\Foo",
+        );
+        assert_eq!(judge(&elsewhere, &[]), Err(Refusal::NotTheApps));
     }
 
     #[test]

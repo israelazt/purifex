@@ -106,7 +106,7 @@ Pendiente, anotado:
 - El punto de restauración **no se ha probado de verdad**: sin administrador solo falla de forma
   controlada. Hay que probarlo con «Reiniciar como administrador».
 
-## R3 · Escaneo completo y por modos (en curso, 2026-11-20)
+## R3 · Escaneo completo y por modos (casi cerrado, 2026-11-20)
 
 Hecho, cada punto con su prueba, y una prueba de punta a punta con el sistema real (carpeta, tarea
 y entrada de inicio de una app de prueba: salen a la cuarentena y vuelven):
@@ -129,11 +129,20 @@ y entrada de inicio de una app de prueba: salen a la cuarentena y vuelven):
   en el próximo arranque y **no se puede devolver**; hace falta administrador. Solo se entrega lo que las
   reglas aún proponen para una app que ya no está y que sigue abierto; cada uno queda en el registro
   (estado `Scheduled`) sin copia. Sin administrador no se programa nada y la oferta se queda.
+- **Modos Seguro y Moderado** (`8dec8de`): el botón «Modo» junto al título de la ventana de restos.
+  Seguro deja solo lo que apunta a la carpeta de la app; Moderado es lo de siempre. El modo llega
+  también a la eliminación: «Eliminar todo rastro» en Seguro nunca toma lo que la ventana no mostró.
+  **Avanzado** (nombres parciales, «posible» y desmarcado por defecto) queda pendiente: necesita una
+  búsqueda más amplia y es lo más arriesgado.
+- **Lista desplazable** (`7a26391`): se acabó el tope de 9 filas. La ventana lista todo y las filas
+  se mueven con la rueda dentro de una ventana de altura fija, con barra fina; «Eliminar marcados»
+  ya cubre todas las filas, no solo las que cabían. Es una lista plana agrupada con cabeceras
+  (archivos, tareas, registro), no un árbol plegable.
 - Hallazgo de seguridad que destapó una prueba: otra app instalada en la misma carpeta ahora bloquea
   también servicios y tareas.
 
-Falta de R3: bibliotecas de tipos (TypeLib), otros sitios de Windows (SharedDLLs, Installer),
-escanear a todos los usuarios, los tres modos y la lista como árbol.
+Falta de R3: bibliotecas de tipos (TypeLib), otros sitios de Windows (SharedDLLs, Installer), escanear
+a todos los usuarios, el modo Avanzado y, si se quiere, plegar los grupos de la lista.
 
 Notas:
 - Las tareas siempre se marcan «requiere administrador»: las de máquina las crea un instalador con

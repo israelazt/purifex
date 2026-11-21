@@ -114,7 +114,13 @@ impl Backups for LocalBackups {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
+
+    /// `reg export` fails now and then when several run at once (seen on the CI): the tests
+    /// that use the real registry take turns.
+    static REAL_REGISTRY: Mutex<()> = Mutex::new(());
 
     #[test]
     fn the_name_of_the_folder_has_only_safe_characters() {
@@ -124,6 +130,7 @@ mod tests {
 
     #[test]
     fn the_registration_of_a_real_key_is_exported_to_a_file_that_names_it() {
+        let _turn = REAL_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
         // A key made for this test, in the user's own part of the registry.
         let sub = format!("PurifexBackupTest{}", std::process::id());
         let key = format!(r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{sub}");
@@ -151,6 +158,7 @@ mod tests {
 
     #[test]
     fn a_copy_registers_the_app_again_but_never_over_one_that_exists() {
+        let _turn = REAL_REGISTRY.lock().unwrap_or_else(|e| e.into_inner());
         let sub = format!("PurifexRestoreTest{}", std::process::id());
         let key = format!(r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{sub}");
         reg(&["add", &key, "/v", "DisplayName", "/d", "Prueba", "/f"]).unwrap();

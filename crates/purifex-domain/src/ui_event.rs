@@ -42,6 +42,11 @@ pub enum UiEvent {
         x: f32,
         y: f32,
     },
+    /// The secondary (right) button was pressed: a context menu where it points.
+    SecondaryPress {
+        x: f32,
+        y: f32,
+    },
     /// The window got the keyboard focus (the user came back to it).
     Focus,
     /// The main button was let go (ends dragging the scroll bar).

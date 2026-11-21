@@ -34,6 +34,7 @@ const CAPTION_TEXT: u32 = 0x00f2_f2f2;
 const BORDER: u32 = 0x0026_201e;
 
 mod icon;
+mod mouse;
 mod state;
 
 use state::State;

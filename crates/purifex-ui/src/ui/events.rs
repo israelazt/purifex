@@ -5,7 +5,7 @@
 use purifex_domain::ui_event::{Key, UiEvent};
 use purifex_domain::view::{Action, Page};
 
-use super::{Ui, UiOutput, SCROLL_STEP};
+use super::{Menu, Ui, UiOutput, SCROLL_STEP};
 use crate::scrollbar::Pressed;
 
 impl Ui {
@@ -23,13 +23,16 @@ impl Ui {
                 self.mouse = None;
                 out.redraw = self.hovered.take().is_some() | self.hover_region.take().is_some();
             }
+            UiEvent::Press { x, y } if self.menu.is_some() => self.press_in_menu(x, y, &mut out),
             UiEvent::Press { x, y } => self.press(x, y, &mut out),
+            UiEvent::SecondaryPress { x, y } => self.open_menu(x, y, &mut out),
             UiEvent::Release => out.redraw = self.bar.release(),
             UiEvent::Focus => {
                 if self.page == Page::Apps {
                     out.actions.push(Action::RefreshApps);
                 }
             }
+            UiEvent::Wheel { .. } if self.menu.is_some() => self.close_menu(&mut out),
             UiEvent::Wheel { dy } => out.redraw = self.scroll_by(dy),
             UiEvent::Key(key) => self.key(key, &mut out),
             UiEvent::Char(c) if self.search_focus => {
@@ -70,6 +73,39 @@ impl Ui {
             UiEvent::Key(_) | UiEvent::Char(_) => true,
             _ => false,
         }
+    }
+
+    /// The right button: over a row of the list it opens the menu of that app; elsewhere it
+    /// only closes a menu that was open.
+    fn open_menu(&mut self, x: f32, y: f32, out: &mut UiOutput) {
+        self.mouse = Some((x, y));
+        let row = self.hits.iter().rev().find_map(|hit| match &hit.action {
+            Action::SelectApp(id)
+                if hit.rect.contains(x, y) && hit.clip.is_none_or(|c| c.contains(x, y)) =>
+            {
+                Some(id.clone())
+            }
+            _ => None,
+        });
+        self.menu = row.map(|app| Menu { app, at: (x, y) });
+        out.redraw = true;
+    }
+
+    /// A press while the menu is open: on an entry it does it, anywhere else it only closes
+    /// the menu (the click does not reach what is under it).
+    fn press_in_menu(&mut self, x: f32, y: f32, out: &mut UiOutput) {
+        self.mouse = Some((x, y));
+        let inside = self.menu_rect.is_some_and(|rect| rect.contains(x, y));
+        if let Some(index) = self.hit_at(x, y).filter(|_| inside) {
+            out.actions.push(self.hits[index].action.clone());
+        }
+        self.close_menu(out);
+    }
+
+    fn close_menu(&mut self, out: &mut UiOutput) {
+        self.menu = None;
+        self.menu_rect = None;
+        out.redraw = true;
     }
 
     /// Holding the thumb of the scroll bar: the page follows the pointer at once, with no
@@ -126,6 +162,7 @@ impl Ui {
                 query.pop();
                 self.type_query(query, out);
             }
+            Key::Escape if self.menu.is_some() => self.close_menu(out),
             Key::Escape if self.search_focus => {
                 if self.query.is_empty() {
                     self.search_focus = false;

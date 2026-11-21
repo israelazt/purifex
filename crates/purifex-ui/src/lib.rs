@@ -12,6 +12,7 @@ mod apps_page;
 mod backups_panel;
 pub mod canvas;
 mod compare_panel;
+mod context_menu;
 mod dialog;
 mod drivers_filters;
 pub mod drivers_page;

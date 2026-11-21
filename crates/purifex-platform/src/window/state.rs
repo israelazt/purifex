@@ -10,21 +10,18 @@ use windows::Win32::Graphics::Gdi::{
     BeginPaint, EndPaint, InvalidateRect, UpdateWindow, PAINTSTRUCT,
 };
 use windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi;
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
-};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetClientRect, KillTimer, LoadCursorW, PostMessageW, PostQuitMessage, SetCursor, SetTimer,
     SetWindowPos, HTCLIENT, IDC_ARROW, IDC_HAND, MINMAXINFO, SWP_NOACTIVATE, SWP_NOZORDER, WM_APP,
     WM_CHAR, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_SETCURSOR, WM_SETFOCUS,
-    WM_SIZE, WM_TIMER, WS_OVERLAPPEDWINDOW,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONDOWN,
+    WM_SETCURSOR, WM_SETFOCUS, WM_SIZE, WM_TIMER, WS_OVERLAPPEDWINDOW,
 };
 
 use crate::gfx::{Drawn, Renderer};
 
 /// `WM_MOUSELEAVE`: the pointer left the window (asked for with `TrackMouseEvent`).
-const WM_MOUSELEAVE: u32 = 0x02A3;
+pub(super) const WM_MOUSELEAVE: u32 = 0x02A3;
 /// The id of the timer that paces the animations.
 const FRAME_TIMER: usize = 1;
 /// The id of the timer that asks for the next tick while a background job goes on.
@@ -33,8 +30,6 @@ const TICK_TIMER: usize = 2;
 const TICK_EVERY: u32 = 50;
 /// The smallest the window may be, in units.
 const MIN_SIZE: (f32, f32) = (1000.0, 640.0);
-/// Units scrolled by one notch of the wheel.
-const WHEEL_NOTCH: f32 = 64.0;
 
 pub(super) struct State<H: UiHandler> {
     pub(super) handler: *mut H,
@@ -47,11 +42,11 @@ pub(super) struct State<H: UiHandler> {
     pub(super) timer: bool,
 }
 
-fn low_word(value: isize) -> i32 {
+pub(super) fn low_word(value: isize) -> i32 {
     i32::from(value as i16)
 }
 
-fn high_word(value: isize) -> i32 {
+pub(super) fn high_word(value: isize) -> i32 {
     i32::from((value >> 16) as i16)
 }
 
@@ -66,7 +61,7 @@ impl<H: UiHandler> State<H> {
         unsafe { &mut *self.handler }
     }
 
-    fn units(&self, px: i32) -> f32 {
+    pub(super) fn units(&self, px: i32) -> f32 {
         px as f32 / self.scale()
     }
 
@@ -203,6 +198,7 @@ impl<H: UiHandler> State<H> {
             WM_MOUSELEAVE => self.on_mouse_leave(hwnd),
             WM_LBUTTONDOWN => self.on_button_down(hwnd, lp),
             WM_LBUTTONUP => self.on_button_up(hwnd),
+            WM_RBUTTONDOWN => self.on_secondary_down(hwnd, lp),
             WM_SETFOCUS => {
                 // The user came back to the window: the program may want to read again.
                 self.send(hwnd, UiEvent::Focus);
@@ -228,7 +224,7 @@ impl<H: UiHandler> State<H> {
     }
 
     /// Hands an event to the program and does what it asks. The message is handled.
-    fn send(&mut self, hwnd: HWND, event: UiEvent) -> Option<LRESULT> {
+    pub(super) fn send(&mut self, hwnd: HWND, event: UiEvent) -> Option<LRESULT> {
         let reaction = self.handler().event(event);
         self.react(hwnd, reaction);
         HANDLED
@@ -312,51 +308,6 @@ impl<H: UiHandler> State<H> {
         HANDLED
     }
 
-    fn on_mouse_move(&mut self, hwnd: HWND, lp: LPARAM) -> Option<LRESULT> {
-        if !self.tracking_leave {
-            let mut track = TRACKMOUSEEVENT {
-                cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
-                dwFlags: TME_LEAVE,
-                hwndTrack: hwnd,
-                dwHoverTime: 0,
-            };
-            // SAFETY: the structure is a live local with its size set.
-            self.tracking_leave = unsafe { TrackMouseEvent(&mut track) }.is_ok();
-        }
-        let (x, y) = self.point(lp);
-        self.send(hwnd, UiEvent::Move { x, y })
-    }
-
-    /// The pointer left the window; the next movement asks to be told again.
-    fn on_mouse_leave(&mut self, hwnd: HWND) -> Option<LRESULT> {
-        self.tracking_leave = false;
-        self.send(hwnd, UiEvent::Leave)
-    }
-
-    fn on_button_down(&mut self, hwnd: HWND, lp: LPARAM) -> Option<LRESULT> {
-        // The window keeps the mouse while the button is down, so dragging the
-        // scroll bar goes on even when the pointer leaves the window.
-        // SAFETY: captures the mouse for a live window.
-        unsafe {
-            SetCapture(hwnd);
-        }
-        let (x, y) = self.point(lp);
-        self.send(hwnd, UiEvent::Press { x, y })
-    }
-
-    fn on_button_up(&mut self, hwnd: HWND) -> Option<LRESULT> {
-        // SAFETY: gives the mouse back (it was captured on the press).
-        unsafe {
-            let _ = ReleaseCapture();
-        }
-        self.send(hwnd, UiEvent::Release)
-    }
-
-    /// The position of the pointer, in units, from the `lp` of a mouse message.
-    fn point(&self, lp: LPARAM) -> (f32, f32) {
-        (self.units(low_word(lp.0)), self.units(high_word(lp.0)))
-    }
-
     /// The keys that scroll; the letters come as `WM_CHAR`.
     fn on_key_down(&mut self, hwnd: HWND, wp: WPARAM) -> Option<LRESULT> {
         let key = scrolling_key(wp.0 as u32)?;
@@ -368,16 +319,6 @@ impl<H: UiHandler> State<H> {
             self.send(hwnd, event);
         }
         HANDLED
-    }
-
-    fn on_wheel(&mut self, hwnd: HWND, wp: WPARAM) -> Option<LRESULT> {
-        let notches = high_word(wp.0 as isize) as f32 / 120.0;
-        self.send(
-            hwnd,
-            UiEvent::Wheel {
-                dy: -notches * WHEEL_NOTCH,
-            },
-        )
     }
 
     fn on_frame_timer(&mut self, hwnd: HWND) -> Option<LRESULT> {

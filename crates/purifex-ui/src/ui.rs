@@ -11,6 +11,7 @@ use purifex_domain::view::{Action, Model, Page};
 
 use crate::anim::Anims;
 use crate::canvas::{Canvas, Hit};
+use crate::context_menu;
 use crate::dialog::{self, DialogView};
 use crate::scrollbar::Scrollbar;
 use crate::theme::{self, PAGE_PAD, SIDEBAR_W, TOPBAR_H};
@@ -18,6 +19,14 @@ use crate::{apps_page, drivers_page, fixes_page, overview_page, sessions_page, s
 
 /// The time the page takes to go most of the way to where the wheel wants it.
 mod events;
+#[cfg(test)]
+mod menu_tests;
+
+/// The context menu that is open: the app it is for and where the pointer was.
+struct Menu {
+    app: String,
+    at: (f32, f32),
+}
 
 const SCROLL_MS: f32 = 70.0;
 /// Units an arrow key scrolls.
@@ -78,6 +87,9 @@ pub struct Ui {
     search_box: Option<Rect>,
     search_focus: bool,
     query: String,
+    /// The context menu, and where it was drawn last (a press outside it closes it).
+    menu: Option<Menu>,
+    menu_rect: Option<Rect>,
 }
 
 impl Default for Ui {
@@ -113,6 +125,8 @@ impl Ui {
             search_box: None,
             search_focus: false,
             query: String::new(),
+            menu: None,
+            menu_rect: None,
         }
     }
 
@@ -169,6 +183,7 @@ impl Ui {
         self.draw_scrollbar(&mut c, main, width);
         shell::sidebar(&mut c, model, height);
         shell::topbar(&mut c, model, width);
+        self.draw_menu(&mut c, model, (width, height), covered);
         self.draw_dialog(&mut c, shown, covered, width, height);
         self.finish(c)
     }
@@ -180,6 +195,7 @@ impl Ui {
         let ready = page_is_ready(model);
         if model.page != self.page {
             self.page = model.page;
+            self.menu = None;
             (self.scroll, self.scroll_target) = (0.0, 0.0);
             self.entered_ms = now_ms;
         } else if ready && !self.was_ready {
@@ -245,6 +261,25 @@ impl Ui {
                 c.hover(track)
             };
             c.fill(thumb, 3.0, theme::TEXT_3.with_alpha(0.45 + 0.4 * hover));
+        }
+    }
+
+    /// The context menu over the page, while its app is still in the list and no dialog covers.
+    fn draw_menu(&mut self, c: &mut Canvas, model: &Model, window: (f32, f32), covered: bool) {
+        let app = self.menu.as_ref().and_then(|m| {
+            model
+                .apps
+                .iter()
+                .flatten()
+                .find(|a| a.id == m.app)
+                .map(|a| (a, m.at))
+        });
+        self.menu_rect = match app {
+            Some((app, at)) if !covered => Some(context_menu::draw(c, app, at, window)),
+            _ => None,
+        };
+        if self.menu_rect.is_none() {
+            self.menu = None;
         }
     }
 

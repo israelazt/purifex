@@ -33,10 +33,11 @@ impl Core {
         match self.services.uninstall_app(id) {
             Ok(app) => {
                 self.model.message = Some(format!(
-                    "Se abrió el desinstalador de {}. Cuando termine, pulsa «Buscar restos».",
+                    "Se abrió el desinstalador de {}. Cuando termine, Purifex busca sus restos y te los muestra.",
                     app.name
                 ));
                 (self.model.uninstalled, self.model.traces) = (Some(app.name.clone()), None);
+                self.model.traces_open = false;
                 // From now on the list is read now and then: when the app is gone the
                 // uninstaller has finished and its traces are looked for.
                 self.watching = Some((app, Instant::now(), Instant::now()));

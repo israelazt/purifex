@@ -968,7 +968,7 @@ mod tests {
         assert_eq!(log.borrow().launched, ["Discord"]);
         assert_eq!(core.model().uninstalled.as_deref(), Some("Discord"));
         let message = core.model().message.as_deref().unwrap();
-        assert!(message.contains("Buscar restos"));
+        assert!(message.contains("busca sus restos"));
     }
 
     #[test]

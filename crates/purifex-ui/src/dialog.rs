@@ -659,18 +659,24 @@ mod tests {
     }
 
     #[test]
-    fn an_app_still_installed_cannot_be_cleaned_and_the_window_says_why() {
+    fn an_app_still_installed_offers_to_uninstall_it_and_not_to_clean_it() {
         let mut m = model_with_traces(2);
         m.traces.as_mut().unwrap().still_installed = true;
+        m.apps = Some(vec![InstalledApp {
+            id: "HKLM64:OBS Studio".into(),
+            name: "OBS Studio".into(),
+            ..Default::default()
+        }]);
         let v = view(&m).unwrap();
         let (ops, actions) = render(&v, 1.0);
         assert!(!actions
             .iter()
             .any(|a| matches!(a, Action::AskClean(_) | Action::AskCleanAll(_))));
+        assert!(actions.contains(&Action::AskUninstall("HKLM64:OBS Studio".into())));
         assert!(actions.contains(&Action::CloseTraces));
         let said = ops
             .iter()
             .any(|o| matches!(o, Op::Text { text, .. } if text.contains("sigue")));
-        assert!(said, "it explains that the app must be uninstalled first");
+        assert!(said, "it explains why the traces are not removed yet");
     }
 }

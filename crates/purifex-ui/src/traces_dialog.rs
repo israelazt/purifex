@@ -35,29 +35,51 @@ pub(crate) fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
             action: Some(Action::SelectTraces(!all_checked)),
         }),
         corner: restart_button(m, report),
-        buttons: vec![
-            Btn {
-                label: "Cerrar".into(),
-                icon: "x",
-                primary: false,
-                action: Some(Action::CloseTraces),
-            },
-            Btn {
-                label: format!("Eliminar marcados ({checked})"),
-                icon: "trash-2",
-                primary: false,
-                action: (checked > 0 && !report.still_installed)
-                    .then(|| Action::AskClean(name.clone())),
-            },
-            Btn {
-                label: "Eliminar todo rastro".into(),
-                icon: "trash-2",
-                primary: true,
-                action: (!report.still_installed).then_some(Action::AskCleanAll(name)),
-            },
-        ],
+        buttons: buttons(m, report, checked),
         cancel: Action::CloseTraces,
     }
+}
+
+/// The buttons: while the app is still installed the way forward is to uninstall it (the
+/// traces are looked for when it is gone); afterwards, to remove the traces.
+fn buttons(m: &Model, report: &CleanReport, checked: usize) -> Vec<Btn> {
+    let name = report.app.clone();
+    let close = Btn {
+        label: "Cerrar".into(),
+        icon: "x",
+        primary: false,
+        action: Some(Action::CloseTraces),
+    };
+    if report.still_installed {
+        let id = m
+            .apps
+            .iter()
+            .flatten()
+            .find(|a| a.name == name)
+            .map(|a| a.id.clone());
+        let uninstall = Btn {
+            label: "Desinstalar y limpiar".into(),
+            icon: "trash-2",
+            primary: true,
+            action: id.map(Action::AskUninstall),
+        };
+        return vec![close, uninstall];
+    }
+    vec![
+        close,
+        Btn {
+            label: format!("Eliminar marcados ({checked})"),
+            icon: "trash-2",
+            primary: false,
+            action: (checked > 0).then(|| Action::AskClean(name.clone())),
+        },
+        Btn {
+            label: "Eliminar todo rastro".into(),
+            icon: "trash-2",
+            primary: true,
+            action: Some(Action::AskCleanAll(name)),
+        },
+    ]
 }
 
 /// The way out for the traces that only an administrator can remove.
@@ -74,7 +96,7 @@ fn restart_button(m: &Model, report: &CleanReport) -> Option<Btn> {
 fn traces_body(m: &Model, report: &CleanReport) -> String {
     if report.still_installed {
         return format!(
-            "{} sigue instalada, así que esto aún no son restos: lo usa la propia app. Desinstálala primero (botón «Desinstalar» de la lista) y vuelve a buscar; entonces se podrá quitar lo que quede.",
+            "{} sigue instalada, así que esto aún no son restos: lo usa la propia app. Pulsa «Desinstalar y limpiar»: se abre su desinstalador y, cuando termine, Purifex busca lo que deje y te lo muestra para quitarlo.",
             report.app
         );
     }

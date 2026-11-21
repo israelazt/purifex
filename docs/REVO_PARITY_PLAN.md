@@ -61,28 +61,21 @@ apps reales del PC principal. Para que el usuario vea el flujo real, él elige u
 
 ---
 
-## R1 · Un solo gesto: «Desinstalar y limpiar»
+## R1 · Un solo gesto: «Desinstalar y limpiar» (hecho 2026-11-20)
 
-Es lo que falló con Paint. Hoy hay dos caminos separados (desinstalar; buscar restos). Se unen.
+Al revisar el código se vio que el flujo ya existía (desinstalar → esperar → buscar restos →
+abrir la lista con todo marcado → «Eliminar todo rastro»). Es el mismo que Revo, que también
+enseña la lista antes de borrar. Lo que fallaba era entrar por «Buscar restos» en una app aún
+instalada. Por eso **no se hizo la máquina de estados `Removal`** pensada al principio: sobraba.
 
-1. **Dominio:** modelo `Removal` (la operación de principio a fin) con estados `Backup`,
-   `Uninstalling`, `Waiting`, `Scanning`, `Review`, `Cleaning`, `Done`, `Failed(motivo)`.
-   Pruebas de transiciones válidas e inválidas.
-2. **Aplicación:** `Cleaning::uninstall_and_clean(app)` que encadena lo que ya existe:
-   recordar la app → lanzar el desinstalador → esperar (el vigilante actual) → buscar restos →
-   dejar la lista lista para revisar. Prueba con fakes: app desaparece, app que no desaparece
-   (se cancela con tiempo), desinstalador que falla.
-3. **Interfaz:** en la tarjeta de la app, un botón principal **«Desinstalar»** que hace todo el
-   flujo y una confirmación única que dice qué va a pasar. «Buscar restos» queda para analizar
-   sin tocar. El diálogo de restos de una app instalada ofrece **«Desinstalar y eliminar todo
-   rastro»**, no un botón que se rechaza.
-4. **Progreso visible:** barra con los pasos (copia → desinstalador → restos → limpieza) y un
-   «Cancelar» que solo está activo mientras no se haya borrado nada.
-5. **Fallos honestos:** si el desinstalador termina con error o la app sigue en la lista tras
-   el tiempo límite, se dice y se ofrece **Desinstalación forzada** (R4), sin borrar nada.
+Hecho:
+- El diálogo de restos de una app instalada ofrece **«Desinstalar y limpiar»** (pide confirmación
+  y sigue el flujo de siempre) en vez de botones que se rechazaban (`be53ac6`, `e595cb0`).
+- El panel de Apps dice que **espera** al desinstalador y ofrece **«Dejar de esperar»**; pasados
+  30 minutos avisa de que la app sigue instalada en vez de callar (`4b585b7`).
+- Con una sola confirmación al principio y la lista de revisión al final, igual que Revo.
 
-*Hecho cuando:* con la app de prueba, un clic + una confirmación la dejan sin app ni restos, y
-«Devolver» la recupera.
+Queda para R2: la copia previa, que hoy no forma parte del flujo.
 
 ## R2 · Red de seguridad: copia antes de tocar nada
 

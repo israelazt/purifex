@@ -2373,7 +2373,7 @@ mod tests {
         );
         c.apply(Action::Confirm);
         assert_eq!(log.borrow().removed.len(), 1);
-        assert_eq!(log.borrow().entries[0].app, "Inicio: Zed");
+        assert_eq!(log.borrow().entries[0].app, "Arranque: Zed");
         assert!(c
             .model()
             .message

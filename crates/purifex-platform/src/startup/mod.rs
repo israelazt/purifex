@@ -205,7 +205,7 @@ mod real {
         assert!(find(&name).is_none(), "taken out of Run");
         let record = CleanupEntry {
             seq: 1,
-            app: format!("Inicio: {name}"),
+            app: format!("Arranque: {name}"),
             trace,
             kept,
             state: CleanupState::Removed,

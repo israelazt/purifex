@@ -280,7 +280,7 @@ fn nav_items(m: &Model) -> [NavItem<'static>; 7] {
         item("layers", "Drivers", Page::Drivers, drivers_badge),
         item("gamepad-2", "Partidas", Page::Sessions, sessions_badge),
         item("package", "Apps", Page::Apps, None),
-        item("power", "Inicio", Page::Startup, None),
+        item("power", "Arranque", Page::Startup, None),
         item("trash-2", "Limpieza", Page::Junk, None),
         item("sliders-horizontal", "Arreglos", Page::Fixes, fixes_badge),
     ]

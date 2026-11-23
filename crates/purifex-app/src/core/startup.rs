@@ -13,7 +13,7 @@ impl Core {
             match self.services.startup_items() {
                 Ok(items) => self.model.startup = Some(items),
                 Err(why) => {
-                    errors.push(format!("inicio: {why}"));
+                    errors.push(format!("arranque: {why}"));
                     self.model.startup = Some(Vec::new());
                 }
             }
@@ -71,7 +71,7 @@ impl Core {
         match self.services.remove_startup(id) {
             Ok(entry) => {
                 self.model.message = Some(format!(
-                    "{name} se quitó del inicio y está en la cuarentena. Para devolverlo: purifex apps restore {}.",
+                    "{name} se quitó del arranque y está en la cuarentena. Para devolverlo: purifex apps restore {}.",
                     entry.seq
                 ));
                 (self.model.startup, self.model.startup_quick) = (None, None);

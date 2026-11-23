@@ -80,7 +80,7 @@ impl StartupItem {
         Some(Trace {
             kind,
             location,
-            why: format!("programa de inicio: {}", self.name),
+            why: format!("programa de arranque: {}", self.name),
             value,
             ..Trace::default()
         })

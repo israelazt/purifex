@@ -21,9 +21,9 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
         c,
         m,
         area,
-        "Inicio",
+        "Arranque",
         "lo que arranca con Windows",
-        "Inicio",
+        "Arranque",
         "Programas, servicios y tareas que arrancan solos. Desactivar uno no lo borra: Windows lo recuerda y puedes volver a activarlo. Quitarlo lo manda a la cuarentena, de donde se puede devolver.",
     );
     if let Some(error) = &m.error {
@@ -53,13 +53,13 @@ fn restore_bar(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
     let Some(latest) = m.quarantine.as_ref().and_then(|q| q.latest.as_ref()) else {
         return 0.0;
     };
-    let Some(name) = latest.app.strip_prefix("Inicio: ") else {
+    let Some(name) = latest.app.strip_prefix("Arranque: ") else {
         return 0.0;
     };
     let rect = Rect::new(area.x, area.y, area.w, 60.0);
     panel(c, rect);
     c.icon("history", rect.x + 18.0, rect.y + 20.0, 18.0, theme::AMBER);
-    let text = format!("Quitaste {name} del inicio. Está en la cuarentena.");
+    let text = format!("Quitaste {name} del arranque. Está en la cuarentena.");
     c.text_in(rect.x + 46.0, rect, &text, theme::sans(13.0, theme::TEXT));
     let label = "Devolver";
     let w = button_width(c, label);
@@ -216,9 +216,9 @@ pub(crate) fn dialog(m: &Model) -> Option<DialogView> {
         .find(|i| i.id == *id)
         .map_or(id.as_str(), |i| i.name.as_str());
     Some(confirm_view(
-        format!("¿Quitar {name} del inicio?"),
+        format!("¿Quitar {name} del arranque?"),
         "Se borra la entrada de lo que arranca con Windows, pero se guarda en la cuarentena y se puede devolver. El programa sigue instalado. Si solo quieres que no arranque, es mejor «Desactivar».",
-        "Quitar del inicio",
+        "Quitar del arranque",
         "trash-2",
     ))
 }
@@ -288,7 +288,7 @@ mod tests {
     fn the_entry_that_was_taken_out_last_can_be_put_back_from_the_page() {
         use purifex_domain::quarantine::{Latest, QuarantineInfo};
         let latest = Latest {
-            app: "Inicio: Zed".into(),
+            app: "Arranque: Zed".into(),
             items: 1,
         };
         let mut m = Model {
@@ -300,8 +300,10 @@ mod tests {
             ..Model::default()
         };
         let (texts, actions) = render(&m);
-        assert!(texts.iter().any(|t| t.contains("Quitaste Zed del inicio")));
-        assert!(actions.contains(&Action::RestoreApp("Inicio: Zed".into())));
+        assert!(texts
+            .iter()
+            .any(|t| t.contains("Quitaste Zed del arranque")));
+        assert!(actions.contains(&Action::RestoreApp("Arranque: Zed".into())));
         m.quarantine = Some(QuarantineInfo {
             latest: Some(Latest {
                 app: "Discord".into(),

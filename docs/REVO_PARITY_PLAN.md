@@ -320,12 +320,12 @@ Pendiente, anotado:
    automático, tareas con disparador de inicio de sesión. Una lista, con editor y estado.
 2. **Acciones:** activar/desactivar (`StartupApproved`, sin borrar), quitar (a cuarentena) y
    abrir la carpeta del programa.
-3. **Interfaz:** página «Inicio» y enlace desde cada app («arranca con Windows»).
+3. **Interfaz:** página «Arranque» y enlace desde cada app («arranca con Windows»).
 
 **Hecho (2026-11-23):**
-- **Lectura** (`WindowsStartup`): valores de `Run` y `RunOnce` (HKCU, HKLM y `WOW6432Node`), las dos carpetas Inicio (del usuario y de todo el equipo; de un acceso directo se lee su destino), los servicios de arranque automático que no son de Windows y las tareas con disparador de inicio de sesión o de arranque (sin las de `\Microsoft\`). Una lista en la página nueva **Inicio**, con el estado (activa/desactivada), lo que ejecuta, el tipo y la app a cuya carpeta pertenece.
+- **Lectura** (`WindowsStartup`): valores de `Run` y `RunOnce` (HKCU, HKLM y `WOW6432Node`), las dos carpetas Inicio (del usuario y de todo el equipo; de un acceso directo se lee su destino), los servicios de arranque automático que no son de Windows y las tareas con disparador de inicio de sesión o de arranque (sin las de `\Microsoft\`). Una lista en la página nueva **Arranque**, con el estado (activa/desactivada), lo que ejecuta, el tipo y la app a cuya carpeta pertenece.
 - **Activar y desactivar** sin borrar, como lo hace Windows: `StartupApproved` (`Run`, `Run32`, `StartupFolder`) para el registro y las carpetas, y `schtasks /change` para las tareas. Lo de todo el equipo pide administrador y el mensaje lo dice.
-- **Quitar:** la entrada va a la cuarentena como un resto más (valor del registro con su copia `.reg`, archivo, o tarea con su definición), bajo el nombre `Inicio: <nombre>`, y se devuelve con `purifex apps restore N`. Pide confirmación y recomienda «Desactivar».
+- **Quitar:** la entrada va a la cuarentena como un resto más (valor del registro con su copia `.reg`, archivo, o tarea con su definición), bajo el nombre `Arranque: <nombre>`, y se devuelve con `purifex apps restore N`. Pide confirmación y recomienda «Desactivar».
 - **Carpeta:** abre la carpeta del programa de la entrada.
 - **Seguridad:** solo se actúa sobre entradas que están en la lista que se leyó (se vuelve a leer por id antes de cambiar nada). **Los servicios solo se muestran**: cambiar uno mal puede impedir que arranque el PC.
 - Pruebas: dominio (programa de una línea de comandos, app a la que pertenece sin confundir carpetas vecinas, traza), plataforma (claves de aprobación, bytes que escribe Windows, lectura real de esta máquina: ids únicos y bien formados), núcleo (desactivar/activar, rechazo por falta de administrador, quitar con pregunta, solo lo que está en la lista) y la página. Capturas con `ui_states startup <list|remove>`.
@@ -334,7 +334,7 @@ Pendiente, anotado:
 - **Sin probar cambiando entradas reales** (solo con dobles y leyendo la máquina real). Falta desactivar y volver a activar una entrada de verdad, y una de `HKLM` como administrador.
 - **«Arranca con Windows» en cada app** (la parte 3 del plan que enlaza desde la lista de Apps): no se hizo, porque leer las tareas tarda unos segundos y la página de Apps no debe esperarlos. Lo que sí hay es el camino contrario: cada entrada dice de qué app es.
 - **«Detener y quitar del inicio» del Cazador (R5):** sigue sin enlazar.
-- **Devolver** una entrada quitada se hace por la cuarentena (panel de la página de Apps o consola); la página Inicio no tiene botón propio.
+- **Devolver** una entrada quitada se hace por la cuarentena (panel de la página de Apps o consola); la página Arranque no tiene botón propio.
 
 ## R9 · Herramientas de limpieza (las de la sección «Herramientas» de Revo)
 
@@ -394,7 +394,7 @@ una app protegida, una de la Tienda (no tiene entrada propia) y una entrada que 
 
 Hecho tras R9:
 - **R8, prueba real:** una entrada propia en `HKCU\...\Run` se ve en el lector, se desactiva y activa (Windows la registra con el byte 3 en `StartupApproved`), se quita a una cuarentena y se devuelve igual. No deja nada en el registro (comprobado a mano).
-- **R8, «Devolver»:** la página Inicio ofrece devolver la última entrada quitada.
+- **R8, «Devolver»:** la página Arranque ofrece devolver la última entrada quitada.
 - **R8, «arranca con Windows» en Apps:** el detalle de cada app dice si arranca con Windows y cómo (lectura rápida, sin tareas, que tardan segundos).
 - **R5, «Detener y quitar del inicio»:** el Cazador ofrece «Quitar del inicio» si el programa (o su app) tiene una entrada que se puede quitar; los servicios solo se muestran.
 - **Consola:** `purifex apps startup|logs|junk [--json]`, solo lectura.

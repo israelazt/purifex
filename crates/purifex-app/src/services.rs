@@ -277,7 +277,7 @@ where
         let source = self
             .startup
             .as_ref()
-            .ok_or("esta versión no lee el inicio")?;
+            .ok_or("esta versión no lee el arranque")?;
         let apps = self.apps().unwrap_or_default();
         let items = source
             .read()?
@@ -291,7 +291,7 @@ where
         let source = self
             .startup
             .as_ref()
-            .ok_or("esta versión no lee el inicio")?;
+            .ok_or("esta versión no lee el arranque")?;
         let apps = self.apps().unwrap_or_default();
         Ok(source
             .read_quick()?
@@ -304,12 +304,12 @@ where
         let source = self
             .startup
             .as_ref()
-            .ok_or("esta versión no cambia el inicio")?;
+            .ok_or("esta versión no cambia el arranque")?;
         let item = source
             .read()?
             .into_iter()
             .find(|i| i.id == id)
-            .ok_or("esa entrada ya no está en el inicio")?;
+            .ok_or("esa entrada ya no está en el arranque")?;
         source.set_enabled(&item, on)?;
         Ok(StartupItem {
             enabled: on,
@@ -321,12 +321,12 @@ where
         let source = self
             .startup
             .as_ref()
-            .ok_or("esta versión no cambia el inicio")?;
+            .ok_or("esta versión no cambia el arranque")?;
         let item = source
             .read()?
             .into_iter()
             .find(|i| i.id == id)
-            .ok_or("esa entrada ya no está en el inicio")?;
+            .ok_or("esa entrada ya no está en el arranque")?;
         let trace = item.trace().ok_or("esta entrada no se quita desde aquí")?;
         self.cleaning.remove_startup(&item.name, &trace)
     }

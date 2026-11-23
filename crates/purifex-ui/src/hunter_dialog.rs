@@ -55,7 +55,7 @@ fn hunted_view(found: &Hunted, m: &Model) -> DialogView {
     let items = m.startup_quick.as_deref().unwrap_or_default();
     if let Some(entry) = found.startup_entry(items) {
         buttons.push(button(
-            "Quitar del inicio",
+            "Quitar del arranque",
             "power",
             false,
             Action::AskRemoveStartup(entry.id.clone()),
@@ -169,6 +169,6 @@ mod tests {
             r"D:\Games\OBS Studio\bin\obs64.exe",
         )]);
         let v = hunted_view(&found(None), &m);
-        assert!(!v.buttons.iter().any(|b| b.label == "Quitar del inicio"));
+        assert!(!v.buttons.iter().any(|b| b.label == "Quitar del arranque"));
     }
 }

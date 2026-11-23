@@ -6,6 +6,7 @@
 use crate::apps::{AppKind, InstalledApp};
 use crate::forced::RunningProcess;
 use crate::seeds::seeds_of;
+use crate::startup::StartupItem;
 
 /// The window state of the sight: held by the person, and what it was let go on.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -65,6 +66,21 @@ pub fn app_of(path: &str, apps: &[InstalledApp]) -> Option<InstalledApp> {
         })
         .max_by_key(|(_, f)| f.len());
     store.or(by_folder.map(|(a, _)| a)).cloned()
+}
+
+impl Hunted {
+    /// The entry of what starts with Windows that runs this program, or belongs to its app, and
+    /// that may be taken out (a service is only shown).
+    pub fn startup_entry<'a>(&self, items: &'a [StartupItem]) -> Option<&'a StartupItem> {
+        let mine = |i: &&StartupItem| {
+            i.program().eq_ignore_ascii_case(&self.process.path)
+                || self
+                    .app
+                    .as_ref()
+                    .is_some_and(|a| i.app.as_deref() == Some(a.name.as_str()))
+        };
+        items.iter().filter(|i| i.trace().is_some()).find(mine)
+    }
 }
 
 /// What a program pointed at is: its app, if it has one among the `apps` listed.

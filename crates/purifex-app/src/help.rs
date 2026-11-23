@@ -12,6 +12,9 @@ Uso:
   purifex compare [ANTES DESPUÉS] [--json]
                                   Compara dos partidas (por defecto, las dos últimas)
   purifex apps [--json]           Apps instaladas (solo lista)
+  purifex apps startup [--json]   Lo que arranca con Windows (no cambia nada)
+  purifex apps logs [--json]      Registros de instalaciones vigiladas
+  purifex apps junk [--json]      Basura de Windows que se podría limpiar (no mueve nada)
   purifex apps quarantine [--json]
                                   Lo que guarda la cuarentena de restos (y suelta lo que lleva 7 días)
   purifex apps purge [--yes]      Vacía la cuarentena para siempre (sin --yes solo dice cuánto)

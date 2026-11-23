@@ -17,6 +17,7 @@ pub mod mcp;
 pub mod monitoring;
 pub mod offering;
 pub mod outcome;
+mod outcome_lists;
 pub mod recorder;
 pub mod scanner;
 pub mod services;

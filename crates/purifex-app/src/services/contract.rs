@@ -140,6 +140,8 @@ pub trait Services {
     fn import_install_log(&mut self) -> Result<Option<InstallLog>, String>;
     /// What starts with Windows, each entry with the app it runs from when it is one.
     fn startup_items(&mut self) -> Result<Vec<StartupItem>, String>;
+    /// The same without the tasks (they take seconds to read).
+    fn startup_quick(&mut self) -> Result<Vec<StartupItem>, String>;
     /// Turns an entry on or off without deleting it; returns it as it is now.
     fn set_startup(&mut self, id: &str, on: bool) -> Result<StartupItem, String>;
     /// Takes an entry out to the quarantine (it can be put back); returns what was kept.

@@ -287,6 +287,19 @@ where
         Ok(purifex_domain::startup::sorted(items))
     }
 
+    fn startup_quick(&mut self) -> Result<Vec<StartupItem>, String> {
+        let source = self
+            .startup
+            .as_ref()
+            .ok_or("esta versión no lee el inicio")?;
+        let apps = self.apps().unwrap_or_default();
+        Ok(source
+            .read_quick()?
+            .into_iter()
+            .map(|i| i.with_app(&apps))
+            .collect())
+    }
+
     fn set_startup(&mut self, id: &str, on: bool) -> Result<StartupItem, String> {
         let source = self
             .startup

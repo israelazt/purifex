@@ -54,7 +54,7 @@ impl Core {
             (None, None, None, None, None);
         (m.candidates, m.apps, m.traces, m.quarantine) = (None, None, None, None);
         (m.fixes, m.history, m.confirm, m.notice) = (None, None, None, None);
-        (m.startup, m.junk) = (None, None);
+        (m.startup, m.startup_quick, m.junk) = (None, None, None);
         m.error = None;
         self.expect_reading();
     }

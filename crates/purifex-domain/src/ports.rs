@@ -295,6 +295,11 @@ pub trait FilePicker {
 pub trait StartupSource {
     /// Everything that starts with Windows or at logon. Reads only.
     fn read(&self) -> Result<Vec<crate::startup::StartupItem>, String>;
+    /// The same without what is slow to read (the tasks): for pages that only need to know
+    /// whether something starts with Windows.
+    fn read_quick(&self) -> Result<Vec<crate::startup::StartupItem>, String> {
+        self.read()
+    }
     /// Turns an entry on or off the way Windows itself does, without deleting it. `Err` says why
     /// not (an entry of the machine needs an administrator).
     fn set_enabled(&self, item: &crate::startup::StartupItem, on: bool) -> Result<(), String>;

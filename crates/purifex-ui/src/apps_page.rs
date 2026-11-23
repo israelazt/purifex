@@ -169,6 +169,18 @@ fn sort_head(c: &mut Canvas, m: &Model, head: Rect, x: f32, text: &str, sort: Ap
 }
 
 /// The headings of the table; each one that is a column orders the list.
+/// «registro», «carpeta Inicio»…: how the app starts with Windows, when it does.
+fn starts_with(m: &Model, app: &InstalledApp) -> Option<String> {
+    let kinds: Vec<&str> = m
+        .startup_quick
+        .iter()
+        .flatten()
+        .filter(|i| i.app.as_deref() == Some(app.name.as_str()))
+        .map(|i| i.kind.label())
+        .collect();
+    (!kinds.is_empty()).then(|| format!("arranca con Windows ({})", kinds.join(", ")))
+}
+
 fn table_head(c: &mut Canvas, m: &Model, rect: Rect) {
     let head = Rect::new(rect.x, rect.y, rect.w, 48.0);
     let label = theme::eyebrow(theme::TEXT_3);
@@ -216,7 +228,12 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
         );
         row_y += row_h;
         if open(app) {
-            app_detail(c, app, Rect::new(rect.x, row_y, rect.w, DETAIL_H));
+            app_detail(
+                c,
+                app,
+                starts_with(m, app).as_deref(),
+                Rect::new(rect.x, row_y, rect.w, DETAIL_H),
+            );
             row_y += DETAIL_H;
         }
     }
@@ -604,5 +621,30 @@ mod tests {
         m.message = Some("Se quitaron 2 restos de Discord".into());
         let (texts, _) = render(&m);
         assert!(texts.join(" ").contains("Se quitaron 2 restos"));
+    }
+
+    #[test]
+    fn the_details_of_an_app_say_how_it_starts_with_windows() {
+        use purifex_domain::startup::{StartupItem, StartupKind};
+        let mut m = model();
+        m.app_selected = Some("HKLM64:Discord".into());
+        let (texts, _) = render(&m);
+        assert!(texts.iter().any(|t| t == "no arranca con Windows"));
+        m.startup_quick = Some(vec![StartupItem {
+            id: "r".into(),
+            name: "Discord".into(),
+            command: "d.exe".into(),
+            kind: StartupKind::Registry,
+            place: "k".into(),
+            enabled: true,
+            can_toggle: true,
+            needs_admin: false,
+            app: Some("Discord".into()),
+        }]);
+        let (texts, _) = render(&m);
+        assert!(
+            texts.iter().any(|t| t == "arranca con Windows (registro)"),
+            "{texts:?}"
+        );
     }
 }

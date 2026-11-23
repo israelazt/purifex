@@ -185,7 +185,7 @@ impl Core {
                     || m.install_logs.is_none()
                     || self.refreshing_apps
             }
-            Page::Startup => m.startup.is_none(),
+            Page::Startup => m.startup.is_none() || m.quarantine.is_none(),
             Page::Junk => m.junk.is_none(),
             Page::Drivers => m.drivers.is_none() || m.candidates.is_none(),
             Page::Sessions => {

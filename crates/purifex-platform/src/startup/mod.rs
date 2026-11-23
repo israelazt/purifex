@@ -57,7 +57,11 @@ fn approval(on: bool) -> RawValue {
 
 impl StartupSource for WindowsStartup {
     fn read(&self) -> Result<Vec<StartupItem>, String> {
-        Ok(read::all())
+        Ok(read::all(false))
+    }
+
+    fn read_quick(&self) -> Result<Vec<StartupItem>, String> {
+        Ok(read::all(true))
     }
 
     fn set_enabled(&self, item: &StartupItem, on: bool) -> Result<(), String> {
@@ -130,5 +134,87 @@ mod tests {
             off[4..].iter().any(|b| *b != 0),
             "the time it was turned off"
         );
+    }
+}
+
+/// The whole way of an entry on this computer: made for the test in the user's own `Run` key,
+/// seen by the reader, turned off and on the way Windows does, taken out to a quarantine and put
+/// back. Everything is removed at the end, even when an assertion fails halfway.
+#[cfg(test)]
+mod real {
+    use purifex_domain::cleanup_log::{CleanupEntry, CleanupState};
+    use purifex_domain::ports::CleanupStore;
+
+    use super::*;
+    use crate::app_cleanup::registry_write::{delete_value, read_value_raw};
+    use crate::app_cleanup::LocalCleanup;
+
+    const RUN: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+    const SWITCH: &str =
+        r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
+    struct Entry(String);
+
+    impl Drop for Entry {
+        fn drop(&mut self) {
+            let _ = delete_value(RUN, &self.0);
+            let _ = delete_value(SWITCH, &self.0);
+        }
+    }
+
+    fn find(name: &str) -> Option<StartupItem> {
+        WindowsStartup
+            .read()
+            .unwrap()
+            .into_iter()
+            .find(|i| i.name == name && i.kind == StartupKind::Registry)
+    }
+
+    #[test]
+    fn an_entry_is_seen_turned_off_and_on_removed_and_put_back_for_real() {
+        let name = format!("PurifexStartupE2E{}", std::process::id());
+        let entry = Entry(name.clone());
+        let command = r"C:\Nada\purifex-e2e.exe /x"
+            .encode_utf16()
+            .chain([0])
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        set_value_raw(
+            RUN,
+            &name,
+            &RawValue {
+                kind: 1,
+                data: command,
+            },
+        )
+        .unwrap();
+        let item = find(&name).expect("the reader lists it");
+        assert!(item.enabled && item.can_toggle && !item.needs_admin);
+        assert_eq!(item.program(), r"C:\Nada\purifex-e2e.exe");
+
+        WindowsStartup.set_enabled(&item, false).unwrap();
+        assert!(!find(&name).unwrap().enabled, "Windows records it as off");
+        assert_eq!(read_value_raw(SWITCH, &name).unwrap().data[0], 3);
+        WindowsStartup.set_enabled(&item, true).unwrap();
+        assert!(find(&name).unwrap().enabled);
+
+        let work = std::env::temp_dir().join(format!("purifex-startup-e2e-{}", std::process::id()));
+        let mut store = LocalCleanup::in_dir(work.join("Purifex"));
+        let trace = item.trace().unwrap();
+        let kept = store.remove(&trace, 1).unwrap();
+        assert!(find(&name).is_none(), "taken out of Run");
+        let record = CleanupEntry {
+            seq: 1,
+            app: format!("Inicio: {name}"),
+            trace,
+            kept,
+            state: CleanupState::Removed,
+            ..Default::default()
+        };
+        store.restore(&record).unwrap();
+        let back = find(&name).expect("put back");
+        assert_eq!(back.command, item.command, "same command as before");
+        drop(entry);
+        let _ = std::fs::remove_dir_all(work);
     }
 }

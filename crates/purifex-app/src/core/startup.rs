@@ -8,6 +8,7 @@ use super::Core;
 
 impl Core {
     pub(super) fn read_startup_page(&mut self, errors: &mut Vec<String>) {
+        self.read_quarantine();
         if self.model.startup.is_none() {
             match self.services.startup_items() {
                 Ok(items) => self.model.startup = Some(items),
@@ -22,7 +23,13 @@ impl Core {
     /// An entry of the list as it was read (what is acted on is always one of these, never
     /// something that only arrived in an action).
     fn startup_item(&self, id: &str) -> Option<&StartupItem> {
-        self.model.startup.iter().flatten().find(|i| i.id == id)
+        let quick = self.model.startup_quick.iter().flatten();
+        self.model
+            .startup
+            .iter()
+            .flatten()
+            .chain(quick)
+            .find(|i| i.id == id)
     }
 
     /// Turns an entry on if it was off and the other way round. Nothing is deleted.
@@ -67,7 +74,8 @@ impl Core {
                     "{name} se quitó del inicio y está en la cuarentena. Para devolverlo: purifex apps restore {}.",
                     entry.seq
                 ));
-                (self.model.startup, self.model.quarantine) = (None, None);
+                (self.model.startup, self.model.startup_quick) = (None, None);
+                self.model.quarantine = None;
                 self.expect_reading();
             }
             Err(error) => self.model.error = Some(error),

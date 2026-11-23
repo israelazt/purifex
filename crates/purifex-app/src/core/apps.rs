@@ -246,7 +246,8 @@ impl Core {
         match self.services.restore_app_cleanup(app) {
             Ok(report) => {
                 self.model.message = Some(report.to_text());
-                self.model.quarantine = None;
+                (self.model.quarantine, self.model.startup, self.model.junk) = (None, None, None);
+                self.model.startup_quick = None;
                 self.expect_reading();
             }
             Err(error) => self.model.error = Some(error),

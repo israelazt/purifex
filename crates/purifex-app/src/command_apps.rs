@@ -31,6 +31,18 @@ pub enum AppsCommand {
     History {
         json: bool,
     },
+    /// What starts with Windows (touches nothing).
+    Startup {
+        json: bool,
+    },
+    /// The logs of installations kept.
+    Logs {
+        json: bool,
+    },
+    /// The junk of Windows that could be cleaned (touches nothing).
+    Junk {
+        json: bool,
+    },
     /// What the quarantine holds.
     Quarantine {
         json: bool,
@@ -62,6 +74,9 @@ fn split_command<'a>(
                 "history",
                 "quarantine",
                 "purge",
+                "startup",
+                "logs",
+                "junk",
             ]
             .contains(c) =>
         {
@@ -119,6 +134,9 @@ impl AppsCommand {
                 json,
             }),
             Some("history") => Ok(Self::History { json }),
+            Some("startup") => Ok(Self::Startup { json }),
+            Some("logs") => Ok(Self::Logs { json }),
+            Some("junk") => Ok(Self::Junk { json }),
             Some("quarantine") => Ok(Self::Quarantine { json }),
             Some("purge") => Ok(Self::Purge { yes, json }),
             Some(_) => {
@@ -137,6 +155,9 @@ impl AppsCommand {
                 | Self::Traces { json: true, .. }
                 | Self::Clean { json: true, .. }
                 | Self::History { json: true }
+                | Self::Startup { json: true }
+                | Self::Logs { json: true }
+                | Self::Junk { json: true }
                 | Self::Quarantine { json: true }
                 | Self::Purge { json: true, .. }
         )
@@ -175,6 +196,9 @@ impl AppsCommand {
                 )))
             }
             Self::History { .. } => services.cleanup_history().map(Outcome::CleanupLog),
+            Self::Startup { .. } => services.startup_items().map(Outcome::Startup),
+            Self::Logs { .. } => services.install_logs().map(Outcome::Logs),
+            Self::Junk { .. } => services.junk_scan().map(Outcome::Junk),
             Self::Quarantine { .. } => {
                 services.expire_quarantine()?;
                 services.quarantine().map(Outcome::Quarantine)
@@ -271,5 +295,23 @@ mod tests {
         assert!(parse(&["borrar"])
             .unwrap_err()
             .contains("orden desconocida"));
+    }
+
+    #[test]
+    fn the_read_only_lists_are_parsed_with_json_and_say_so() {
+        assert_eq!(
+            parse(&["startup"]).unwrap(),
+            AppsCommand::Startup { json: false }
+        );
+        assert_eq!(
+            parse(&["--json", "logs"]).unwrap(),
+            AppsCommand::Logs { json: true }
+        );
+        assert_eq!(
+            parse(&["junk", "--json"]).unwrap(),
+            AppsCommand::Junk { json: true }
+        );
+        assert!(AppsCommand::Startup { json: true }.wants_json());
+        assert!(!AppsCommand::Junk { json: false }.wants_json());
     }
 }

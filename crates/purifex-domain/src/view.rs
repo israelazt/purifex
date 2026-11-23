@@ -160,6 +160,9 @@ pub struct Model {
     pub marked: Vec<String>,
     /// The batch being run, or the summary of the one that just finished.
     pub batch: Option<crate::batch::Batch>,
+    /// What starts with Windows without the tasks (read with the apps): tells which apps start
+    /// with it and which entry a program pointed at belongs to.
+    pub startup_quick: Option<Vec<crate::startup::StartupItem>>,
     /// What starts with Windows (read on the Startup page).
     pub startup: Option<Vec<crate::startup::StartupItem>>,
     /// The junk found (read on the Junk page).

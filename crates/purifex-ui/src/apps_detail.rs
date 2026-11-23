@@ -10,11 +10,11 @@ use crate::theme;
 use crate::widgets::{button, button_width};
 
 /// Height of the details under a row.
-pub(crate) const DETAIL_H: f32 = 148.0;
+pub(crate) const DETAIL_H: f32 = 176.0;
 /// Room kept at the right of the lines for the buttons.
 const BUTTONS_W: f32 = 520.0;
 
-pub(crate) fn app_detail(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
+pub(crate) fn app_detail(c: &mut Canvas, app: &InstalledApp, starts: Option<&str>, bar: Rect) {
     c.fill(bar, 0.0, theme::TEXT.with_alpha(0.03));
     let label = theme::eyebrow(theme::TEXT_3);
     let value = theme::mono(12.0, theme::TEXT_2);
@@ -24,6 +24,7 @@ pub(crate) fn app_detail(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
         ("WEB", app.website.as_deref()),
         ("REGISTRO", key.as_deref()),
         ("DESINSTALADOR", app.uninstall.as_deref()),
+        ("INICIO", starts),
     ];
     for (i, (name, text)) in lines.into_iter().enumerate() {
         let y = bar.y + 14.0 + i as f32 * 28.0;
@@ -32,7 +33,11 @@ pub(crate) fn app_detail(c: &mut Canvas, app: &InstalledApp, bar: Rect) {
         c.text_cut(
             bar.x + 150.0,
             y,
-            text.unwrap_or("no lo indica"),
+            text.unwrap_or(if name == "INICIO" {
+                "no arranca con Windows"
+            } else {
+                "no lo indica"
+            }),
             value,
             room,
         );
@@ -72,7 +77,7 @@ mod tests {
 
     fn render(app: &InstalledApp) -> (Vec<String>, Vec<Action>) {
         let mut c = Canvas::new(&FakeText, None);
-        app_detail(&mut c, app, Rect::new(0.0, 0.0, 1100.0, DETAIL_H));
+        app_detail(&mut c, app, None, Rect::new(0.0, 0.0, 1100.0, DETAIL_H));
         let (list, hits) = c.finish();
         let texts = list.ops.iter().filter_map(|op| match op {
             Op::Text { text, .. } => Some(text.clone()),
@@ -97,6 +102,7 @@ mod tests {
         assert!(actions.contains(&Action::OpenWebsite("https://x.example".into())));
         let (texts, actions) = render(&InstalledApp::default());
         assert_eq!(texts.iter().filter(|t| *t == "no lo indica").count(), 4);
+        assert!(texts.iter().any(|t| t == "no arranca con Windows"));
         assert!(actions.is_empty(), "nothing to open");
     }
 }

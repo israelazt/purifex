@@ -75,6 +75,10 @@ impl Core {
             self.find_traces_of(&name, errors);
         }
         self.read_quarantine();
+        if self.model.startup_quick.is_none() {
+            // Not being able to read it only hides «starts with Windows»: the page still works.
+            self.model.startup_quick = Some(self.services.startup_quick().unwrap_or_default());
+        }
         if self.model.install_logs.is_none() {
             self.model.install_logs = Some(self.services.install_logs().unwrap_or_else(|error| {
                 log_warn!("the logs of installations could not be read: {error}");
@@ -95,7 +99,7 @@ impl Core {
     /// What the quarantine holds, after letting go of what has been there for seven days
     /// (once per run; the person is told). A quarantine that cannot be read is not worth an
     /// error on the page: it shows as empty and the reason goes to the log.
-    fn read_quarantine(&mut self) {
+    pub(super) fn read_quarantine(&mut self) {
         if self.model.quarantine.is_some() {
             return;
         }

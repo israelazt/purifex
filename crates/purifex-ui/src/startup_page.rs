@@ -42,8 +42,37 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
     if let Some(text) = &m.message {
         y += info(c, Rect::new(area.x, y, area.w, 0.0), text);
     }
+    y += restore_bar(c, m, Rect::new(area.x, y, area.w, 0.0));
     y += table(c, items, Rect::new(area.x, y, area.w, 0.0));
     y - area.y
+}
+
+/// When the last thing taken out of the quarantine's open list was an entry of the startup, a way
+/// to put it back.
+fn restore_bar(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
+    let Some(latest) = m.quarantine.as_ref().and_then(|q| q.latest.as_ref()) else {
+        return 0.0;
+    };
+    let Some(name) = latest.app.strip_prefix("Inicio: ") else {
+        return 0.0;
+    };
+    let rect = Rect::new(area.x, area.y, area.w, 60.0);
+    panel(c, rect);
+    c.icon("history", rect.x + 18.0, rect.y + 20.0, 18.0, theme::AMBER);
+    let text = format!("Quitaste {name} del inicio. Está en la cuarentena.");
+    c.text_in(rect.x + 46.0, rect, &text, theme::sans(13.0, theme::TEXT));
+    let label = "Devolver";
+    let w = button_width(c, label);
+    let go = Rect::new(rect.right() - 16.0 - w, rect.y + 8.0, w, 44.0);
+    button(
+        c,
+        go,
+        label,
+        "history",
+        false,
+        Some(Action::RestoreApp(latest.app.clone())),
+    );
+    rect.h + 16.0
 }
 
 fn table(c: &mut Canvas, items: &[StartupItem], area: Rect) -> f32 {
@@ -253,6 +282,40 @@ mod tests {
         }
         assert!(!actions.contains(&Action::ToggleStartup(svc.id.clone())));
         assert!(!actions.contains(&Action::AskRemoveStartup(svc.id)));
+    }
+
+    #[test]
+    fn the_entry_that_was_taken_out_last_can_be_put_back_from_the_page() {
+        use purifex_domain::quarantine::{Latest, QuarantineInfo};
+        let latest = Latest {
+            app: "Inicio: Zed".into(),
+            items: 1,
+        };
+        let mut m = Model {
+            startup: Some(vec![]),
+            quarantine: Some(QuarantineInfo {
+                latest: Some(latest),
+                ..Default::default()
+            }),
+            ..Model::default()
+        };
+        let (texts, actions) = render(&m);
+        assert!(texts.iter().any(|t| t.contains("Quitaste Zed del inicio")));
+        assert!(actions.contains(&Action::RestoreApp("Inicio: Zed".into())));
+        m.quarantine = Some(QuarantineInfo {
+            latest: Some(Latest {
+                app: "Discord".into(),
+                items: 3,
+            }),
+            ..Default::default()
+        });
+        assert!(
+            !render(&m)
+                .1
+                .iter()
+                .any(|a| matches!(a, Action::RestoreApp(_))),
+            "an app's leftovers are not offered here"
+        );
     }
 
     #[test]

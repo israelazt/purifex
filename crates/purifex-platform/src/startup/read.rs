@@ -188,11 +188,14 @@ fn task_items() -> Vec<StartupItem> {
         .collect()
 }
 
-pub(super) fn all() -> Vec<StartupItem> {
+/// Everything; `quick` leaves out the tasks, which take seconds to read.
+pub(super) fn all(quick: bool) -> Vec<StartupItem> {
     let mut items = registry_items();
     items.extend(folder_items());
     items.extend(service_items());
-    items.extend(task_items());
+    if !quick {
+        items.extend(task_items());
+    }
     items
 }
 
@@ -203,7 +206,7 @@ mod tests {
     /// Reads the real machine: whatever is there, every entry is well formed and unique.
     #[test]
     fn the_real_list_is_well_formed() {
-        let items = all();
+        let items = all(false);
         let mut ids: Vec<&str> = items.iter().map(|i| i.id.as_str()).collect();
         ids.sort_unstable();
         ids.dedup();

@@ -26,13 +26,13 @@ pub(crate) fn view(m: &Model) -> Option<DialogView> {
             "Cerrar programa",
             "x",
         )),
-        (None, Some(found)) => Some(hunted_view(found)),
+        (None, Some(found)) => Some(hunted_view(found, m)),
         _ => None,
     }
 }
 
 /// The window that says what the sight landed on.
-fn hunted_view(found: &Hunted) -> DialogView {
+fn hunted_view(found: &Hunted, m: &Model) -> DialogView {
     let program = found.process.name();
     let (title, whose) = match &found.app {
         Some(app) => (app.name.clone(), format!("Es parte de {}.", app.name)),
@@ -52,6 +52,15 @@ fn hunted_view(found: &Hunted) -> DialogView {
         ),
         button("Cerrar programa", "x", false, Action::AskCloseHunted),
     ];
+    let items = m.startup_quick.as_deref().unwrap_or_default();
+    if let Some(entry) = found.startup_entry(items) {
+        buttons.push(button(
+            "Quitar del inicio",
+            "power",
+            false,
+            Action::AskRemoveStartup(entry.id.clone()),
+        ));
+    }
     if let Some(app) = found.app.as_ref().filter(|a| a.protection().is_none()) {
         buttons.push(button(
             "Desinstalar",
@@ -102,7 +111,7 @@ mod tests {
             name: "OBS Studio".into(),
             ..Default::default()
         };
-        let with_app = hunted_view(&found(Some(obs)));
+        let with_app = hunted_view(&found(Some(obs)), &Model::default());
         assert_eq!(with_app.title, "OBS Studio");
         assert!(with_app.body.contains("Es parte de OBS Studio"));
         assert_eq!(
@@ -118,12 +127,47 @@ mod tests {
             with_app.buttons[3].action,
             Some(Action::AskUninstall("HKLM:OBS".into()))
         );
-        let without = hunted_view(&found(None));
+        let without = hunted_view(&found(None), &Model::default());
         assert_eq!(without.title, "obs64.exe");
         assert_eq!(
             labels(&without),
             ["Cancelar", "Abrir carpeta", "Cerrar programa"]
         );
         assert_eq!(without.cancel, Action::CloseHunt);
+    }
+
+    #[test]
+    fn a_program_that_starts_with_windows_offers_to_take_that_entry_out() {
+        use purifex_domain::startup::{StartupItem, StartupKind};
+        let entry = |kind, command: &str| StartupItem {
+            id: format!("{kind:?}"),
+            name: "OBS".into(),
+            command: command.into(),
+            kind,
+            place: "k".into(),
+            enabled: true,
+            can_toggle: true,
+            needs_admin: false,
+            app: None,
+        };
+        let mut m = Model {
+            startup_quick: Some(vec![entry(
+                StartupKind::Registry,
+                r#""D:\Games\OBS Studio\bin\obs64.exe" --tray"#,
+            )]),
+            ..Model::default()
+        };
+        let v = hunted_view(&found(None), &m);
+        assert!(v
+            .buttons
+            .iter()
+            .any(|b| b.action == Some(Action::AskRemoveStartup("Registry".into()))));
+        // A service is only shown: nothing to take out.
+        m.startup_quick = Some(vec![entry(
+            StartupKind::Service,
+            r"D:\Games\OBS Studio\bin\obs64.exe",
+        )]);
+        let v = hunted_view(&found(None), &m);
+        assert!(!v.buttons.iter().any(|b| b.label == "Quitar del inicio"));
     }
 }

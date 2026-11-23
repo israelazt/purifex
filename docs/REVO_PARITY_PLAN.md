@@ -390,6 +390,22 @@ una app protegida, una de la Tienda (no tiene entrada propia) y una entrada que 
 4. Vistas: lista y detalles; la elección se recuerda.
 5. Leer `InstallDate`, `URLInfoAbout`, `HelpLink` del registro (hoy no se leen).
 
+## Cierre de pendientes (2026-11-23)
+
+Hecho tras R9:
+- **R8, prueba real:** una entrada propia en `HKCU\...\Run` se ve en el lector, se desactiva y activa (Windows la registra con el byte 3 en `StartupApproved`), se quita a una cuarentena y se devuelve igual. No deja nada en el registro (comprobado a mano).
+- **R8, «Devolver»:** la página Inicio ofrece devolver la última entrada quitada.
+- **R8, «arranca con Windows» en Apps:** el detalle de cada app dice si arranca con Windows y cómo (lectura rápida, sin tareas, que tardan segundos).
+- **R5, «Detener y quitar del inicio»:** el Cazador ofrece «Quitar del inicio» si el programa (o su app) tiene una entrada que se puede quitar; los servicios solo se muestran.
+- **Consola:** `purifex apps startup|logs|junk [--json]`, solo lectura.
+- Probado de verdad en esta máquina (solo lectura): `apps junk` encontró unos 7 GB en `Temp` (464 elementos), y `apps startup` lista las entradas reales.
+
+Sigue abierto, y por qué:
+- **Necesita administrador** (yo no puedo elevarme): el punto de restauración que bloquea la ventana unos segundos (R2), el borrado al reiniciar de verdad (R3), cambiar una entrada de `HKLM` o `SoftwareDistribution` (R8, R9).
+- **Necesita una prueba a mano con un instalador o una app real:** R6 (instalar con monitor y quitar), R7 (lote con dos desinstaladores reales), R5 (arrastrar la mira con el ratón), R9 (limpiar `Temp` de verdad: son archivos del usuario y se mueven a la cuarentena).
+- **Sin hacer, a propósito:** atajo de teclado y accesos directos del escritorio o la bandeja en el Cazador (no está claro que aporten); colmenas de otros usuarios (recomendado no tocar); plegar grupos de la lista (cosmético); lote por consola; limpiadores de navegador, rastros de uso, complementos y borrado irrecuperable (decisión del usuario); ETW del monitor.
+- **Comparación con Revo en una máquina virtual** (criterio global 2 del plan): no hecha.
+
 ---
 
 ## Orden y por qué

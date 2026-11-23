@@ -28,11 +28,16 @@ pub enum Outcome {
     Quarantine(QuarantineInfo),
     Purge(PurgeReport),
     Message(String),
+    Startup(Vec<purifex_domain::startup::StartupItem>),
+    Logs(Vec<purifex_domain::monitor::InstallLog>),
+    Junk(Vec<purifex_domain::junk::JunkItem>),
     Fixes(Vec<Proposal>),
     Fix(Box<FixReport>),
     History(Vec<HistoryEntry>),
     Help,
 }
+
+use crate::outcome_lists as lists;
 
 impl Outcome {
     pub fn to_text(&self) -> String {
@@ -53,6 +58,9 @@ impl Outcome {
             Self::Quarantine(info) => info.to_text(),
             Self::Purge(report) => report.to_text(),
             Self::Message(text) => text.clone(),
+            Self::Startup(items) => lists::startup_to_text(items),
+            Self::Logs(logs) => lists::logs_to_text(logs),
+            Self::Junk(items) => lists::junk_to_text(items),
             Self::Fixes(proposals) => proposals_to_text(proposals),
             Self::Fix(report) => report.to_text(),
             Self::History(entries) => history_to_text(entries),
@@ -79,6 +87,9 @@ impl Outcome {
             Self::Quarantine(info) => serde_json::json!({ "quarantine": info }),
             Self::Purge(report) => return report.to_json(),
             Self::Message(text) => serde_json::json!({ "message": text }),
+            Self::Startup(items) => lists::startup_to_json(items),
+            Self::Logs(logs) => serde_json::json!({ "logs": logs }),
+            Self::Junk(items) => lists::junk_to_json(items),
             Self::Fixes(proposals) => serde_json::json!({ "fixes": proposals }),
             Self::Fix(report) => return report.to_json(),
             Self::History(entries) => serde_json::json!({ "history": entries }),

@@ -36,6 +36,8 @@ pub struct Cleaning {
     backups: Option<Box<dyn Backups>>,
     processes: Option<Box<dyn Processes>>,
     mode: ScanMode,
+    /// While a batch runs: the restore point taken once for all of it.
+    batch_point: Option<RestorePointOutcome>,
 }
 
 /// The app that `query` names (its id, its name, or a part of it that only one has).
@@ -101,6 +103,7 @@ impl Cleaning {
             backups: None,
             processes: None,
             mode: ScanMode::default(),
+            batch_point: None,
         }
     }
 
@@ -132,7 +135,30 @@ impl Cleaning {
         self
     }
 
+    /// One restore point for a batch of `count` apps, taken now; the uninstallers that follow
+    /// do not ask again until `end_batch`. Returns what Windows said.
+    pub fn begin_batch(&mut self, count: usize) -> RestorePointOutcome {
+        let outcome = match &self.restore_points {
+            None => RestorePointOutcome::NotAsked,
+            Some(points) => {
+                match points.create(&format!("Purifex: antes de desinstalar {count} apps")) {
+                    Ok(()) => RestorePointOutcome::Requested,
+                    Err(why) => RestorePointOutcome::Unavailable(why),
+                }
+            }
+        };
+        self.batch_point = Some(outcome.clone());
+        outcome
+    }
+
+    pub fn end_batch(&mut self) {
+        self.batch_point = None;
+    }
+
     fn restore_point_for(&self, app: &InstalledApp) -> RestorePointOutcome {
+        if let Some(taken) = &self.batch_point {
+            return taken.clone();
+        }
         match &self.restore_points {
             None => RestorePointOutcome::NotAsked,
             Some(points) => {
@@ -484,6 +510,29 @@ mod tests {
             1,
             "the protected one was not started"
         );
+    }
+
+    #[test]
+    fn a_batch_asks_for_one_restore_point_and_each_uninstaller_reuses_it() {
+        use crate::testing::FakeRestorePoints;
+        let (c, _) = cleaning(vec![]);
+        let points = FakeRestorePoints::default();
+        let mut c = c.with_restore_points(Box::new(points.clone()));
+        let apps = vec![app("Discord", "Discord Inc."), app("Git", "Git Inc.")];
+        assert_eq!(c.begin_batch(2), RestorePointOutcome::Requested);
+        for name in ["Discord", "Git"] {
+            let started = c.uninstall(&apps, name).unwrap();
+            assert_eq!(started.restore_point, RestorePointOutcome::Requested);
+        }
+        assert_eq!(points.asked.borrow().len(), 1, "asked once for both");
+        assert_eq!(
+            points.asked.borrow()[0],
+            "Purifex: antes de desinstalar 2 apps"
+        );
+        // After the batch each uninstaller asks for its own again.
+        c.end_batch();
+        c.uninstall(&apps, "Git").unwrap();
+        assert_eq!(points.asked.borrow().len(), 2);
     }
 
     #[test]

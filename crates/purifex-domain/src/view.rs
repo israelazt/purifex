@@ -54,6 +54,8 @@ pub enum Confirm {
     CloseProcesses(String),
     /// Close the program (by its pid) the sight was dropped on.
     CloseHunted(u32),
+    /// Uninstall the checked apps one after the other.
+    UninstallMarked,
 }
 
 /// Programs of an app that is gone that still run from its folder.
@@ -146,6 +148,10 @@ pub struct Model {
     /// What the last removal could not take, by `Trace::key`, with why. It starts unchecked and
     /// «everything» leaves it alone, so the same list does not come back to fail again.
     pub stuck: Vec<(String, String)>,
+    /// Apps checked in the list to uninstall together (their ids), in the order checked.
+    pub marked: Vec<String>,
+    /// The batch being run, or the summary of the one that just finished.
+    pub batch: Option<crate::batch::Batch>,
     /// What an apps action did, in a sentence.
     pub message: Option<String>,
     /// Something is being read: the picture says so before the wait.
@@ -218,6 +224,14 @@ pub enum Action {
     /// Puts back everything of an app that was cleaned: its traces from the quarantine and its
     /// registration from the copy (the app, and the file of the copy).
     RestoreAll(String, String),
+    /// Checks or unchecks an app of the list for the batch, by its id.
+    ToggleMark(String),
+    /// Unchecks every app of the list.
+    ClearMarks,
+    /// Asks to uninstall the checked apps one after the other: the user is asked to confirm.
+    AskUninstallMarked,
+    /// Closes the summary of the batch.
+    CloseBatch,
     /// Asks to force the removal of an installed app, by its id.
     AskForceUninstall(String),
     /// Opens (or closes) the details of an app of the list, by its id.

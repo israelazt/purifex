@@ -11,6 +11,7 @@ mod apps_filters;
 mod apps_page;
 mod apps_row;
 mod backups_panel;
+mod batch_panel;
 pub mod canvas;
 mod compare_panel;
 mod context_menu;

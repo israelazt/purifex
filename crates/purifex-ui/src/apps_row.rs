@@ -9,7 +9,10 @@ use purifex_domain::view::Action;
 
 use crate::canvas::Canvas;
 use crate::theme::{self, Tone};
-use crate::widgets::{icon_box, tag};
+use crate::widgets::{checkbox, icon_box, tag};
+
+/// The room the check at the left of a row takes.
+pub(crate) const CHECK_W: f32 = 32.0;
 
 /// The height of a row, by how the list is shown.
 pub(crate) fn row_height(view: AppView) -> f32 {
@@ -19,7 +22,7 @@ pub(crate) fn row_height(view: AppView) -> f32 {
     }
 }
 
-pub(crate) fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect, view: AppView) {
+pub(crate) fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect, view: AppView, marked: bool) {
     let hover = c.hover(bar);
     if hover > 0.01 {
         c.fill(bar, 0.0, theme::TEXT.with_alpha(0.02 * hover));
@@ -36,9 +39,10 @@ pub(crate) fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect, view: AppVi
     let mid = bar.h / 2.0;
     let compact = view == AppView::List;
     let icon = if compact { 28.0 } else { 40.0 };
+    mark_box(c, app, bar, marked);
     icon_box(
         c,
-        bar.x + 16.0,
+        bar.x + 16.0 + CHECK_W,
         bar.y + mid - icon / 2.0,
         icon,
         "package",
@@ -72,12 +76,22 @@ pub(crate) fn app_row(c: &mut Canvas, app: &InstalledApp, bar: Rect, view: AppVi
     }
 }
 
+/// The check that marks an app for the batch; an app that may not be uninstalled has none.
+fn mark_box(c: &mut Canvas, app: &InstalledApp, bar: Rect, marked: bool) {
+    if app.protection().is_some() {
+        return;
+    }
+    let spot = Rect::new(bar.x + 8.0, bar.y + bar.h / 2.0 - 14.0, 28.0, 28.0);
+    checkbox(c, spot.x + 4.0, spot.y + 4.0, marked);
+    c.hit(spot, Action::ToggleMark(app.id.clone()));
+}
+
 /// The name of the app and, below it, its publisher and version.
 fn app_labels(c: &mut Canvas, app: &InstalledApp, bar: Rect, compact: bool) {
-    let room = bar.w - if compact { 480.0 } else { 600.0 };
+    let room = bar.w - CHECK_W - if compact { 480.0 } else { 600.0 };
     let top = if compact { bar.h / 2.0 - 9.0 } else { 10.0 };
     c.text_cut(
-        bar.x + 70.0,
+        bar.x + 70.0 + CHECK_W,
         bar.y + top,
         &app.name,
         theme::sans(13.5, theme::TEXT).bold(),
@@ -96,7 +110,7 @@ fn app_labels(c: &mut Canvas, app: &InstalledApp, bar: Rect, compact: bool) {
     .collect::<Vec<_>>()
     .join("  ");
     c.text_cut(
-        bar.x + 70.0,
+        bar.x + 70.0 + CHECK_W,
         bar.y + 32.0,
         detail.trim(),
         theme::mono(11.5, theme::TEXT_3),

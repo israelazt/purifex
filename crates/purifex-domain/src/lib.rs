@@ -8,6 +8,7 @@ pub mod analysis;
 pub mod app_list;
 pub mod app_traces;
 pub mod apps;
+pub mod batch;
 pub mod cleanup_log;
 pub mod compare;
 pub mod date;

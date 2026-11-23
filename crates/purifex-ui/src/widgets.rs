@@ -13,6 +13,15 @@ pub fn dot(c: &mut Canvas, cx: f32, cy: f32, tone: Tone) {
     c.fill(Rect::new(cx - 3.5, cy - 3.5, 7.0, 7.0), 3.5, tone.color());
 }
 
+/// A 20 x 20 check: lit when checked, an empty square when not.
+pub fn checkbox(c: &mut Canvas, x: f32, y: f32, checked: bool) {
+    if checked {
+        c.icon("circle-check", x, y, 20.0, theme::ACCENT);
+    } else {
+        c.icon("square", x, y, 20.0, theme::TEXT_3);
+    }
+}
+
 /// A panel: the dark rectangle with a thin border that holds a section.
 pub fn panel(c: &mut Canvas, rect: Rect) {
     c.fill(rect, 8.0, theme::PANEL);

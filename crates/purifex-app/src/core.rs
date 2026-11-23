@@ -21,6 +21,7 @@ use crate::services::Services;
 
 mod actions;
 mod apps;
+mod batch;
 mod hunting;
 mod reading;
 
@@ -82,6 +83,10 @@ impl Core {
             Action::SearchUpdates => self.search_updates(),
             Action::OpenPage(url) => self.open_page(&url),
             Action::AskUninstall(id) => self.ask(Confirm::Uninstall(id)),
+            Action::ToggleMark(id) => self.toggle_mark(id),
+            Action::ClearMarks => self.model.marked.clear(),
+            Action::AskUninstallMarked => self.ask_uninstall_marked(),
+            Action::CloseBatch => self.model.batch = None,
             Action::AskClean(name) => self.ask(Confirm::Clean(name)),
             Action::AskCleanAll(name) => self.ask(Confirm::CleanAll(name)),
             Action::AskFix(id) => self.ask(Confirm::Apply(id)),
@@ -135,6 +140,7 @@ impl Core {
             Confirm::Apply(id) => self.services.apply_fix(&id, true, false),
             Confirm::Undo(seq) => self.services.undo_fix(seq, true),
             Confirm::Uninstall(id) => return self.uninstalled(&id),
+            Confirm::UninstallMarked => return self.batch_started(),
             Confirm::Clean(name) => return self.cleaned(&name, false),
             Confirm::CleanAll(name) => return self.cleaned(&name, true),
             Confirm::EmptyQuarantine => return self.quarantine_emptied(),
@@ -1970,5 +1976,151 @@ mod tests {
         // Another app starts clean.
         c.apply(Action::FindTraces("Other App".into()));
         assert!(c.model().stuck.is_empty());
+    }
+    /// Three apps installed (one of them the runtime Windows needs) and a core that looks for
+    /// nothing, to run batches.
+    fn batch_core() -> (
+        Core,
+        crate::testing::FakeApps,
+        std::rc::Rc<std::cell::RefCell<crate::testing::CleanLog>>,
+    ) {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        for name in ["Alpha", "Beta", "Gamma", "Microsoft .NET Runtime"] {
+            let mut app = fake_app(name);
+            if name.starts_with("Microsoft") {
+                app.publisher = Some("Microsoft Corporation".into());
+            }
+            installed.0.borrow_mut().push(app);
+        }
+        let (mut c, log) =
+            core_finding(&installed, crate::testing::FakeProcesses::default(), vec![]);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        (c, installed, log)
+    }
+
+    fn remove(installed: &crate::testing::FakeApps, name: &str) {
+        installed.0.borrow_mut().retain(|a| a.name != name);
+    }
+
+    fn tick_until(c: &mut Core, done: impl Fn(&Core) -> bool) {
+        for _ in 0..40 {
+            std::thread::sleep(Duration::from_millis(15));
+            c.tick();
+            if done(c) {
+                return;
+            }
+        }
+        panic!("it never got there");
+    }
+
+    #[test]
+    fn checked_apps_are_uninstalled_one_after_the_other_and_a_summary_ends_it() {
+        let (mut c, installed, log) = batch_core();
+        for id in [
+            "HKLM64:Alpha",
+            "HKLM64:Gamma",
+            "HKLM64:Microsoft .NET Runtime",
+            "HKLM64:Nope",
+        ] {
+            c.apply(Action::ToggleMark(id.into()));
+        }
+        assert_eq!(
+            c.model().marked,
+            ["HKLM64:Alpha", "HKLM64:Gamma"],
+            "protected and unknown are not checked"
+        );
+        c.apply(Action::AskUninstallMarked);
+        assert_eq!(c.model().confirm, Some(Confirm::UninstallMarked));
+        c.apply(Action::Confirm);
+        assert!(c.model().marked.is_empty());
+        assert_eq!(log.borrow().launched, ["Alpha"], "one at a time");
+        assert_eq!(
+            c.model().batch.as_ref().unwrap().current.as_deref(),
+            Some("Alpha")
+        );
+        assert!(c.model().waiting && c.batch_running());
+        remove(&installed, "Alpha");
+        tick_until(&mut c, |_| log.borrow().launched.len() == 2);
+        assert_eq!(log.borrow().launched, ["Alpha", "Gamma"]);
+        assert!(
+            !c.model().traces_open && c.model().traces.is_none(),
+            "the traces wait for the end"
+        );
+        remove(&installed, "Gamma");
+        tick_until(&mut c, |c| !c.batch_running());
+        let batch = c.model().batch.as_ref().unwrap();
+        assert!(batch.finished() && !batch.cancelled);
+        assert_eq!(batch.uninstalled().collect::<Vec<_>>(), ["Alpha", "Gamma"]);
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("2 de 2 apps desinstaladas"));
+        assert!(!c.model().waiting && c.watching.is_none());
+        c.apply(Action::CloseBatch);
+        assert!(c.model().batch.is_none());
+    }
+
+    #[test]
+    fn giving_up_a_batch_leaves_the_rest_unstarted_and_says_so() {
+        let (mut c, _installed, log) = batch_core();
+        for id in ["HKLM64:Alpha", "HKLM64:Beta", "HKLM64:Gamma"] {
+            c.apply(Action::ToggleMark(id.into()));
+        }
+        c.apply(Action::AskUninstallMarked);
+        c.apply(Action::Confirm);
+        c.apply(Action::StopWaiting);
+        assert_eq!(log.borrow().launched, ["Alpha"], "nothing else was started");
+        let batch = c.model().batch.as_ref().unwrap();
+        assert!(batch.finished() && batch.cancelled);
+        assert!(!c.model().waiting);
+        let said = c.model().message.as_deref().unwrap();
+        assert!(
+            said.contains("2 sin empezar") && said.contains("1 sigue instalada"),
+            "{said}"
+        );
+    }
+
+    #[test]
+    fn a_wait_that_runs_out_moves_on_to_the_next_app_and_nothing_checked_asks_nothing() {
+        let (mut c, installed, log) = batch_core();
+        c.apply(Action::AskUninstallMarked);
+        assert!(
+            c.model().confirm.is_none(),
+            "nothing checked, nothing to confirm"
+        );
+        c.apply(Action::ToggleMark("HKLM64:Alpha".into()));
+        c.apply(Action::ToggleMark("HKLM64:Alpha".into()));
+        assert!(c.model().marked.is_empty(), "checking twice unchecks");
+        for id in ["HKLM64:Alpha", "HKLM64:Beta"] {
+            c.apply(Action::ToggleMark(id.into()));
+        }
+        c.apply(Action::ClearMarks);
+        assert!(c.model().marked.is_empty());
+        for id in ["HKLM64:Alpha", "HKLM64:Beta"] {
+            c.apply(Action::ToggleMark(id.into()));
+        }
+        c.apply(Action::AskUninstallMarked);
+        c.apply(Action::Confirm);
+        let long_ago = Instant::now() - WATCH_FOR - Duration::from_secs(1);
+        let (app, _, _) = c.watching.take().unwrap();
+        c.watching = Some((app, long_ago, long_ago));
+        assert!(c.tick());
+        assert_eq!(
+            log.borrow().launched,
+            ["Alpha", "Beta"],
+            "Beta starts although Alpha is still there"
+        );
+        remove(&installed, "Beta");
+        tick_until(&mut c, |c| !c.batch_running());
+        let said = c.model().message.as_deref().unwrap();
+        assert!(
+            said.contains("1 de 2 apps desinstaladas") && said.contains("1 sigue instalada"),
+            "{said}"
+        );
     }
 }

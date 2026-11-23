@@ -12,8 +12,9 @@ use purifex_domain::view::{Action, Model};
 
 use crate::apps_detail::{app_detail, DETAIL_H};
 use crate::apps_filters::app_filters;
-use crate::apps_row::{app_row, row_height};
+use crate::apps_row::{app_row, row_height, CHECK_W};
 use crate::backups_panel::backups_panel;
+use crate::batch_panel::batch_panel;
 use crate::canvas::Canvas;
 use crate::drivers_page::search_box;
 use crate::in_use_panel::in_use_panel;
@@ -166,17 +167,18 @@ fn sort_head(c: &mut Canvas, m: &Model, head: Rect, x: f32, text: &str, sort: Ap
     );
 }
 
-fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
-    let apps = m.visible_apps();
-    let open = |app: &InstalledApp| m.app_selected.as_deref() == Some(app.id.as_str());
-    let opened = apps.iter().filter(|a| open(a)).count() as f32;
-    let row_h = row_height(m.app_view);
-    let height = 48.0 + apps.len().max(1) as f32 * row_h + opened * DETAIL_H;
-    let rect = Rect::new(area.x, y, area.w, height);
-    panel(c, rect);
+/// The headings of the table; each one that is a column orders the list.
+fn table_head(c: &mut Canvas, m: &Model, rect: Rect) {
     let head = Rect::new(rect.x, rect.y, rect.w, 48.0);
     let label = theme::eyebrow(theme::TEXT_3);
-    sort_head(c, m, head, rect.x + 16.0, "APP Y EDITOR", AppSort::Name);
+    sort_head(
+        c,
+        m,
+        head,
+        rect.x + 16.0 + CHECK_W,
+        "APP Y EDITOR",
+        AppSort::Name,
+    );
     if m.app_view == AppView::Details {
         sort_head(c, m, head, rect.right() - 450.0, "INSTALADA", AppSort::Date);
     }
@@ -189,10 +191,28 @@ fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
         rect.y + 48.0,
         theme::LINE,
     );
+}
+
+fn table(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
+    let apps = m.visible_apps();
+    let open = |app: &InstalledApp| m.app_selected.as_deref() == Some(app.id.as_str());
+    let opened = apps.iter().filter(|a| open(a)).count() as f32;
+    let row_h = row_height(m.app_view);
+    let height = 48.0 + apps.len().max(1) as f32 * row_h + opened * DETAIL_H;
+    let rect = Rect::new(area.x, y, area.w, height);
+    panel(c, rect);
+    table_head(c, m, rect);
     let mut row_y = rect.y + 48.0;
     for (i, app) in apps.iter().enumerate() {
         c.reveal(if i < 12 { 18 * i as u64 } else { 0 });
-        app_row(c, app, Rect::new(rect.x, row_y, rect.w, row_h), m.app_view);
+        let marked = m.marked.contains(&app.id);
+        app_row(
+            c,
+            app,
+            Rect::new(rect.x, row_y, rect.w, row_h),
+            m.app_view,
+            marked,
+        );
         row_y += row_h;
         if open(app) {
             app_detail(c, app, Rect::new(rect.x, row_y, rect.w, DETAIL_H));
@@ -283,6 +303,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
     if let Some(name) = &m.uninstalled {
         y += cleanup_panel(c, m, name, area, y);
     }
+    y += batch_panel(c, m, area, y);
     y += running_panel(c, m, area, y);
     y += in_use_panel(c, m, area, y);
     y += quarantine_panel(c, m, area, y);
@@ -376,6 +397,60 @@ mod tests {
         assert!(!actions
             .iter()
             .any(|a| matches!(a, Action::AskUninstall(id) if id.contains(".NET"))));
+    }
+
+    #[test]
+    fn only_apps_that_may_be_uninstalled_have_a_check_and_checked_ones_get_the_bar() {
+        use purifex_domain::batch::{Batch, BatchEntry, BatchResult};
+        let (_, actions) = render(&model());
+        assert!(actions.contains(&Action::ToggleMark("HKLM64:Discord".into())));
+        assert!(!actions
+            .iter()
+            .any(|a| matches!(a, Action::ToggleMark(id) if id.contains(".NET"))));
+        assert!(
+            !actions.contains(&Action::AskUninstallMarked),
+            "no bar until one is checked"
+        );
+        let mut m = model();
+        m.marked = vec!["HKLM64:Discord".into()];
+        let (texts, actions) = render(&m);
+        assert!(texts.contains(&"1 app marcada".to_string()));
+        assert!(
+            actions.contains(&Action::AskUninstallMarked) && actions.contains(&Action::ClearMarks)
+        );
+        // Running: the only way out is to stop waiting.
+        let mut batch = Batch::new(vec!["HKLM64:B".into()], None);
+        batch.current = Some("Alpha".into());
+        m.batch = Some(batch.clone());
+        let (texts, actions) = render(&m);
+        assert!(texts.contains(&"Desinstalando 1 de 1".to_string()));
+        assert!(actions.contains(&Action::StopWaiting));
+        assert!(
+            !actions.contains(&Action::AskUninstallMarked),
+            "no second batch while one runs"
+        );
+        // Done: each app says what became of it, and the uninstalled ones offer their traces.
+        batch.queue.clear();
+        batch.current = None;
+        batch.total = 2;
+        batch.done = vec![
+            BatchEntry {
+                name: "Alpha".into(),
+                result: BatchResult::Uninstalled,
+            },
+            BatchEntry {
+                name: "Beta".into(),
+                result: BatchResult::Failed("sin desinstalador".into()),
+            },
+        ];
+        m.batch = Some(batch);
+        let (texts, actions) = render(&m);
+        assert!(texts
+            .iter()
+            .any(|t| t.contains("1 de 2 apps desinstaladas")));
+        assert!(actions.contains(&Action::FindTraces("Alpha".into())));
+        assert!(!actions.contains(&Action::FindTraces("Beta".into())));
+        assert!(actions.contains(&Action::CloseBatch));
     }
 
     #[test]

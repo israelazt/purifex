@@ -11,7 +11,7 @@ use purifex_domain::view::{Action, Confirm, Model};
 use crate::canvas::Canvas;
 use crate::theme::{self, Tone};
 use crate::traces_dialog::traces_view;
-use crate::widgets::{button, button_width, icon_box, panel, tag};
+use crate::widgets::{button, button_width, checkbox, icon_box, panel, tag};
 
 /// How long a dialog takes to appear or go away, in ms.
 pub const DIALOG_MS: u64 = 190;
@@ -147,6 +147,7 @@ fn page_view(m: &Model) -> Option<DialogView> {
             "x",
         )),
         (Some(Confirm::Uninstall(id)), _) => Some(uninstall_view(m, id)),
+        (Some(Confirm::UninstallMarked), _) => Some(crate::batch_panel::question(m)),
         (_, Some(report)) => Some(traces_view(m, report)),
         _ => None,
     }
@@ -197,14 +198,6 @@ fn empty_quarantine_body(m: &Model) -> String {
     format!(
         "Se borran para siempre {held} que quitaste de tu PC. Después ya no podrás devolverlos con «purifex apps restore»."
     )
-}
-
-fn checkbox(c: &mut Canvas, x: f32, y: f32, checked: bool) {
-    if checked {
-        c.icon("circle-check", x, y, 20.0, theme::ACCENT);
-    } else {
-        c.icon("square", x, y, 20.0, theme::TEXT_3);
-    }
 }
 
 fn row(c: &mut Canvas, r: &Row, bar: Rect) {

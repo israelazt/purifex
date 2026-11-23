@@ -286,6 +286,19 @@ Para apps rotas, sin desinstalador o ya borradas a medias.
    resumen al final con lo hecho y lo fallado.
 3. Un solo punto de restauración para todo el lote.
 
+**Hecho (2026-11-23):**
+- **Casillas y barra:** cada app que se puede desinstalar tiene una casilla a la izquierda (las protegidas no la tienen y el núcleo tampoco las deja marcar). Con apps marcadas aparece la barra «N apps marcadas» con «Desinstalar N» y «Quitar marcas». Pide confirmación con los nombres.
+- **Cola:** `core/batch.rs`. Se lanza el desinstalador de la primera; cuando la app desaparece de la lista (o se acaba la espera de 30 min) se anota y sigue la siguiente. Uno que no se puede empezar se anota con su motivo y no frena a los demás. Cada app pasa por `uninstall_app`, así que cada una guarda su copia del registro (R2).
+- **Un solo punto de restauración:** `Cleaning::begin_batch` lo pide una vez y los desinstaladores del lote reutilizan ese resultado hasta `end_batch`.
+- **Resumen:** al terminar, un panel dice cuántas se desinstalaron, cuántas no se pudieron empezar y cuántas siguen instaladas, una línea por app y «Buscar restos» en cada desinstalada. «Dejar de esperar» durante el lote deja lo que corre como está y no empieza las que faltan (el resumen cuenta las «sin empezar»).
+- Los restos no se abren solos durante el lote (un diálogo por app estorbaría); se buscan desde el resumen.
+- Pruebas: cola de punta a punta con apps falsas, dejar de esperar, espera agotada, un solo punto de restauración, el panel y la pregunta. Capturas con `ui_states batch <marked|ask|running|done>`.
+
+Pendiente, anotado:
+- **Sin probar con desinstaladores reales:** solo con falsos. Falta una pasada a mano con dos apps de verdad.
+- **Orden fijo:** el de marcado; no se puede reordenar la cola.
+- **Por consola** no hay lote (`purifex apps uninstall` sigue siendo de una en una).
+
 ## R8 · Gestor de inicio (autorun)
 
 1. **Lectura:** `Run`/`RunOnce` (HKCU, HKLM, WOW6432), carpetas Inicio, servicios de arranque

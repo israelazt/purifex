@@ -3,6 +3,7 @@
 
 use std::time::Instant;
 
+use purifex_domain::batch::BatchResult;
 use purifex_domain::scan_mode::ScanMode;
 use purifex_domain::view::{InUse, Model};
 
@@ -315,6 +316,9 @@ impl Core {
 
     /// The person does not want to wait any more: nothing else changes.
     pub(super) fn stop_waiting(&mut self) {
+        if self.batch_running() {
+            return self.batch_cancelled();
+        }
         self.watching = None;
         self.model.waiting = false;
         self.expect_reading();
@@ -330,6 +334,10 @@ impl Core {
         };
         if started.elapsed() > WATCH_FOR {
             let name = app.name.clone();
+            if self.batch_running() {
+                self.batch_step(BatchResult::StillInstalled);
+                return true;
+            }
             self.watching = None;
             self.model.waiting = false;
             self.model.message = Some(format!(
@@ -348,10 +356,14 @@ impl Core {
         if now.iter().any(|a| a.id == app.id) {
             return false;
         }
-        self.watching = None;
-        self.model.waiting = false;
         self.model.apps = Some(now);
         let _ = self.services.note_uninstalled(&app);
+        if self.batch_running() {
+            self.batch_step(BatchResult::Uninstalled);
+            return true;
+        }
+        self.watching = None;
+        self.model.waiting = false;
         self.model.uninstalled = Some(app.name.clone());
         self.model.traces = None;
         self.model.message = Some(format!(

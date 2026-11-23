@@ -103,6 +103,7 @@ mod states {
         match state {
             "blocked" | "confirm" | "history" | "undo" => fixes_state(ready, state),
             "apps" => apps_state(ready, extra),
+            "batch" => batch_state(apps_state(ready, None), extra.unwrap_or("marked")),
             "kdenlive" => kdenlive_state(ready),
             "kdenlive-admin" => Model {
                 elevated: Some(false),
@@ -241,6 +242,50 @@ mod states {
             }
             Some("unchecked") => {
                 model.unchecked = vec![r"C:\Users\yo\AppData\Local\Programs\Inkscape".into()];
+            }
+            _ => {}
+        }
+        model
+    }
+
+    /// A batch that ended with one app of each result.
+    fn finished_batch() -> purifex_domain::batch::Batch {
+        use purifex_domain::batch::{Batch, BatchEntry, BatchResult};
+        let mut batch = Batch::new(vec![], Some("Se pidió un punto de restauración.".into()));
+        batch.total = 3;
+        let entry = |name: &str, result| BatchEntry {
+            name: name.into(),
+            result,
+        };
+        batch.done = vec![
+            entry("Discord", BatchResult::Uninstalled),
+            entry("GIMP 2.10", BatchResult::StillInstalled),
+            entry("Kdenlive", BatchResult::Failed("sin desinstalador".into())),
+        ];
+        batch
+    }
+
+    /// Uninstalling several apps: two checked (`marked`), the question (`ask`), the first
+    /// one running (`running`) or the summary (`done`).
+    fn batch_state(mut model: Model, step: &str) -> Model {
+        use purifex_domain::batch::Batch;
+        (model.traces_open, model.uninstalled, model.traces) = (false, None, None);
+        model.message = None;
+        let ids = ["HKLM64:Discord", "HKLM64:GIMP 2.10"];
+        model.marked = ids.map(String::from).to_vec();
+        model.confirm = (step == "ask").then_some(Confirm::UninstallMarked);
+        match step {
+            "running" => {
+                let mut batch = Batch::new(vec![ids[1].into()], None);
+                batch.total = 2;
+                batch.current = Some("Discord".into());
+                model.batch = Some(batch);
+                model.marked.clear();
+                model.waiting = true;
+            }
+            "done" => {
+                model.batch = Some(finished_batch());
+                model.marked.clear();
             }
             _ => {}
         }

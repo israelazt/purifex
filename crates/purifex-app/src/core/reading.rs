@@ -62,7 +62,9 @@ impl Core {
             self.model.today = Some(self.services.today());
             if let Some(apps) = read(self.services.apps(), "apps", errors) {
                 let old = self.model.apps.replace(apps);
-                if let Some(gone) = old.as_deref().and_then(|o| self.vanished(o)) {
+                // A batch looks for the traces at its end, app by app: not here.
+                let gone = old.as_deref().filter(|_| !self.batch_running());
+                if let Some(gone) = gone.and_then(|o| self.vanished(o)) {
                     self.model.finding = Some(gone);
                 }
             }

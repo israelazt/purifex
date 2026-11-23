@@ -108,6 +108,7 @@ mod states {
                 app_filter: purifex_domain::app_list::AppFilter::Store,
                 ..apps_state(ready, None)
             },
+            "wizard" => wizard_state(apps_state(ready, None), extra.unwrap_or("review")),
             "junk" => junk_state(ready, extra.unwrap_or("list")),
             "startup" => startup_state(ready, extra.unwrap_or("list")),
             "monitor" => monitor_state(apps_state(ready, None), extra.unwrap_or("logs")),
@@ -250,6 +251,35 @@ mod states {
             }
             Some("unchecked") => {
                 model.unchecked = vec![r"C:\Users\yo\AppData\Local\Programs\Inkscape".into()];
+            }
+            _ => {}
+        }
+        model
+    }
+
+    /// The window that walks through removing Inkscape: `waiting` (step 1), `finding` (2),
+    /// `review` (3, the list of traces) or `done` (4).
+    fn wizard_state(mut model: Model, step: &str) -> Model {
+        use purifex_domain::view::Wizard;
+        model.wizard = Some(Wizard::new("Inkscape"));
+        match step {
+            "waiting" => {
+                (model.traces, model.traces_open, model.waiting) = (None, false, true);
+            }
+            "finding" => {
+                (model.traces, model.traces_open) = (None, false);
+                model.finding = Some("Inkscape".into());
+            }
+            "done" => {
+                (model.traces, model.traces_open) = (None, false);
+                model.in_use = Some(purifex_domain::view::InUse {
+                    app: "Inkscape".into(),
+                    items: 2,
+                });
+                model.wizard = Some(Wizard {
+                    app: "Inkscape".into(),
+                    done: Some("Se quitaron 14 restos de Inkscape a la cuarentena (2 no se pudieron quitar). Si algo hacía falta, «Devolver todo» lo pone otra vez en su sitio.".into()),
+                });
             }
             _ => {}
         }

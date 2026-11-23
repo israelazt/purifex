@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use purifex_domain::batch::BatchResult;
 use purifex_domain::scan_mode::ScanMode;
-use purifex_domain::view::{InUse, Model};
+use purifex_domain::view::{InUse, Model, Wizard};
 
 use super::{Core, WATCH_EVERY, WATCH_FOR};
 
@@ -44,6 +44,7 @@ impl Core {
                 ));
                 (self.model.uninstalled, self.model.traces) = (Some(app.name.clone()), None);
                 self.model.traces_open = false;
+                self.model.wizard = Some(Wizard::new(app.name.clone()));
                 self.model.waiting = true;
                 // From now on the list is read now and then: when the app is gone the
                 // uninstaller has finished and its traces are looked for.
@@ -75,28 +76,7 @@ impl Core {
     /// Removes the traces of an app to the quarantine: all of them, or only the ones
     /// the user left checked.
     pub(super) fn cleaned(&mut self, name: &str, everything: bool) {
-        // «Everything» is everything that is not a guess; a guess goes only if it was checked.
-        let checked: Option<Vec<String>> = if everything {
-            self.model.traces.as_ref().map(|r| {
-                r.listed()
-                    .into_iter()
-                    .filter(|t| {
-                        let key = t.key();
-                        let stuck = self.model.stuck.iter().any(|(k, _)| *k == key);
-                        !stuck && (!t.evidence.is_guess() || !self.model.unchecked.contains(&key))
-                    })
-                    .map(|t| t.key())
-                    .collect()
-            })
-        } else {
-            self.model.traces.as_ref().map(|r| {
-                r.listed()
-                    .into_iter()
-                    .map(|t| t.key())
-                    .filter(|key| !self.model.unchecked.contains(key))
-                    .collect()
-            })
-        };
+        let checked = self.checked_traces(everything);
         if checked.as_ref().is_some_and(Vec::is_empty) {
             self.model.message = Some("No hay ningún resto marcado.".into());
             return;
@@ -104,17 +84,13 @@ impl Core {
         match self.services.clean_app(name, true, checked.as_deref()) {
             Ok(report) => {
                 (self.model.traces_open, self.model.unchecked) = (false, Vec::new());
-                let (done, failed) = (report.removed.len(), report.failed.len());
                 // What failed now is added to what failed before for this app: it stays left alone.
                 for (t, why) in &report.failed {
                     let key = t.key();
                     self.model.stuck.retain(|(k, _)| *k != key);
                     self.model.stuck.push((key, why.clone()));
                 }
-                self.model.message = Some(format!(
-                    "Se quitaron {done} restos de {name} a la cuarentena{}. Para devolverlos: purifex apps restore N.",
-                    if failed > 0 { format!(" ({failed} no se pudieron quitar)") } else { String::new() }
-                ));
+                self.removal_said(name, report.removed.len(), report.failed.len());
                 (self.model.traces, self.model.apps) = (None, None);
                 self.model.in_use = (!report.in_use.is_empty()).then(|| InUse {
                     app: name.to_string(),
@@ -124,6 +100,45 @@ impl Core {
             }
             Err(error) => self.model.error = Some(error),
         }
+    }
+
+    /// The traces to remove, by key: all of them (but the guesses that were not checked and what
+    /// already failed), or only the checked ones. `None` when there is no list.
+    fn checked_traces(&self, everything: bool) -> Option<Vec<String>> {
+        let report = self.model.traces.as_ref()?;
+        let (stuck, off) = (&self.model.stuck, &self.model.unchecked);
+        Some(
+            report
+                .listed()
+                .into_iter()
+                .filter(|t| {
+                    let key = t.key();
+                    if !everything {
+                        return !off.contains(&key);
+                    }
+                    // «Everything» is everything that is not a guess; a guess goes only if checked.
+                    let failed_before = stuck.iter().any(|(k, _)| *k == key);
+                    !failed_before && (!t.evidence.is_guess() || !off.contains(&key))
+                })
+                .map(|t| t.key())
+                .collect(),
+        )
+    }
+
+    /// Says what a removal did: in the page's message and as the last step of the window.
+    fn removal_said(&mut self, name: &str, done: usize, failed: usize) {
+        let failures = match failed {
+            0 => String::new(),
+            n => format!(" ({n} no se pudieron quitar)"),
+        };
+        let start = format!("Se quitaron {done} restos de {name} a la cuarentena{failures}.");
+        self.model.message = Some(format!("{start} Para devolverlos: purifex apps restore N."));
+        self.model.wizard = Some(Wizard {
+            app: name.to_string(),
+            done: Some(format!(
+                "{start} Si algo hacía falta, «Devolver todo» lo pone otra vez en su sitio."
+            )),
+        });
     }
 
     /// Changes how much is proposed and looks again for the traces being shown.

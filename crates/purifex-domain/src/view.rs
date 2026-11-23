@@ -66,6 +66,25 @@ pub enum Confirm {
     CleanJunk,
 }
 
+/// The steps of getting rid of an app, shown in one window: uninstall, look for what it left,
+/// remove it, done. Which step it is on is read from the rest of the model (an uninstaller being
+/// waited for, a search going, a list of traces, a result), so it can never disagree with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Wizard {
+    pub app: String,
+    /// What the removal did, once it was done: the last step.
+    pub done: Option<String>,
+}
+
+impl Wizard {
+    pub fn new(app: impl Into<String>) -> Self {
+        Self {
+            app: app.into(),
+            done: None,
+        }
+    }
+}
+
 /// Programs of an app that is gone that still run from its folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Running {
@@ -175,6 +194,8 @@ pub struct Model {
     pub install_logs: Option<Vec<crate::monitor::InstallLog>>,
     /// The log whose contents are open (its id).
     pub log_open: Option<String>,
+    /// The window that walks through removing an app, when it is open.
+    pub wizard: Option<Wizard>,
     /// What an apps action did, in a sentence.
     pub message: Option<String>,
     /// Something is being read: the picture says so before the wait.
@@ -214,6 +235,8 @@ pub enum Action {
     OpenTraces,
     /// Closes the window of traces without removing anything.
     CloseTraces,
+    /// Closes the window that walks through removing an app (a wait or a search going on goes on).
+    CloseWizard,
     /// Asks to empty the quarantine: the user is asked to confirm, it cannot be undone.
     AskEmptyQuarantine,
     /// Puts back the traces of this app that are in the quarantine (it never overwrites,

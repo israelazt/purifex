@@ -2,7 +2,7 @@
 //! `Core::apply` only chooses which one.
 
 use purifex_domain::driver_offers::Offers;
-use purifex_domain::view::{Action, Confirm, Page};
+use purifex_domain::view::{Action, Confirm, Page, Wizard};
 
 use super::Core;
 
@@ -14,6 +14,7 @@ impl Core {
             Action::ClearMarks => self.model.marked.clear(),
             Action::AskUninstallMarked => self.ask_uninstall_marked(),
             Action::CloseBatch => self.model.batch = None,
+            Action::CloseWizard => self.close_traces(),
             Action::ToggleJunk(kind) => self.junk_toggled(kind),
             Action::AskCleanJunk => self.junk_clean_asked(),
             Action::ToggleStartup(id) => self.startup_toggled(&id),
@@ -55,6 +56,7 @@ impl Core {
         (m.candidates, m.apps, m.traces, m.quarantine) = (None, None, None, None);
         (m.fixes, m.history, m.confirm, m.notice) = (None, None, None, None);
         (m.startup, m.startup_quick, m.junk) = (None, None, None);
+        m.wizard = None;
         m.error = None;
         self.expect_reading();
     }
@@ -97,16 +99,20 @@ impl Core {
     }
 
     pub(super) fn open_traces(&mut self) {
-        self.model.traces_open = self
-            .model
-            .traces
-            .as_ref()
-            .is_some_and(|r| !r.proposed.is_empty());
+        let report = self.model.traces.as_ref();
+        self.model.traces_open = report.is_some_and(|r| !r.proposed.is_empty());
+        if let Some(app) = report
+            .filter(|_| self.model.traces_open)
+            .map(|r| r.app.clone())
+        {
+            self.model.wizard = Some(Wizard::new(app));
+        }
     }
 
     pub(super) fn close_traces(&mut self) {
         self.model.traces_open = false;
         self.model.confirm = None;
+        self.model.wizard = None;
     }
 
     pub(super) fn find_traces(&mut self, name: String) {
@@ -114,6 +120,7 @@ impl Core {
             self.model.stuck.clear();
         }
         (self.model.traces, self.model.message) = (None, None);
+        self.model.wizard = Some(Wizard::new(name.clone()));
         (self.model.uninstalled, self.model.finding) = (Some(name.clone()), Some(name));
         self.expect_reading();
     }

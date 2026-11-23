@@ -398,6 +398,7 @@ Hecho tras R9:
 - **R8, «arranca con Windows» en Apps:** el detalle de cada app dice si arranca con Windows y cómo (lectura rápida, sin tareas, que tardan segundos).
 - **R5, «Detener y quitar del inicio»:** el Cazador ofrece «Quitar del inicio» si el programa (o su app) tiene una entrada que se puede quitar; los servicios solo se muestran.
 - **Consola:** `purifex apps startup|logs|junk [--json]`, solo lectura.
+- **Asistente para quitar una app** (a petición del usuario, 2026-11-23): una sola ventana con cuatro pasos (Desinstalar, Buscar restos, Quitar restos, Listo) en lugar del aviso arriba de la lista. El paso se lee del estado real (desinstalador esperado, búsqueda en marcha, lista de restos, resultado), así que no puede desincronizarse. «Ocultar» esconde la ventana sin cancelar la espera, y la búsqueda que termine después la vuelve a abrir. El último paso ofrece «Borrar al reiniciar», «Cerrar programas» y «Devolver todo». Capturas: `ui_states wizard <waiting|finding|review|done>`.
 - Probado de verdad en esta máquina (solo lectura): `apps junk` encontró unos 7 GB en `Temp` (464 elementos), y `apps startup` lista las entradas reales.
 
 Sigue abierto, y por qué:

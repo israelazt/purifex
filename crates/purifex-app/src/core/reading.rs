@@ -128,6 +128,10 @@ impl Core {
         else {
             return;
         };
+        // A search that began without the window (the list saw the app gone) opens it now.
+        if self.model.wizard.as_ref().is_none_or(|w| w.app != name) {
+            self.model.wizard = Some(purifex_domain::view::Wizard::new(name));
+        }
         self.model.running = self.running_programs_of(name, report.still_installed);
         self.model.traces_open = !report.proposed.is_empty();
         // What only resembles the app is a guess: it starts unchecked, for the person to look at.

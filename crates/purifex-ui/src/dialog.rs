@@ -62,6 +62,8 @@ pub struct DialogView {
     pub buttons: Vec<Btn>,
     /// What Escape does.
     pub cancel: Action,
+    /// The steps drawn at the top, when the window is one of a way with several (removing an app).
+    pub steps: Option<crate::wizard_dialog::Steps>,
 }
 
 const CLEAN_BODY: &str = "Los restos se mueven a una cuarentena (las claves del registro se guardan antes) y quedan en el historial, donde puedes devolverlos. Incluye datos tuyos de la app, como ajustes y partidas guardadas.";
@@ -91,12 +93,14 @@ pub(crate) fn confirm_view(title: String, body: &str, yes: &str, icon: &'static 
             },
         ],
         cancel: Action::CancelConfirm,
+        steps: None,
     }
 }
 
 /// The dialog the model asks for, if any.
 pub fn view(m: &Model) -> Option<DialogView> {
     crate::hunter_dialog::view(m)
+        .or_else(|| crate::wizard_dialog::view(m))
         .or_else(|| crate::batch_panel::dialog(m))
         .or_else(|| crate::monitor_panel::dialog(m))
         .or_else(|| crate::startup_page::dialog(m))
@@ -284,7 +288,8 @@ fn height_of(c: &Canvas, v: &DialogView) -> f32 {
     } else {
         16.0 + list_metrics(v).view
     };
-    24.0 + 40.0 + 14.0 + body + list + 24.0 + 44.0 + 24.0
+    let steps = v.steps.map_or(0.0, |_| crate::wizard_dialog::STEPS_H);
+    steps + 24.0 + 40.0 + 14.0 + body + list + 24.0 + 44.0 + 24.0
 }
 
 /// Draws the dialog at `t` (0 gone, 1 settled) over a window of `width` x `height`, with its
@@ -309,6 +314,15 @@ pub fn draw(
     let rect = Rect::new((width - v.width) / 2.0, (height - h) / 2.0, v.width, h);
     c.fill(rect.inset(-6.0), 16.0, Color::rgb(0, 0, 0).with_alpha(0.35));
     panel(c, rect);
+    // The steps take the top; the rest of the window sits below them.
+    let rect = match v.steps {
+        Some(steps) => {
+            crate::wizard_dialog::draw_steps(c, rect, steps);
+            let h = crate::wizard_dialog::STEPS_H;
+            Rect::new(rect.x, rect.y + h, rect.w, rect.h - h)
+        }
+        None => rect,
+    };
     let y = heading_and_body(c, v, rect);
     if !v.rows.is_empty() {
         list(c, v, rect, y, scroll);

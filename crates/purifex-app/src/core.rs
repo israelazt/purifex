@@ -2516,4 +2516,82 @@ mod tests {
         assert_eq!(c.model().app_filter, AppFilter::All);
         assert!(c.model().query.is_empty());
     }
+
+    #[test]
+    fn removing_an_app_walks_through_one_window_from_the_uninstaller_to_the_result() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        installed.0.borrow_mut().push(fake_app("OBS Studio"));
+        let (mut c, _) = two_traces_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        assert!(c.model().wizard.is_none());
+        c.apply(Action::AskUninstall("HKLM64:OBS Studio".into()));
+        c.apply(Action::Confirm);
+        let w = c
+            .model()
+            .wizard
+            .clone()
+            .expect("step 1: the uninstaller runs");
+        assert_eq!(
+            (w.app.as_str(), w.done.is_none(), c.model().waiting),
+            ("OBS Studio", true, true)
+        );
+        // The uninstaller finishes: the search happens and the list of traces is step 3.
+        installed.0.borrow_mut().clear();
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(15));
+            c.tick();
+            if c.model().traces_open {
+                break;
+            }
+        }
+        assert!(c.model().traces_open && c.model().wizard.is_some());
+        c.apply(Action::AskCleanAll("OBS Studio".into()));
+        c.apply(Action::Confirm);
+        let done = c
+            .model()
+            .wizard
+            .clone()
+            .unwrap()
+            .done
+            .expect("the last step has the result");
+        assert!(
+            done.contains("Se quitaron 2 restos") && !done.contains("restore N"),
+            "{done}"
+        );
+        c.apply(Action::CloseWizard);
+        assert!(c.model().wizard.is_none());
+    }
+
+    #[test]
+    fn closing_the_window_hides_it_but_a_search_that_ends_later_opens_it_again() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        installed.0.borrow_mut().push(fake_app("OBS Studio"));
+        let (mut c, _) = two_traces_core(&installed);
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        c.apply(Action::AskUninstall("HKLM64:OBS Studio".into()));
+        c.apply(Action::Confirm);
+        c.apply(Action::CloseWizard);
+        assert!(
+            c.model().wizard.is_none() && c.model().waiting,
+            "the wait goes on"
+        );
+        installed.0.borrow_mut().clear();
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(15));
+            c.tick();
+            if c.model().traces_open {
+                break;
+            }
+        }
+        assert!(
+            c.model().wizard.is_some(),
+            "the traces come back in the window"
+        );
+    }
 }

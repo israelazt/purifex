@@ -80,6 +80,7 @@ fn hunted_view(found: &Hunted, m: &Model) -> DialogView {
         corner: Vec::new(),
         buttons,
         cancel: Action::CloseHunt,
+        steps: None,
     }
 }
 

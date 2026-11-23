@@ -11,6 +11,7 @@ use purifex_domain::view::{Action, Model};
 
 use crate::dialog::{Btn, DialogView, Row};
 use crate::theme::Tone;
+use crate::wizard_dialog::Steps;
 
 pub(crate) fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
     let rows = trace_rows(m, report);
@@ -37,6 +38,7 @@ pub(crate) fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
         corner: corner_buttons(m, report),
         buttons: buttons(m, report, checked),
         cancel: Action::CloseTraces,
+        steps: Some(Steps(if report.still_installed { 0 } else { 2 })),
     }
 }
 
@@ -91,8 +93,15 @@ fn corner_buttons(m: &Model, report: &CleanReport) -> Vec<Btn> {
         primary: false,
         action: Some(Action::SetScanMode(m.scan_mode.next())),
     };
+    let close = m.running.as_ref().map(|r| Btn {
+        label: format!("Cerrar programas ({})", r.names.len()),
+        icon: "x",
+        primary: false,
+        action: Some(Action::AskCloseProcesses(r.app.clone())),
+    });
     std::iter::once(mode)
         .chain(restart_button(m, report))
+        .chain(close)
         .collect()
 }
 

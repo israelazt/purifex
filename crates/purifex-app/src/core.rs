@@ -23,6 +23,7 @@ mod actions;
 mod apps;
 mod batch;
 mod hunting;
+mod monitoring;
 mod reading;
 
 pub struct Core {
@@ -83,10 +84,6 @@ impl Core {
             Action::SearchUpdates => self.search_updates(),
             Action::OpenPage(url) => self.open_page(&url),
             Action::AskUninstall(id) => self.ask(Confirm::Uninstall(id)),
-            Action::ToggleMark(id) => self.toggle_mark(id),
-            Action::ClearMarks => self.model.marked.clear(),
-            Action::AskUninstallMarked => self.ask_uninstall_marked(),
-            Action::CloseBatch => self.model.batch = None,
             Action::AskClean(name) => self.ask(Confirm::Clean(name)),
             Action::AskCleanAll(name) => self.ask(Confirm::CleanAll(name)),
             Action::AskFix(id) => self.ask(Confirm::Apply(id)),
@@ -113,11 +110,6 @@ impl Core {
             Action::AskForceUninstall(id) => self.ask(Confirm::ForceUninstall(id)),
             Action::AskCloseProcesses(name) => self.ask(Confirm::CloseProcesses(name)),
             Action::SetScanMode(mode) => self.scan_mode_set(mode),
-            Action::StartHunt => self.hunt_started(),
-            Action::DropHunt => self.hunt_dropped(),
-            Action::CloseHunt => self.model.hunt.found = None,
-            Action::AskCloseHunted => self.hunted_close_asked(),
-            Action::OpenHuntedFolder => self.hunted_folder_opened(),
             Action::FindTraces(name) => self.find_traces(name),
             Action::RefreshApps => self.refresh_apps(),
             Action::StopWaiting => self.stop_waiting(),
@@ -125,6 +117,7 @@ impl Core {
             Action::SetFilter(filter) => self.model.filter = filter,
             Action::SetQuery(query) => self.model.query = query,
             Action::SelectSession(id) => self.select_session(id),
+            other => self.apply_apps_tools(other),
         }
     }
 
@@ -141,6 +134,7 @@ impl Core {
             Confirm::Undo(seq) => self.services.undo_fix(seq, true),
             Confirm::Uninstall(id) => return self.uninstalled(&id),
             Confirm::UninstallMarked => return self.batch_started(),
+            Confirm::DeleteLog(id) => return self.log_deleted(&id),
             Confirm::Clean(name) => return self.cleaned(&name, false),
             Confirm::CleanAll(name) => return self.cleaned(&name, true),
             Confirm::EmptyQuarantine => return self.quarantine_emptied(),
@@ -184,6 +178,7 @@ impl Core {
                     || m.finding.is_some()
                     || m.quarantine.is_none()
                     || m.backups.is_none()
+                    || m.install_logs.is_none()
                     || self.refreshing_apps
             }
             Page::Drivers => m.drivers.is_none() || m.candidates.is_none(),
@@ -2122,5 +2117,121 @@ mod tests {
             said.contains("1 de 2 apps desinstaladas") && said.contains("1 sigue instalada"),
             "{said}"
         );
+    }
+    /// A core on the apps page with the install monitor over fakes.
+    fn monitor_core() -> (
+        Core,
+        crate::testing::FakeApps,
+        crate::testing::FakePicture,
+        crate::testing::FakeLogs,
+    ) {
+        use crate::testing::{FakeApps, FakeLogs, FakePicker, FakePicture, FakeRunner};
+        let installed = FakeApps::default();
+        installed.0.borrow_mut().push(fake_app("Old"));
+        let (picture, logs) = (FakePicture::default(), FakeLogs::default());
+        let monitoring = crate::Monitoring::new(
+            Box::new(picture.clone()),
+            Box::new(FakeRunner::default()),
+            Box::new(FakePicker::of(r"C:\Descargas\zed-setup.exe")),
+            Box::new(logs.clone()),
+        );
+        let mut c = Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_apps(Box::new(installed.clone()))
+            .with_monitoring(monitoring),
+        ));
+        c.tick();
+        c.apply(Action::Go(Page::Apps));
+        c.tick();
+        (c, installed, picture, logs)
+    }
+
+    #[test]
+    fn an_installer_is_watched_and_what_it_made_is_kept_as_a_log_that_can_be_exported_and_deleted()
+    {
+        use purifex_domain::app_traces::TraceKind;
+        use purifex_domain::monitor::Mark;
+        let (mut c, installed, picture, logs) = monitor_core();
+        assert_eq!(
+            c.model().install_logs.as_deref(),
+            Some(&[][..]),
+            "read with the page"
+        );
+        c.apply(Action::MonitorStart);
+        assert_eq!(c.model().monitoring.as_deref(), Some("zed-setup.exe"));
+        // The installer makes a folder and the app appears.
+        picture.0.borrow_mut().push(Mark {
+            kind: TraceKind::Folder,
+            location: r"C:\ProgramData\Zed".into(),
+            value: None,
+            stamp: "1".into(),
+            bytes: 0,
+        });
+        installed.0.borrow_mut().push(fake_app("Zed Editor"));
+        c.apply(Action::MonitorFinish);
+        assert!(c.model().monitoring.is_none());
+        let said = c.model().message.clone().unwrap();
+        assert!(
+            said.contains("1 archivo o carpeta") && said.contains("Zed Editor"),
+            "{said}"
+        );
+        c.tick();
+        let kept = c.model().install_logs.clone().unwrap();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(logs.0.borrow().len(), 1);
+        let id = kept[0].id.clone();
+        c.apply(Action::OpenLog(id.clone()));
+        assert_eq!(c.model().log_open.as_deref(), Some(id.as_str()));
+        c.apply(Action::ExportLog(id.clone()));
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("Registro exportado"));
+        c.apply(Action::AskDeleteLog(id.clone()));
+        assert_eq!(c.model().confirm, Some(Confirm::DeleteLog(id)));
+        assert_eq!(
+            logs.0.borrow().len(),
+            1,
+            "nothing changes until it is confirmed"
+        );
+        c.apply(Action::Confirm);
+        c.tick();
+        assert!(logs.0.borrow().is_empty() && c.model().log_open.is_none());
+        assert_eq!(c.model().install_logs.as_deref(), Some(&[][..]));
+    }
+
+    #[test]
+    fn watching_can_be_given_up_an_import_is_kept_and_finishing_without_start_is_an_error() {
+        let (mut c, _, _, logs) = monitor_core();
+        c.apply(Action::MonitorFinish);
+        assert!(c
+            .model()
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("no hay ninguna instalación"));
+        c.apply(Action::MonitorStart);
+        c.apply(Action::MonitorCancel);
+        assert!(c.model().monitoring.is_none() && logs.0.borrow().is_empty());
+        c.apply(Action::ImportLog);
+        c.tick();
+        assert_eq!(c.model().install_logs.as_ref().unwrap().len(), 1);
+        assert!(!c.model().install_logs.as_ref().unwrap()[0].own);
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("Registro importado"));
     }
 }

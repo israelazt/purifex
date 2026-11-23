@@ -48,6 +48,7 @@ pub struct App<I, C, S, C2, F, A> {
     window_picker: Option<Box<dyn purifex_domain::ports::WindowPicker>>,
     inventory: Option<Box<dyn AppInventory>>,
     cleaning: Cleaning,
+    monitoring: crate::monitoring::Monitoring,
     elevation: Option<Box<dyn Elevation>>,
 }
 
@@ -235,6 +236,39 @@ where
             .as_ref()
             .ok_or("esta versión no sabe leer las apps instaladas")?;
         Ok(listed(inventory.apps()?))
+    }
+
+    fn monitor_start(&mut self) -> Result<Option<String>, String> {
+        let apps = self.apps().unwrap_or_default();
+        self.monitoring.start(&apps)
+    }
+
+    fn monitor_finish(&mut self) -> Result<purifex_domain::monitor::InstallLog, String> {
+        let apps = self.apps()?;
+        let today = Some(self.today());
+        self.monitoring.finish(&apps, today)
+    }
+
+    fn monitor_cancel(&mut self) {
+        self.monitoring.cancel();
+    }
+
+    fn install_logs(&mut self) -> Result<Vec<purifex_domain::monitor::InstallLog>, String> {
+        self.monitoring.logs()
+    }
+
+    fn delete_install_log(&mut self, id: &str) -> Result<(), String> {
+        self.monitoring.delete(id)
+    }
+
+    fn export_install_log(&mut self, id: &str) -> Result<String, String> {
+        self.monitoring.export(id)
+    }
+
+    fn import_install_log(
+        &mut self,
+    ) -> Result<Option<purifex_domain::monitor::InstallLog>, String> {
+        self.monitoring.import()
     }
 
     fn begin_batch(&mut self, count: usize) -> purifex_domain::safeguard::RestorePointOutcome {

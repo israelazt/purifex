@@ -1,5 +1,7 @@
 //! The contract: everything the window, the command line and the MCP server may ask for.
 
+use purifex_domain::monitor::InstallLog;
+
 use super::*;
 
 pub trait Services {
@@ -121,4 +123,17 @@ pub trait Services {
     fn restart_elevated(&mut self, resume: Option<&str>) -> Result<(), String>;
     /// An app was seen to disappear from the list: keep what was known of it.
     fn note_uninstalled(&mut self, app: &InstalledApp) -> Result<(), String>;
+    /// Asks for an installer, takes the picture before and starts it (`None`: cancelled).
+    fn monitor_start(&mut self) -> Result<Option<String>, String>;
+    /// The installer is done: takes the picture after and keeps what is new as a log.
+    fn monitor_finish(&mut self) -> Result<InstallLog, String>;
+    /// Gives up the watching without keeping anything.
+    fn monitor_cancel(&mut self);
+    /// The logs of installations kept, the newest first.
+    fn install_logs(&mut self) -> Result<Vec<InstallLog>, String>;
+    fn delete_install_log(&mut self, id: &str) -> Result<(), String>;
+    /// Writes a log to the Documents folder; returns where.
+    fn export_install_log(&mut self, id: &str) -> Result<String, String>;
+    /// Asks for a log file and keeps it (as one that was not made here); `None`: cancelled.
+    fn import_install_log(&mut self) -> Result<Option<InstallLog>, String>;
 }

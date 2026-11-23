@@ -73,6 +73,12 @@ impl Core {
             self.find_traces_of(&name, errors);
         }
         self.read_quarantine();
+        if self.model.install_logs.is_none() {
+            self.model.install_logs = Some(self.services.install_logs().unwrap_or_else(|error| {
+                log_warn!("the logs of installations could not be read: {error}");
+                Vec::new()
+            }));
+        }
         if self.model.backups.is_none() {
             self.model.backups = Some(self.services.backups().unwrap_or_else(|error| {
                 log_warn!("the copies could not be read: {error}");

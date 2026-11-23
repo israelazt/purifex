@@ -414,6 +414,8 @@ impl purifex_domain::ports::CleanupStore for FakeCleaning {
 /// What each fake quarantine copy weighs.
 pub const PURGE_BYTES: u64 = 1024;
 
+mod monitor;
+pub use monitor::{FakeLogs, FakePicker, FakePicture, FakeRunner};
 mod system;
 pub use system::{
     FakeAppList, FakeApps, FakeBackups, FakeElevation, FakeProcesses, FakeRestorePoints,

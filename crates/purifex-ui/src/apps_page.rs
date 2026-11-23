@@ -18,6 +18,7 @@ use crate::batch_panel::batch_panel;
 use crate::canvas::Canvas;
 use crate::drivers_page::search_box;
 use crate::in_use_panel::in_use_panel;
+use crate::monitor_panel::monitor_panel;
 use crate::page;
 use crate::quarantine_panel::quarantine_panel;
 use crate::running_panel::running_panel;
@@ -304,6 +305,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
         y += cleanup_panel(c, m, name, area, y);
     }
     y += batch_panel(c, m, area, y);
+    y += monitor_panel(c, m, area, y);
     y += running_panel(c, m, area, y);
     y += in_use_panel(c, m, area, y);
     y += quarantine_panel(c, m, area, y);

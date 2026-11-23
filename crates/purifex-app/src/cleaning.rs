@@ -21,6 +21,7 @@ use purifex_domain::scan_mode::ScanMode;
 mod backing_up;
 mod closing;
 mod forcing;
+mod logging;
 mod purging;
 mod rebooting;
 mod restoring;
@@ -38,6 +39,8 @@ pub struct Cleaning {
     mode: ScanMode,
     /// While a batch runs: the restore point taken once for all of it.
     batch_point: Option<RestorePointOutcome>,
+    /// The logs of installations: what they name for the app is evidence.
+    logs: Option<Box<dyn purifex_domain::ports::InstallLogs>>,
 }
 
 /// The app that `query` names (its id, its name, or a part of it that only one has).
@@ -104,6 +107,7 @@ impl Cleaning {
             processes: None,
             mode: ScanMode::default(),
             batch_point: None,
+            logs: None,
         }
     }
 
@@ -119,12 +123,13 @@ impl Cleaning {
         others: &[InstalledApp],
         found: &purifex_domain::ports::Found,
     ) -> Vec<Trace> {
+        let candidates = self.with_logged(app, &found.candidates);
         let judging = if self.mode == ScanMode::Advanced {
             propose_guessing
         } else {
             propose_with
         };
-        let mut traces = judging(app, others, &found.seeds, &found.candidates);
+        let mut traces = judging(app, others, &found.seeds, &candidates);
         traces.retain(|t| self.mode.allows(t.evidence));
         traces
     }
@@ -510,6 +515,58 @@ mod tests {
             1,
             "the protected one was not started"
         );
+    }
+
+    #[test]
+    fn the_log_of_an_installation_names_what_the_app_made_even_without_its_name() {
+        use crate::testing::FakeLogs;
+        use purifex_domain::app_traces::Evidence;
+        use purifex_domain::monitor::{InstallLog, Mark};
+        let mark = |kind, location: &str| Mark {
+            kind,
+            location: location.into(),
+            value: None,
+            stamp: "1".into(),
+            bytes: 50,
+        };
+        let log = |id: &str, app: &str, own: bool| InstallLog {
+            id: id.into(),
+            installer: "setup.exe".into(),
+            app: Some(app.into()),
+            on: None,
+            own,
+            marks: vec![
+                mark(TraceKind::Folder, r"C:\ProgramData\Vendor Stuff 9"),
+                mark(TraceKind::Folder, r"C:\Windows\Fonts\zed"),
+                mark(TraceKind::RegistryKey, r"HKLM\SOFTWARE\Microsoft\Zed"),
+            ],
+        };
+        let logs = FakeLogs::default();
+        logs.0.borrow_mut().push(log("1", "Discord", true));
+        logs.0.borrow_mut().push(log("2", "Another App", true));
+        let (c, _) = cleaning(vec![folder(r"C:\ProgramData\Vendor Stuff 9")]);
+        let mut c = c.with_logs(Box::new(logs.clone()));
+        let apps = vec![app("Discord", "Discord Inc.")];
+        let report = c.clean(&apps, &apps, "Discord", false, None).unwrap();
+        let places: Vec<_> = report
+            .proposed
+            .iter()
+            .map(|t| (t.location.as_str(), t.evidence))
+            .collect();
+        // The folder shares no name with the app, yet the log names it; Windows' places never go.
+        assert_eq!(
+            places,
+            [(r"C:\ProgramData\Vendor Stuff 9", Evidence::Monitored)]
+        );
+        // A log brought from elsewhere only guesses: Moderate leaves it out.
+        logs.0.borrow_mut().clear();
+        logs.0.borrow_mut().push(log("3", "discord", false));
+        let report = c.clean(&apps, &apps, "Discord", false, None).unwrap();
+        assert!(report.proposed.is_empty(), "{:?}", report.proposed);
+        c.set_mode(ScanMode::Advanced);
+        let report = c.clean(&apps, &apps, "Discord", false, None).unwrap();
+        assert_eq!(report.proposed[0].evidence, Evidence::ImportedLog);
+        assert!(report.proposed[0].evidence.is_guess());
     }
 
     #[test]

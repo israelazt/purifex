@@ -21,6 +21,7 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
             window_picker: None,
             inventory: None,
             cleaning: Cleaning::default(),
+            monitoring: crate::monitoring::Monitoring::default(),
             elevation: None,
         }
     }
@@ -28,6 +29,12 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
     /// What uninstalls apps and cleans what they leave (none until given).
     pub fn with_cleaning(mut self, cleaning: Cleaning) -> Self {
         self.cleaning = cleaning;
+        self
+    }
+
+    /// The install monitor: pictures, installer, dialog and logs (none until given).
+    pub fn with_monitoring(mut self, monitoring: crate::monitoring::Monitoring) -> Self {
+        self.monitoring = monitoring;
         self
     }
 

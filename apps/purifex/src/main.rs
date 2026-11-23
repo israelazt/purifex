@@ -33,6 +33,18 @@ fn main() {
     }
 }
 
+/// The install monitor over the real pictures, installer, dialog and logs.
+#[cfg(windows)]
+fn install_monitor() -> purifex_app::Monitoring {
+    use purifex_platform::{LocalInstallLogs, ShellInstaller, WindowsFilePicker, WindowsPicture};
+    purifex_app::Monitoring::new(
+        Box::new(WindowsPicture),
+        Box::new(ShellInstaller),
+        Box::new(WindowsFilePicker),
+        Box::new(LocalInstallLogs::new()),
+    )
+}
+
 /// The application with the real adapters of Windows: the only place that knows them.
 #[cfg(windows)]
 fn build_app() -> impl purifex_app::Services + 'static {
@@ -42,10 +54,11 @@ fn build_app() -> impl purifex_app::Services + 'static {
     };
     use purifex_platform::{
         BrowserOpener, ExplorerOpener, JsonlCandidates, JsonlHistory, LocalAppList, LocalBackups,
-        LocalCleanup, LocalSessionArchive, LocalSessionFile, RegeditViewer, RegisteredUninstaller,
-        RegistryApps, SetupApiInventory, StorePackages, StoreUninstaller, SystemClock, SystemFixes,
-        WindowsElevation, WindowsPicker, WindowsProcesses, WindowsRestorePoints, WindowsSampler,
-        WindowsSeedProbe, WindowsTraceFinder, WindowsUpdateOffers,
+        LocalCleanup, LocalInstallLogs, LocalSessionArchive, LocalSessionFile, RegeditViewer,
+        RegisteredUninstaller, RegistryApps, SetupApiInventory, StorePackages, StoreUninstaller,
+        SystemClock, SystemFixes, WindowsElevation, WindowsPicker, WindowsProcesses,
+        WindowsRestorePoints, WindowsSampler, WindowsSeedProbe, WindowsTraceFinder,
+        WindowsUpdateOffers,
     };
 
     let scanner = Scanner::new(SetupApiInventory, SystemClock::new());
@@ -67,7 +80,8 @@ fn build_app() -> impl purifex_app::Services + 'static {
     .with_restore_points(Box::new(WindowsRestorePoints))
     .with_backups(Box::new(LocalBackups::new()))
     .with_processes(Box::new(WindowsProcesses))
-    .with_clock(Box::new(SystemClock::new()));
+    .with_clock(Box::new(SystemClock::new()))
+    .with_logs(Box::new(LocalInstallLogs::new()));
     App::new(scanner, recorder, archive)
         .with_fixer(fixer)
         .with_offers(offering)
@@ -82,6 +96,7 @@ fn build_app() -> impl purifex_app::Services + 'static {
             Box::new(StorePackages),
         ])))
         .with_cleaning(cleaning)
+        .with_monitoring(install_monitor())
         .with_elevation(Box::new(WindowsElevation))
 }
 

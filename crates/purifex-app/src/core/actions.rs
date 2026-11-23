@@ -2,11 +2,34 @@
 //! `Core::apply` only chooses which one.
 
 use purifex_domain::driver_offers::Offers;
-use purifex_domain::view::{Confirm, Page};
+use purifex_domain::view::{Action, Confirm, Page};
 
 use super::Core;
 
 impl Core {
+    /// The actions of the tools of the apps page: the batch, the install monitor and hunter mode.
+    pub(super) fn apply_apps_tools(&mut self, action: Action) {
+        match action {
+            Action::ToggleMark(id) => self.toggle_mark(id),
+            Action::ClearMarks => self.model.marked.clear(),
+            Action::AskUninstallMarked => self.ask_uninstall_marked(),
+            Action::CloseBatch => self.model.batch = None,
+            Action::MonitorStart => self.monitor_started(),
+            Action::MonitorFinish => self.monitor_finished(),
+            Action::MonitorCancel => self.monitor_cancelled(),
+            Action::OpenLog(id) => self.log_opened(id),
+            Action::ExportLog(id) => self.log_exported(&id),
+            Action::ImportLog => self.log_imported(),
+            Action::AskDeleteLog(id) => self.ask(Confirm::DeleteLog(id)),
+            Action::StartHunt => self.hunt_started(),
+            Action::DropHunt => self.hunt_dropped(),
+            Action::CloseHunt => self.model.hunt.found = None,
+            Action::AskCloseHunted => self.hunted_close_asked(),
+            Action::OpenHuntedFolder => self.hunted_folder_opened(),
+            _ => {}
+        }
+    }
+
     pub(super) fn go(&mut self, page: Page) {
         if page != self.model.page {
             // The search belongs to the page it was typed in.

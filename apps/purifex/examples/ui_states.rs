@@ -103,6 +103,7 @@ mod states {
         match state {
             "blocked" | "confirm" | "history" | "undo" => fixes_state(ready, state),
             "apps" => apps_state(ready, extra),
+            "monitor" => monitor_state(apps_state(ready, None), extra.unwrap_or("logs")),
             "batch" => batch_state(apps_state(ready, None), extra.unwrap_or("marked")),
             "kdenlive" => kdenlive_state(ready),
             "kdenlive-admin" => Model {
@@ -245,6 +246,41 @@ mod states {
             }
             _ => {}
         }
+        model
+    }
+
+    /// The install monitor: logs kept (`logs`), one open (`open`) or an installer being watched
+    /// (`watching`).
+    fn monitor_state(mut model: Model, step: &str) -> Model {
+        use purifex_domain::app_traces::TraceKind;
+        use purifex_domain::monitor::{InstallLog, Mark};
+        (model.traces_open, model.uninstalled, model.traces) = (false, None, None);
+        let places = [
+            (TraceKind::Folder, r"C:\Users\yo\AppData\Local\Programs\Zed"),
+            (TraceKind::Folder, r"C:\Users\yo\AppData\Roaming\Zed"),
+            (TraceKind::RegistryKey, r"HKCU\Software\Zed Industries"),
+        ];
+        let marks = places.map(|(kind, location)| Mark {
+            kind,
+            location: location.into(),
+            value: None,
+            stamp: String::new(),
+            bytes: 1 << 20,
+        });
+        let log = |id: &str, app: &str, own| InstallLog {
+            id: id.into(),
+            installer: "zed-setup.exe".into(),
+            app: Some(app.into()),
+            on: purifex_domain::date::Date::new(2026, 11, 23),
+            own,
+            marks: marks.to_vec(),
+        };
+        model.install_logs = Some(vec![
+            log("2026-11-23-1", "Zed Editor", true),
+            log("importado-9", "Otra App", false),
+        ]);
+        model.log_open = (step == "open").then(|| "2026-11-23-1".to_string());
+        model.monitoring = (step == "watching").then(|| "zed-setup.exe".to_string());
         model
     }
 

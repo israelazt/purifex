@@ -279,6 +279,21 @@ Para apps rotas, sin desinstalador o ya borradas a medias.
    proceso) para saber qué proceso escribió cada cosa. Necesita administrador y es más
    frágil: se decide después de ver el resultado de las instantáneas.
 
+**Hecho (2026-11-23), solo con instantáneas (sin ETW):**
+- **Instantánea** (`WindowsPicture`): las carpetas donde se instalan las apps (las mismas raíces del escaneo, dos niveles) y las claves de `Software` de `HKCU`, `HKLM` y `WOW6432Node` (dos niveles, sin `Microsoft`, `Classes` ni `Policies`). Solo nombres, tamaños y fechas, no se lee ningún contenido.
+- **Diferencia** (`monitor::added`): solo lo que es **nuevo**; una carpeta que ya existía y solo cambió no se anota (puede ser compartida). El tamaño de las carpetas nuevas se mide después, solo de esas.
+- **Instalar con monitor:** «Instalar con monitor» abre el diálogo de archivos de Windows, toma la instantánea y ejecuta el instalador (`.exe`, o `.msi` con `msiexec`). No espera al proceso (los instaladores lanzan otros y terminan): la persona pulsa «Terminé la instalación» y se toma la segunda. El registro queda enlazado a la app que apareció en la lista; si no apareció ninguna, se avisa.
+- **Base de registros** (`%LOCALAPPDATA%\Purifex\logs\<id>.jsonl`, un registro por archivo): lista, ver los lugares, borrar (con pregunta), exportar (a Documentos) e importar. El id nunca puede salir de la carpeta.
+- **Uso en la limpieza:** los lugares del registro de la app entran como evidencia `Monitored` (la más fuerte; también en modo Seguro) aunque no compartan nombre con ella, y ganan al hallazgo del buscador si es el mismo lugar. Las reglas duras siguen mandando: nada de `Windows`, `System32`, claves de Microsoft ni nombres demasiado amplios.
+- **Un registro importado nunca es «hecho aquí»:** su evidencia es `ImportedLog`, una conjetura (solo modo Avanzado y desmarcada), porque quien escribió el archivo podría nombrar cualquier cosa.
+- Pruebas: dominio, cola de pasos, almacén (guardar, listar, exportar, importar, borrar, id inseguro), **una prueba real** que crea una carpeta y una clave y comprueba que son la diferencia entre dos instantáneas, la limpieza con registros (nombra algo sin el nombre de la app; lo de Windows se rechaza; el importado solo en Avanzado), el núcleo y el panel. Capturas con `ui_states monitor <logs|open|watching>`.
+
+Pendiente, anotado:
+- **Sin probar con un instalador real** (solo la instantánea real y los dobles de los demás pasos). Falta instalar una app de verdad con el monitor y quitarla.
+- **No ve** lo que escribe fuera de esas ubicaciones: servicios, tareas, `Run`, extensiones, `ProgramData` a más de dos niveles. Eso lo siguen encontrando las reglas por ruta (ya existentes).
+- **Sin ETW** (qué proceso escribió cada cosa): se decide a la vista de los resultados.
+- **Sin comando de consola** para los registros.
+
 ## R7 · Varias apps a la vez
 
 1. Selección múltiple con casillas en la lista y barra «Desinstalar N».

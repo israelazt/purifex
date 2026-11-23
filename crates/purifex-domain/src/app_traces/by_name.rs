@@ -95,6 +95,32 @@ pub(super) fn judge_by_name(
     Err(Refusal::NotTheApps)
 }
 
+/// A place a log of installation names: Windows' places and the too broad are refused as
+/// always, and nothing else is asked (the log is the evidence). The log must be of this app:
+/// the caller only offers the places of the log of the app being cleaned.
+pub(super) fn judge_known(
+    candidate: &Candidate,
+    location: &str,
+    evidence: Evidence,
+) -> Result<Trace, Refusal> {
+    let lower = location.to_lowercase();
+    refuse_system_place(&lower)?;
+    refuse_too_broad(&lower, &simple(last_part(location)))?;
+    let user_data = candidate.kind == TraceKind::File && lower.contains(r"ppdata\");
+    Ok(Trace {
+        kind: candidate.kind,
+        location: location.to_string(),
+        bytes: candidate.bytes,
+        why: evidence.label().to_string(),
+        user_data,
+        value: candidate
+            .value
+            .clone()
+            .filter(|_| candidate.kind == TraceKind::RegistryValue),
+        evidence,
+    })
+}
+
 fn refuse_system_place(lower: &str) -> Result<(), Refusal> {
     let system = SYSTEM_PREFIXES
         .iter()

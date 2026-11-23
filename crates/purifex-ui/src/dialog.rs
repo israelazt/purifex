@@ -96,7 +96,10 @@ pub(crate) fn confirm_view(title: String, body: &str, yes: &str, icon: &'static 
 
 /// The dialog the model asks for, if any.
 pub fn view(m: &Model) -> Option<DialogView> {
-    crate::hunter_dialog::view(m).or_else(|| page_view(m))
+    crate::hunter_dialog::view(m)
+        .or_else(|| crate::batch_panel::dialog(m))
+        .or_else(|| crate::monitor_panel::dialog(m))
+        .or_else(|| page_view(m))
 }
 
 /// The question or the list of traces the apps page asks for.
@@ -147,7 +150,6 @@ fn page_view(m: &Model) -> Option<DialogView> {
             "x",
         )),
         (Some(Confirm::Uninstall(id)), _) => Some(uninstall_view(m, id)),
-        (Some(Confirm::UninstallMarked), _) => Some(crate::batch_panel::question(m)),
         (_, Some(report)) => Some(traces_view(m, report)),
         _ => None,
     }

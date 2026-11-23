@@ -56,6 +56,8 @@ pub enum Confirm {
     CloseHunted(u32),
     /// Uninstall the checked apps one after the other.
     UninstallMarked,
+    /// Delete a log of an installation (by its id).
+    DeleteLog(String),
 }
 
 /// Programs of an app that is gone that still run from its folder.
@@ -152,6 +154,12 @@ pub struct Model {
     pub marked: Vec<String>,
     /// The batch being run, or the summary of the one that just finished.
     pub batch: Option<crate::batch::Batch>,
+    /// The installer being watched (its file name): the picture before was taken.
+    pub monitoring: Option<String>,
+    /// The logs of installations kept (read on the apps page), newest first.
+    pub install_logs: Option<Vec<crate::monitor::InstallLog>>,
+    /// The log whose contents are open (its id).
+    pub log_open: Option<String>,
     /// What an apps action did, in a sentence.
     pub message: Option<String>,
     /// Something is being read: the picture says so before the wait.
@@ -224,6 +232,20 @@ pub enum Action {
     /// Puts back everything of an app that was cleaned: its traces from the quarantine and its
     /// registration from the copy (the app, and the file of the copy).
     RestoreAll(String, String),
+    /// Chooses an installer, takes the picture of the system and starts it.
+    MonitorStart,
+    /// The installer is done: takes the picture after and keeps what changed as a log.
+    MonitorFinish,
+    /// Stops watching the installer; nothing is kept.
+    MonitorCancel,
+    /// Opens (or closes) what a log holds, by its id.
+    OpenLog(String),
+    /// Writes a log to the Documents folder, by its id.
+    ExportLog(String),
+    /// Asks for a log file and keeps it.
+    ImportLog,
+    /// Asks to delete a log, by its id.
+    AskDeleteLog(String),
     /// Checks or unchecks an app of the list for the batch, by its id.
     ToggleMark(String),
     /// Unchecks every app of the list.

@@ -25,6 +25,7 @@ pub mod forced;
 pub mod hunter;
 pub mod icons;
 pub mod log;
+pub mod monitor;
 pub mod overview;
 pub mod ports;
 pub mod process_group;

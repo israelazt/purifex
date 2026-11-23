@@ -25,6 +25,8 @@ mod fixes;
 #[cfg(windows)]
 mod gfx;
 #[cfg(windows)]
+mod install_monitor;
+#[cfg(windows)]
 mod inventory;
 #[cfg(windows)]
 mod log_console;
@@ -73,6 +75,8 @@ pub use elevation::WindowsElevation;
 pub use fixes::{JsonlHistory, SystemFixes};
 #[cfg(windows)]
 pub use gfx::{render_png, Renderer, TextEngine};
+#[cfg(windows)]
+pub use install_monitor::{LocalInstallLogs, ShellInstaller, WindowsFilePicker, WindowsPicture};
 #[cfg(windows)]
 pub use inventory::SetupApiInventory;
 #[cfg(windows)]

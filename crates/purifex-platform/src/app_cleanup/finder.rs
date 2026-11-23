@@ -38,7 +38,7 @@ fn env_path(name: &str) -> Option<PathBuf> {
 }
 
 /// The folders whose direct children are looked at.
-fn roots() -> Vec<PathBuf> {
+pub(crate) fn roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     let appdata = env_path("APPDATA");
     let local = env_path("LOCALAPPDATA");

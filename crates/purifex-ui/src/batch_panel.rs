@@ -215,7 +215,12 @@ fn entry_line(c: &mut Canvas, entry: &BatchEntry, line: Rect) {
 }
 
 /// The question before the checked apps are uninstalled one after the other.
-pub(crate) fn question(m: &Model) -> DialogView {
+/// The question of the batch, when it is being asked.
+pub(crate) fn dialog(m: &Model) -> Option<DialogView> {
+    (m.confirm == Some(purifex_domain::view::Confirm::UninstallMarked)).then(|| question(m))
+}
+
+fn question(m: &Model) -> DialogView {
     let apps = m.apps.iter().flatten();
     let names: Vec<&str> = m
         .marked

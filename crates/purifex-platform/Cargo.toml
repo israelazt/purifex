@@ -45,6 +45,8 @@ windows = { workspace = true, features = [
     "Win32_System_Restore",
     # ShellExecute: opens a web page in the browser.
     "Win32_UI_Shell",
+    # The «Open file» dialog (pick an installer to monitor).
+    "Win32_UI_Controls_Dialogs",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_HiDpi",
     "Win32_UI_Input_KeyboardAndMouse",

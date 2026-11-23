@@ -12,6 +12,7 @@ mod find_services;
 mod find_shell;
 mod find_typelib;
 mod finder;
+pub(crate) use finder::{folder_size, roots};
 mod launcher;
 mod lnk;
 mod locks;

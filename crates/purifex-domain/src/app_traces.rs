@@ -9,7 +9,7 @@ use crate::apps::InstalledApp;
 use crate::seeds::{seeds_of, Seeds};
 use crate::trace_rules::judge_by_evidence;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TraceKind {
     #[default]
@@ -62,6 +62,11 @@ pub enum Evidence {
     /// A name that only resembles the app's (it contains it, or is contained in it), in a fixed
     /// place. A guess: only the Advanced mode proposes it, and it is never checked by default.
     PartialName,
+    /// Created while an installer ran under the monitor of this program: the strongest proof.
+    Monitored,
+    /// Named by a log of installation that came from somewhere else (imported): a guess, since
+    /// whoever wrote the file could name anything.
+    ImportedLog,
 }
 
 impl Evidence {
@@ -80,17 +85,19 @@ impl Evidence {
             Evidence::ComServer => "clase COM cuyo servidor está en la carpeta de la app",
             Evidence::ContextMenu => "entrada del menú contextual de un programa de la app",
             Evidence::PartialName => "posible: el nombre se parece al de la app",
+            Evidence::Monitored => "lo creó el instalador mientras Purifex lo vigilaba",
+            Evidence::ImportedLog => "posible: lo nombra un registro de instalación importado",
         }
     }
 
     /// Only a guess from a resemblance: it must be looked at before removing it.
     pub fn is_guess(self) -> bool {
-        self == Evidence::PartialName
+        matches!(self, Evidence::PartialName | Evidence::ImportedLog)
     }
 }
 
 mod by_name;
-use by_name::judge_by_name;
+use by_name::{judge_by_name, judge_known};
 pub use by_name::{names_of, names_relate};
 
 /// A place that might belong to the app, as the finder found it.
@@ -106,6 +113,8 @@ pub struct Candidate {
     /// What the trace contains, read by the finder: the data of a value, the command
     /// or icon of a file-type key, the target of a shortcut.
     pub text: Option<String>,
+    /// What a log of installation already says about it (the hard rules still apply).
+    pub known: Option<Evidence>,
 }
 
 /// A trace that may be removed, and why.
@@ -285,6 +294,9 @@ fn judge_inner(
         .any(|part| part == "windowsapps")
     {
         return Err(Refusal::SystemPlace);
+    }
+    if let Some(known) = candidate.known {
+        return judge_known(candidate, location, known);
     }
     if let Some(decided) = judge_by_evidence(app, others, seeds, candidate, location) {
         return decided;

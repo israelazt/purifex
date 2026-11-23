@@ -257,3 +257,36 @@ pub trait HistoryStore {
     fn entries(&self) -> Result<Vec<HistoryEntry>, String>;
     fn append(&mut self, entry: &HistoryEntry) -> Result<(), String>;
 }
+
+/// Takes a picture of the places where an installer leaves things (the folders where apps
+/// live, the keys where they register). It only reads, and is bounded: no contents are read.
+pub trait SystemPicture {
+    fn take(&self) -> Result<Vec<crate::monitor::Mark>, String>;
+    /// Fills in the size of the folders among `marks` (a picture leaves them empty: adding up
+    /// every folder would be slow, and only the few the installer made are worth measuring).
+    fn measure(&self, _marks: &mut [crate::monitor::Mark]) {}
+}
+
+/// Runs an installer the person chose and says when it is over.
+pub trait InstallerRunner {
+    /// Starts the installer (an `.exe` or `.msi`). It does not wait: installers start other
+    /// programs and end, so the person says when it is done.
+    fn run(&self, installer: &str) -> Result<(), String>;
+}
+
+/// The logs of installations kept on disk.
+pub trait InstallLogs {
+    fn all(&self) -> Result<Vec<crate::monitor::InstallLog>, String>;
+    fn save(&self, log: &crate::monitor::InstallLog) -> Result<(), String>;
+    /// Deletes the log with this id.
+    fn delete(&self, id: &str) -> Result<(), String>;
+    /// Writes the log to a file in the user's Documents; returns where.
+    fn export(&self, id: &str) -> Result<String, String>;
+    /// Reads a log from a file; it is kept as not made here.
+    fn import(&self, file: &str) -> Result<crate::monitor::InstallLog, String>;
+}
+
+/// Asks the person for a file with the system's dialog (`None`: they cancelled).
+pub trait FilePicker {
+    fn pick(&self, title: &str, extensions: &[&str]) -> Result<Option<String>, String>;
+}

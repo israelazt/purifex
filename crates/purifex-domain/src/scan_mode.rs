@@ -49,6 +49,7 @@ impl ScanMode {
                     | Evidence::TaskAction
                     | Evidence::ComServer
                     | Evidence::ContextMenu
+                    | Evidence::Monitored
             ),
         }
     }
@@ -74,6 +75,7 @@ mod tests {
             Evidence::TaskAction,
             Evidence::ComServer,
             Evidence::ContextMenu,
+            Evidence::Monitored,
         ];
         for e in by_name {
             assert!(

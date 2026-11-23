@@ -253,7 +253,7 @@ fn navigation(c: &mut Canvas, m: &Model, mut y: f32) -> f32 {
 }
 
 /// The pages of the navigation with what each one has to say in its badge.
-fn nav_items(m: &Model) -> [NavItem<'static>; 6] {
+fn nav_items(m: &Model) -> [NavItem<'static>; 7] {
     let attention = m
         .overview
         .as_ref()
@@ -281,6 +281,7 @@ fn nav_items(m: &Model) -> [NavItem<'static>; 6] {
         item("gamepad-2", "Partidas", Page::Sessions, sessions_badge),
         item("package", "Apps", Page::Apps, None),
         item("power", "Inicio", Page::Startup, None),
+        item("trash-2", "Limpieza", Page::Junk, None),
         item("sliders-horizontal", "Arreglos", Page::Fixes, fixes_badge),
     ]
 }
@@ -357,6 +358,7 @@ mod tests {
                 Action::Go(Page::Sessions),
                 Action::Go(Page::Apps),
                 Action::Go(Page::Startup),
+                Action::Go(Page::Junk),
                 Action::Go(Page::Fixes)
             ]
         );

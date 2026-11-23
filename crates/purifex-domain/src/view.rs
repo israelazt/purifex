@@ -25,6 +25,7 @@ pub enum Page {
     Fixes,
     Apps,
     Startup,
+    Junk,
 }
 
 /// What the user is being asked to confirm before something is changed.
@@ -61,6 +62,8 @@ pub enum Confirm {
     DeleteLog(String),
     /// Take an entry out of what starts with Windows (by its id), to the quarantine.
     RemoveStartup(String),
+    /// Move the checked kinds of junk to the quarantine.
+    CleanJunk,
 }
 
 /// Programs of an app that is gone that still run from its folder.
@@ -159,6 +162,10 @@ pub struct Model {
     pub batch: Option<crate::batch::Batch>,
     /// What starts with Windows (read on the Startup page).
     pub startup: Option<Vec<crate::startup::StartupItem>>,
+    /// The junk found (read on the Junk page).
+    pub junk: Option<Vec<crate::junk::JunkItem>>,
+    /// The kinds of junk that are left unchecked (all start checked).
+    pub junk_unchecked: Vec<crate::junk::JunkKind>,
     /// The installer being watched (its file name): the picture before was taken.
     pub monitoring: Option<String>,
     /// The logs of installations kept (read on the apps page), newest first.
@@ -237,6 +244,10 @@ pub enum Action {
     /// Puts back everything of an app that was cleaned: its traces from the quarantine and its
     /// registration from the copy (the app, and the file of the copy).
     RestoreAll(String, String),
+    /// Checks or unchecks a kind of junk.
+    ToggleJunk(crate::junk::JunkKind),
+    /// Asks to move the checked junk to the quarantine.
+    AskCleanJunk,
     /// Turns an entry of the startup list on or off, by its id.
     ToggleStartup(String),
     /// Asks to take an entry out of the startup list, by its id.

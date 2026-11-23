@@ -21,6 +21,7 @@ use purifex_domain::scan_mode::ScanMode;
 mod backing_up;
 mod closing;
 mod forcing;
+mod junk;
 mod logging;
 mod purging;
 mod rebooting;
@@ -42,6 +43,7 @@ pub struct Cleaning {
     batch_point: Option<RestorePointOutcome>,
     /// The logs of installations: what they name for the app is evidence.
     logs: Option<Box<dyn purifex_domain::ports::InstallLogs>>,
+    junk: Option<Box<dyn purifex_domain::ports::JunkFinder>>,
 }
 
 /// The app that `query` names (its id, its name, or a part of it that only one has).
@@ -109,6 +111,7 @@ impl Cleaning {
             mode: ScanMode::default(),
             batch_point: None,
             logs: None,
+            junk: None,
         }
     }
 

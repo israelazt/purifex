@@ -81,7 +81,8 @@ fn build_app() -> impl purifex_app::Services + 'static {
     .with_backups(Box::new(LocalBackups::new()))
     .with_processes(Box::new(WindowsProcesses))
     .with_clock(Box::new(SystemClock::new()))
-    .with_logs(Box::new(LocalInstallLogs::new()));
+    .with_logs(Box::new(LocalInstallLogs::new()))
+    .with_junk(Box::new(purifex_platform::WindowsJunk));
     App::new(scanner, recorder, archive)
         .with_fixer(fixer)
         .with_offers(offering)

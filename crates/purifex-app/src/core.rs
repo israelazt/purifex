@@ -23,6 +23,7 @@ mod actions;
 mod apps;
 mod batch;
 mod hunting;
+mod junk;
 mod monitoring;
 mod reading;
 mod startup;
@@ -137,6 +138,7 @@ impl Core {
             Confirm::UninstallMarked => return self.batch_started(),
             Confirm::DeleteLog(id) => return self.log_deleted(&id),
             Confirm::RemoveStartup(id) => return self.startup_removed(&id),
+            Confirm::CleanJunk => return self.junk_cleaned(),
             Confirm::Clean(name) => return self.cleaned(&name, false),
             Confirm::CleanAll(name) => return self.cleaned(&name, true),
             Confirm::EmptyQuarantine => return self.quarantine_emptied(),
@@ -184,6 +186,7 @@ impl Core {
                     || self.refreshing_apps
             }
             Page::Startup => m.startup.is_none(),
+            Page::Junk => m.junk.is_none(),
             Page::Drivers => m.drivers.is_none() || m.candidates.is_none(),
             Page::Sessions => {
                 m.analysis.is_none()
@@ -2385,5 +2388,116 @@ mod tests {
         assert_eq!(opened.borrow().as_slice(), [r"C:\Apps\Zed"]);
         c.apply(Action::OpenStartupFolder("inventada".into()));
         assert!(c.model().error.is_some() && opened.borrow().len() == 1);
+    }
+
+    /// A core on the Junk page over fake junk and the fake quarantine.
+    fn junk_core(
+        items: Vec<purifex_domain::junk::JunkItem>,
+        stuck: &[&str],
+    ) -> (
+        Core,
+        std::rc::Rc<std::cell::RefCell<crate::testing::CleanLog>>,
+    ) {
+        use crate::testing::{CleanLog, FakeCleaning, FakeFinder, FakeJunk};
+        use std::{cell::RefCell, rc::Rc};
+        let log = Rc::new(RefCell::new(CleanLog::default()));
+        log.borrow_mut().stuck = stuck.iter().map(|s| s.to_string()).collect();
+        let mut c = Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_cleaning(
+                crate::Cleaning::new(
+                    Box::new(FakeFinder(vec![])),
+                    Box::new(FakeCleaning(log.clone())),
+                    Box::new(FakeCleaning(log.clone())),
+                )
+                .with_junk(Box::new(FakeJunk(Rc::new(RefCell::new(items))))),
+            ),
+        ));
+        c.tick();
+        c.apply(Action::Go(Page::Junk));
+        c.tick();
+        (c, log)
+    }
+
+    fn junk_item(
+        kind: purifex_domain::junk::JunkKind,
+        location: &str,
+        bytes: u64,
+    ) -> purifex_domain::junk::JunkItem {
+        purifex_domain::junk::JunkItem {
+            kind,
+            location: location.into(),
+            bytes,
+            folder: false,
+        }
+    }
+
+    #[test]
+    fn only_the_checked_kinds_of_junk_are_moved_after_a_question_and_the_rest_stay() {
+        use purifex_domain::junk::JunkKind::{CrashDumps, Temp};
+        let items = vec![
+            junk_item(Temp, r"C:\Users\u\AppData\Local\Temp\a.tmp", 2048),
+            junk_item(Temp, r"C:\Users\u\AppData\Local\Temp\b.tmp", 1024),
+            junk_item(CrashDumps, r"C:\Windows\Minidump\x.dmp", 512),
+        ];
+        let (mut c, log) = junk_core(items, &[]);
+        assert_eq!(c.model().junk.as_ref().unwrap().len(), 3);
+        c.apply(Action::ToggleJunk(CrashDumps));
+        c.apply(Action::AskCleanJunk);
+        assert_eq!(c.model().confirm, Some(Confirm::CleanJunk));
+        assert!(
+            log.borrow().removed.is_empty(),
+            "nothing until it is confirmed"
+        );
+        c.apply(Action::Confirm);
+        assert_eq!(
+            log.borrow().removed.len(),
+            2,
+            "the dumps were left unchecked"
+        );
+        assert!(log.borrow().removed.iter().all(|r| r.contains("Temp")));
+        assert_eq!(log.borrow().entries[0].app, "Limpieza: basura");
+        let said = c.model().message.clone().unwrap();
+        assert!(
+            said.contains("2 elementos") && said.contains("cuarentena"),
+            "{said}"
+        );
+        c.tick();
+        assert!(c.model().junk.is_some(), "it is read again");
+    }
+
+    #[test]
+    fn what_cannot_be_moved_is_counted_with_its_reason_and_nothing_checked_asks_nothing() {
+        use purifex_domain::junk::JunkKind::Temp;
+        let busy = r"C:\Users\u\AppData\Local\Temp\busy.tmp";
+        let items = vec![
+            junk_item(Temp, busy, 10),
+            junk_item(Temp, r"C:\Users\u\AppData\Local\Temp\ok.tmp", 10),
+        ];
+        let (mut c, _) = junk_core(items, &[busy]);
+        c.apply(Action::AskCleanJunk);
+        c.apply(Action::Confirm);
+        let said = c.model().message.clone().unwrap();
+        assert!(
+            said.contains("1 elemento (") && said.contains("No se pudieron mover 1"),
+            "{said}"
+        );
+        c.apply(Action::ToggleJunk(Temp));
+        c.apply(Action::AskCleanJunk);
+        assert!(c.model().confirm.is_none());
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("nada marcado"));
     }
 }

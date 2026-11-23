@@ -24,6 +24,7 @@ pub mod fix;
 pub mod forced;
 pub mod hunter;
 pub mod icons;
+pub mod junk;
 pub mod log;
 pub mod monitor;
 pub mod overview;

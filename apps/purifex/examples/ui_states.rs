@@ -103,6 +103,7 @@ mod states {
         match state {
             "blocked" | "confirm" | "history" | "undo" => fixes_state(ready, state),
             "apps" => apps_state(ready, extra),
+            "junk" => junk_state(ready, extra.unwrap_or("list")),
             "startup" => startup_state(ready, extra.unwrap_or("list")),
             "monitor" => monitor_state(apps_state(ready, None), extra.unwrap_or("logs")),
             "batch" => batch_state(apps_state(ready, None), extra.unwrap_or("marked")),
@@ -247,6 +248,29 @@ mod states {
             }
             _ => {}
         }
+        model
+    }
+
+    /// The Cleaning page with junk of a few kinds (`junk`) or the question before cleaning (`ask`).
+    fn junk_state(mut model: Model, step: &str) -> Model {
+        use purifex_domain::junk::{JunkItem, JunkKind};
+        model.page = Page::Junk;
+        let item = |kind, mb: u64| JunkItem {
+            kind,
+            location: r"C:\Users\yo\AppData\Local\Temp\x".into(),
+            bytes: mb << 20,
+            folder: false,
+        };
+        let mut items = vec![
+            item(JunkKind::Temp, 812),
+            item(JunkKind::Temp, 40),
+            item(JunkKind::Thumbnails, 96),
+            item(JunkKind::UpdateCache, 1500),
+        ];
+        items.push(item(JunkKind::CrashDumps, 220));
+        model.junk = Some(items);
+        model.junk_unchecked = vec![JunkKind::CrashDumps];
+        model.confirm = (step == "ask").then_some(Confirm::CleanJunk);
         model
     }
 

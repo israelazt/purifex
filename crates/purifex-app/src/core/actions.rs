@@ -14,6 +14,8 @@ impl Core {
             Action::ClearMarks => self.model.marked.clear(),
             Action::AskUninstallMarked => self.ask_uninstall_marked(),
             Action::CloseBatch => self.model.batch = None,
+            Action::ToggleJunk(kind) => self.junk_toggled(kind),
+            Action::AskCleanJunk => self.junk_clean_asked(),
             Action::ToggleStartup(id) => self.startup_toggled(&id),
             Action::AskRemoveStartup(id) => self.startup_remove_asked(id),
             Action::OpenStartupFolder(id) => self.startup_folder_opened(&id),
@@ -52,6 +54,7 @@ impl Core {
             (None, None, None, None, None);
         (m.candidates, m.apps, m.traces, m.quarantine) = (None, None, None, None);
         (m.fixes, m.history, m.confirm, m.notice) = (None, None, None, None);
+        (m.startup, m.junk) = (None, None);
         m.error = None;
         self.expect_reading();
     }

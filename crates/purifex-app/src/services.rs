@@ -318,6 +318,17 @@ where
         self.cleaning.remove_startup(&item.name, &trace)
     }
 
+    fn junk_scan(&mut self) -> Result<Vec<purifex_domain::junk::JunkItem>, String> {
+        self.cleaning.scan_junk()
+    }
+
+    fn junk_clean(
+        &mut self,
+        kinds: &[purifex_domain::junk::JunkKind],
+    ) -> Result<purifex_domain::junk::JunkOutcome, String> {
+        self.cleaning.clean_junk(kinds)
+    }
+
     fn begin_batch(&mut self, count: usize) -> purifex_domain::safeguard::RestorePointOutcome {
         self.cleaning.begin_batch(count)
     }

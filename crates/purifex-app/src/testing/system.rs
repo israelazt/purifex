@@ -187,3 +187,13 @@ impl purifex_domain::ports::FolderOpener for FakeFolders {
         Ok(())
     }
 }
+
+/// Junk found, in memory.
+#[derive(Clone, Default)]
+pub struct FakeJunk(pub Rc<RefCell<Vec<purifex_domain::junk::JunkItem>>>);
+
+impl purifex_domain::ports::JunkFinder for FakeJunk {
+    fn scan(&self) -> Result<Vec<purifex_domain::junk::JunkItem>, String> {
+        Ok(self.0.borrow().clone())
+    }
+}

@@ -1,5 +1,6 @@
 //! The contract: everything the window, the command line and the MCP server may ask for.
 
+use purifex_domain::junk::{JunkItem, JunkKind, JunkOutcome};
 use purifex_domain::monitor::InstallLog;
 use purifex_domain::startup::StartupItem;
 
@@ -143,4 +144,8 @@ pub trait Services {
     fn set_startup(&mut self, id: &str, on: bool) -> Result<StartupItem, String>;
     /// Takes an entry out to the quarantine (it can be put back); returns what was kept.
     fn remove_startup(&mut self, id: &str) -> Result<CleanupEntry, String>;
+    /// The junk of Windows found now, by kind.
+    fn junk_scan(&mut self) -> Result<Vec<JunkItem>, String>;
+    /// Moves the junk of these kinds to the quarantine.
+    fn junk_clean(&mut self, kinds: &[JunkKind]) -> Result<JunkOutcome, String>;
 }

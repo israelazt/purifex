@@ -29,6 +29,8 @@ mod install_monitor;
 #[cfg(windows)]
 mod inventory;
 #[cfg(windows)]
+mod junk;
+#[cfg(windows)]
 mod log_console;
 #[cfg(windows)]
 mod nt_query;
@@ -81,6 +83,8 @@ pub use gfx::{render_png, Renderer, TextEngine};
 pub use install_monitor::{LocalInstallLogs, ShellInstaller, WindowsFilePicker, WindowsPicture};
 #[cfg(windows)]
 pub use inventory::SetupApiInventory;
+#[cfg(windows)]
+pub use junk::WindowsJunk;
 #[cfg(windows)]
 pub use log_console::install_stderr_log;
 #[cfg(windows)]

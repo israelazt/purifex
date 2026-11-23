@@ -299,3 +299,8 @@ pub trait StartupSource {
     /// not (an entry of the machine needs an administrator).
     fn set_enabled(&self, item: &crate::startup::StartupItem, on: bool) -> Result<(), String>;
 }
+
+/// Finds the junk of Windows: the direct children of the places that hold it. It only reads.
+pub trait JunkFinder {
+    fn scan(&self) -> Result<Vec<crate::junk::JunkItem>, String>;
+}

@@ -350,6 +350,18 @@ Cada una es independiente y puede quedarse fuera sin romper lo anterior.
    de que **no se puede deshacer** (la única función que no pasa por cuarentena).
 5. **Complementos de navegador:** listar y quitar extensiones.
 
+**Hecho (2026-11-23), solo «Basura de Windows» (decisión del usuario: sin navegadores, sin rastros de uso, sin borrado irrecuperable):**
+- **Página «Limpieza»** con cinco tipos: archivos temporales (`%TEMP%`, `%LOCALAPPDATA%\Temp`, `C:\Windows\Temp`, solo lo que lleva más de un día sin tocarse), miniaturas e iconos en caché, volcados de errores (incluido `MEMORY.DMP`), descargas de Windows Update y informes de errores. Cada tipo con su cantidad y tamaño; los que no tienen nada no se pueden marcar.
+- **Qué se toma:** solo los hijos directos de esos lugares fijos (archivo o carpeta, cada uno como una pieza), nunca enlaces. Lo que se mueve es lo que el buscador encuentra **en ese momento**, no lo que diga una acción.
+- **A la cuarentena, no se borra:** pasa por la misma cuarentena que los restos (`Limpieza: basura`), con pregunta antes, y se devuelve con `purifex apps restore N`. **El espacio no se libera hasta vaciar la cuarentena** (la página lo dice).
+- Lo que un programa tiene abierto o necesita administrador no se mueve y se cuenta aparte con su motivo.
+- Pruebas: dominio, plataforma (qué hijos se toman según edad, prefijo y enlaces; lectura real sin repeticiones), limpieza de punta a punta con dobles, y la página. Capturas con `ui_states junk <list|ask>`.
+
+Pendiente, anotado:
+- **Sin limpiar de verdad** (solo con dobles y una lectura real que no mueve nada). Falta una pasada con `Temp` real y, como administrador, con `SoftwareDistribution`.
+- **Fuera por decisión:** limpiadores de navegador, rastros de uso (documentos recientes, `MUICache`, historial de Ejecutar), complementos de navegador y borrado irrecuperable.
+- Solo funciona si la cuarentena está en el mismo disco (usa un renombrado): un `Temp` en otro disco falla con su motivo.
+
 ## R10 · Lista de apps al nivel de Revo (cerrado, 2026-11-21)
 
 Hecho (puntos 1, 2 y 5): se leen `InstallDate`, `URLInfoAbout` y `HelpLink` (solo se guarda una

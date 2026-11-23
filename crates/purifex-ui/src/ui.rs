@@ -41,6 +41,7 @@ fn page_is_ready(m: &Model) -> bool {
         Page::Fixes => m.fixes.is_some() && m.history.is_some(),
         Page::Apps => m.apps.is_some(),
         Page::Startup => m.startup.is_some(),
+        Page::Junk => m.junk.is_some(),
     }
 }
 
@@ -252,6 +253,7 @@ impl Ui {
             Page::Fixes => fixes_page::draw(c, model, area),
             Page::Apps => apps_page::draw(c, model, area),
             Page::Startup => crate::startup_page::draw(c, model, area),
+            Page::Junk => crate::junk_page::draw(c, model, area),
         };
         c.rest();
         c.unclip();

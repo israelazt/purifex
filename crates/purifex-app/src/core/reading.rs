@@ -27,6 +27,7 @@ impl Core {
             Page::Apps => self.read_apps_page(&mut errors),
             Page::Fixes => self.read_fixes_page(&mut errors),
             Page::Sessions => self.read_analysis(&mut errors),
+            Page::Startup => self.read_startup_page(&mut errors),
             Page::Overview => {}
         }
         errors

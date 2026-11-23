@@ -1,6 +1,7 @@
 //! The contract: everything the window, the command line and the MCP server may ask for.
 
 use purifex_domain::monitor::InstallLog;
+use purifex_domain::startup::StartupItem;
 
 use super::*;
 
@@ -136,4 +137,10 @@ pub trait Services {
     fn export_install_log(&mut self, id: &str) -> Result<String, String>;
     /// Asks for a log file and keeps it (as one that was not made here); `None`: cancelled.
     fn import_install_log(&mut self) -> Result<Option<InstallLog>, String>;
+    /// What starts with Windows, each entry with the app it runs from when it is one.
+    fn startup_items(&mut self) -> Result<Vec<StartupItem>, String>;
+    /// Turns an entry on or off without deleting it; returns it as it is now.
+    fn set_startup(&mut self, id: &str, on: bool) -> Result<StartupItem, String>;
+    /// Takes an entry out to the quarantine (it can be put back); returns what was kept.
+    fn remove_startup(&mut self, id: &str) -> Result<CleanupEntry, String>;
 }

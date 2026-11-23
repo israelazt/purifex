@@ -25,6 +25,7 @@ mod batch;
 mod hunting;
 mod monitoring;
 mod reading;
+mod startup;
 
 pub struct Core {
     services: Box<dyn Services>,
@@ -135,6 +136,7 @@ impl Core {
             Confirm::Uninstall(id) => return self.uninstalled(&id),
             Confirm::UninstallMarked => return self.batch_started(),
             Confirm::DeleteLog(id) => return self.log_deleted(&id),
+            Confirm::RemoveStartup(id) => return self.startup_removed(&id),
             Confirm::Clean(name) => return self.cleaned(&name, false),
             Confirm::CleanAll(name) => return self.cleaned(&name, true),
             Confirm::EmptyQuarantine => return self.quarantine_emptied(),
@@ -181,6 +183,7 @@ impl Core {
                     || m.install_logs.is_none()
                     || self.refreshing_apps
             }
+            Page::Startup => m.startup.is_none(),
             Page::Drivers => m.drivers.is_none() || m.candidates.is_none(),
             Page::Sessions => {
                 m.analysis.is_none()
@@ -2233,5 +2236,154 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains("Registro importado"));
+    }
+
+    fn startup_entry(
+        kind: purifex_domain::startup::StartupKind,
+        name: &str,
+        command: &str,
+    ) -> purifex_domain::startup::StartupItem {
+        purifex_domain::startup::StartupItem {
+            id: format!("{kind:?}|{name}"),
+            name: name.into(),
+            command: command.into(),
+            kind,
+            place: match kind {
+                purifex_domain::startup::StartupKind::Task => format!(r"\Zed\{name}"),
+                _ => r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run".into(),
+            },
+            enabled: true,
+            can_toggle: kind != purifex_domain::startup::StartupKind::Service,
+            needs_admin: false,
+            app: None,
+        }
+    }
+
+    /// The core, the fake list, what the quarantine did and the folders opened.
+    type StartupRig = (
+        Core,
+        crate::testing::FakeStartup,
+        std::rc::Rc<std::cell::RefCell<crate::testing::CleanLog>>,
+        std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+    );
+
+    /// A core on the Startup page over a fake list and the fake quarantine.
+    fn startup_core(
+        entries: Vec<purifex_domain::startup::StartupItem>,
+        refuses: Option<&str>,
+    ) -> StartupRig {
+        use crate::testing::{CleanLog, FakeCleaning, FakeFinder, FakeFolders, FakeStartup};
+        use std::{cell::RefCell, rc::Rc};
+        let startup = FakeStartup {
+            items: Rc::new(RefCell::new(entries)),
+            refuses: refuses.map(String::from),
+        };
+        let log = Rc::new(RefCell::new(CleanLog::default()));
+        let opened = Rc::new(RefCell::new(Vec::new()));
+        let mut c = Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_startup(Box::new(startup.clone()))
+            .with_folder_opener(Box::new(FakeFolders(opened.clone())))
+            .with_cleaning(crate::Cleaning::new(
+                Box::new(FakeFinder(vec![])),
+                Box::new(FakeCleaning(log.clone())),
+                Box::new(FakeCleaning(log.clone())),
+            )),
+        ));
+        c.tick();
+        c.apply(Action::Go(Page::Startup));
+        c.tick();
+        (c, startup, log, opened)
+    }
+
+    #[test]
+    fn an_entry_of_the_startup_page_is_turned_off_and_on_without_being_deleted() {
+        use purifex_domain::startup::StartupKind::Registry;
+        let item = startup_entry(Registry, "Zed", r#""C:\Apps\Zed\z.exe" -s"#);
+        let (mut c, startup, _, _) = startup_core(vec![item.clone()], None);
+        assert_eq!(c.model().startup.as_ref().unwrap().len(), 1);
+        c.apply(Action::ToggleStartup(item.id.clone()));
+        assert!(
+            !startup.items.borrow()[0].enabled && !c.model().startup.as_ref().unwrap()[0].enabled
+        );
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("ya no arranca"));
+        c.apply(Action::ToggleStartup(item.id));
+        assert!(
+            startup.items.borrow()[0].enabled && c.model().startup.as_ref().unwrap()[0].enabled
+        );
+        // Something that is not in the list is never acted on.
+        c.apply(Action::ToggleStartup("inventada".into()));
+        assert_eq!(startup.items.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_refused_change_says_why_and_leaves_the_entry_as_it_was() {
+        use purifex_domain::startup::StartupKind::Registry;
+        let item = startup_entry(Registry, "Zed", "z.exe");
+        let (mut c, startup, _, _) =
+            startup_core(vec![item.clone()], Some("hace falta ser administrador"));
+        c.apply(Action::ToggleStartup(item.id));
+        assert!(c
+            .model()
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("administrador"));
+        assert!(
+            startup.items.borrow()[0].enabled && c.model().startup.as_ref().unwrap()[0].enabled
+        );
+    }
+
+    #[test]
+    fn taking_an_entry_out_asks_first_goes_to_the_quarantine_and_a_service_is_not_removable() {
+        use purifex_domain::startup::StartupKind::{Registry, Service};
+        let (reg, svc) = (
+            startup_entry(Registry, "Zed", "z.exe"),
+            startup_entry(Service, "ZedSvc", "s.exe"),
+        );
+        let (mut c, _, log, _) = startup_core(vec![reg.clone(), svc.clone()], None);
+        c.apply(Action::AskRemoveStartup(svc.id));
+        assert!(c.model().confirm.is_none(), "a service is only shown");
+        c.apply(Action::AskRemoveStartup(reg.id.clone()));
+        assert_eq!(c.model().confirm, Some(Confirm::RemoveStartup(reg.id)));
+        assert!(
+            log.borrow().removed.is_empty(),
+            "nothing until it is confirmed"
+        );
+        c.apply(Action::Confirm);
+        assert_eq!(log.borrow().removed.len(), 1);
+        assert_eq!(log.borrow().entries[0].app, "Inicio: Zed");
+        assert!(c
+            .model()
+            .message
+            .as_deref()
+            .unwrap()
+            .contains("purifex apps restore"));
+        c.tick();
+        assert!(c.model().startup.is_some(), "the list is read again");
+    }
+
+    #[test]
+    fn the_folder_of_an_entry_is_opened_only_for_entries_of_the_list() {
+        use purifex_domain::startup::StartupKind::Registry;
+        let item = startup_entry(Registry, "Zed", r#""C:\Apps\Zed\z.exe""#);
+        let (mut c, _, _, opened) = startup_core(vec![item.clone()], None);
+        c.apply(Action::OpenStartupFolder(item.id));
+        assert_eq!(opened.borrow().as_slice(), [r"C:\Apps\Zed"]);
+        c.apply(Action::OpenStartupFolder("inventada".into()));
+        assert!(c.model().error.is_some() && opened.borrow().len() == 1);
     }
 }

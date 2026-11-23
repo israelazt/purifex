@@ -384,8 +384,9 @@ fn parse_page(name: &str) -> Result<Page, String> {
         "sessions" => Ok(Page::Sessions),
         "fixes" => Ok(Page::Fixes),
         "apps" => Ok(Page::Apps),
+        "startup" => Ok(Page::Startup),
         other => Err(format!(
-            "página desconocida: {other} (overview, drivers, sessions, fixes, apps)"
+            "página desconocida: {other} (overview, drivers, sessions, fixes, apps, startup)"
         )),
     }
 }

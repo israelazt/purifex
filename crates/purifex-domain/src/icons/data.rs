@@ -115,6 +115,10 @@ pub const ICONS: &[(&str, &str)] = &[
         r##"<rect x="5" y="2" width="14" height="20" rx="7" /> <path d="M12 6v4" />"##,
     ),
     (
+        "power",
+        r##"<path d="M12 2v10" /> <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />"##,
+    ),
+    (
         "package",
         r##"<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /> <path d="M12 22V12" /> <polyline points="3.29 7 12 12 20.71 7" /> <path d="m7.5 4.27 9 5.15" />"##,
     ),

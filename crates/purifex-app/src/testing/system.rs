@@ -143,3 +143,47 @@ impl purifex_domain::ports::WindowPicker for FakeWindowPicker {
         Ok(self.0.borrow().clone())
     }
 }
+
+/// What starts with Windows, in memory: turning an entry on or off changes it here.
+#[derive(Clone, Default)]
+pub struct FakeStartup {
+    pub items: Rc<RefCell<Vec<purifex_domain::startup::StartupItem>>>,
+    /// The reason every change is refused for, when set (no administrator).
+    pub refuses: Option<String>,
+}
+
+impl purifex_domain::ports::StartupSource for FakeStartup {
+    fn read(&self) -> Result<Vec<purifex_domain::startup::StartupItem>, String> {
+        Ok(self.items.borrow().clone())
+    }
+
+    fn set_enabled(
+        &self,
+        item: &purifex_domain::startup::StartupItem,
+        on: bool,
+    ) -> Result<(), String> {
+        if let Some(why) = &self.refuses {
+            return Err(why.clone());
+        }
+        for slot in self
+            .items
+            .borrow_mut()
+            .iter_mut()
+            .filter(|i| i.id == item.id)
+        {
+            slot.enabled = on;
+        }
+        Ok(())
+    }
+}
+
+/// Folders opened in Explorer, recorded.
+#[derive(Clone, Default)]
+pub struct FakeFolders(pub Rc<RefCell<Vec<String>>>);
+
+impl purifex_domain::ports::FolderOpener for FakeFolders {
+    fn open(&self, folder: &str) -> Result<(), String> {
+        self.0.borrow_mut().push(folder.to_string());
+        Ok(())
+    }
+}

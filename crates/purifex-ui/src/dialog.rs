@@ -99,6 +99,7 @@ pub fn view(m: &Model) -> Option<DialogView> {
     crate::hunter_dialog::view(m)
         .or_else(|| crate::batch_panel::dialog(m))
         .or_else(|| crate::monitor_panel::dialog(m))
+        .or_else(|| crate::startup_page::dialog(m))
         .or_else(|| page_view(m))
 }
 

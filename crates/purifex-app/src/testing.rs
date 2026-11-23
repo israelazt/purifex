@@ -418,6 +418,6 @@ mod monitor;
 pub use monitor::{FakeLogs, FakePicker, FakePicture, FakeRunner};
 mod system;
 pub use system::{
-    FakeAppList, FakeApps, FakeBackups, FakeElevation, FakeProcesses, FakeRestorePoints,
-    FakeWindowPicker,
+    FakeAppList, FakeApps, FakeBackups, FakeElevation, FakeFolders, FakeProcesses,
+    FakeRestorePoints, FakeStartup, FakeWindowPicker,
 };

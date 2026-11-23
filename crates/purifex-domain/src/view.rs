@@ -24,6 +24,7 @@ pub enum Page {
     Sessions,
     Fixes,
     Apps,
+    Startup,
 }
 
 /// What the user is being asked to confirm before something is changed.
@@ -58,6 +59,8 @@ pub enum Confirm {
     UninstallMarked,
     /// Delete a log of an installation (by its id).
     DeleteLog(String),
+    /// Take an entry out of what starts with Windows (by its id), to the quarantine.
+    RemoveStartup(String),
 }
 
 /// Programs of an app that is gone that still run from its folder.
@@ -154,6 +157,8 @@ pub struct Model {
     pub marked: Vec<String>,
     /// The batch being run, or the summary of the one that just finished.
     pub batch: Option<crate::batch::Batch>,
+    /// What starts with Windows (read on the Startup page).
+    pub startup: Option<Vec<crate::startup::StartupItem>>,
     /// The installer being watched (its file name): the picture before was taken.
     pub monitoring: Option<String>,
     /// The logs of installations kept (read on the apps page), newest first.
@@ -232,6 +237,12 @@ pub enum Action {
     /// Puts back everything of an app that was cleaned: its traces from the quarantine and its
     /// registration from the copy (the app, and the file of the copy).
     RestoreAll(String, String),
+    /// Turns an entry of the startup list on or off, by its id.
+    ToggleStartup(String),
+    /// Asks to take an entry out of the startup list, by its id.
+    AskRemoveStartup(String),
+    /// Opens the folder of the program an entry runs, by its id.
+    OpenStartupFolder(String),
     /// Chooses an installer, takes the picture of the system and starts it.
     MonitorStart,
     /// The installer is done: takes the picture after and keeps what changed as a log.

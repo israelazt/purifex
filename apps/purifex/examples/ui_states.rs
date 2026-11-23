@@ -103,6 +103,7 @@ mod states {
         match state {
             "blocked" | "confirm" | "history" | "undo" => fixes_state(ready, state),
             "apps" => apps_state(ready, extra),
+            "startup" => startup_state(ready, extra.unwrap_or("list")),
             "monitor" => monitor_state(apps_state(ready, None), extra.unwrap_or("logs")),
             "batch" => batch_state(apps_state(ready, None), extra.unwrap_or("marked")),
             "kdenlive" => kdenlive_state(ready),
@@ -246,6 +247,59 @@ mod states {
             }
             _ => {}
         }
+        model
+    }
+
+    /// The Startup page with one entry of each kind (`startup`), or the question before taking one
+    /// out (`remove`).
+    fn startup_state(mut model: Model, step: &str) -> Model {
+        use purifex_domain::startup::{StartupItem, StartupKind};
+        model.page = Page::Startup;
+        let entry = |kind, name: &str, command: &str, enabled, app: Option<&str>| StartupItem {
+            id: format!("{kind:?}|{name}"),
+            name: name.into(),
+            command: command.into(),
+            kind,
+            place: String::new(),
+            enabled,
+            can_toggle: kind != StartupKind::Service,
+            needs_admin: false,
+            app: app.map(String::from),
+        };
+        let items = vec![
+            entry(
+                StartupKind::Registry,
+                "Discord",
+                r#""C:\Users\yo\AppData\Local\Discord\Update.exe" --processStart Discord.exe"#,
+                true,
+                Some("Discord"),
+            ),
+            entry(
+                StartupKind::Folder,
+                "OneNote",
+                r"C:\Program Files\OneNote\onenote.exe /background",
+                true,
+                None,
+            ),
+            entry(
+                StartupKind::Task,
+                "Updater",
+                r#""C:\Program Files\Zed\upd.exe" /check"#,
+                false,
+                Some("Zed Editor"),
+            ),
+            entry(
+                StartupKind::Service,
+                "Zed Helper",
+                r#""C:\Program Files\Zed\helper.exe""#,
+                true,
+                Some("Zed Editor"),
+            ),
+        ];
+        if step == "remove" {
+            model.confirm = Some(Confirm::RemoveStartup(items[0].id.clone()));
+        }
+        model.startup = Some(items);
         model
     }
 

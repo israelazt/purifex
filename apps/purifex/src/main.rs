@@ -97,6 +97,7 @@ fn build_app() -> impl purifex_app::Services + 'static {
         ])))
         .with_cleaning(cleaning)
         .with_monitoring(install_monitor())
+        .with_startup(Box::new(purifex_platform::WindowsStartup))
         .with_elevation(Box::new(WindowsElevation))
 }
 

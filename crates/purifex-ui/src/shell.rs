@@ -253,7 +253,7 @@ fn navigation(c: &mut Canvas, m: &Model, mut y: f32) -> f32 {
 }
 
 /// The pages of the navigation with what each one has to say in its badge.
-fn nav_items(m: &Model) -> [NavItem<'static>; 5] {
+fn nav_items(m: &Model) -> [NavItem<'static>; 6] {
     let attention = m
         .overview
         .as_ref()
@@ -269,37 +269,19 @@ fn nav_items(m: &Model) -> [NavItem<'static>; 5] {
         .as_ref()
         .filter(|f| !f.is_empty())
         .map(|f| (f.len().to_string(), Tone::Amber));
+    let item = |icon, label, page, badge| NavItem {
+        icon,
+        label,
+        page: Some(page),
+        badge,
+    };
     [
-        NavItem {
-            icon: "gauge",
-            label: "Estado general",
-            page: Some(Page::Overview),
-            badge: None,
-        },
-        NavItem {
-            icon: "layers",
-            label: "Drivers",
-            page: Some(Page::Drivers),
-            badge: drivers_badge,
-        },
-        NavItem {
-            icon: "gamepad-2",
-            label: "Partidas",
-            page: Some(Page::Sessions),
-            badge: sessions_badge,
-        },
-        NavItem {
-            icon: "package",
-            label: "Apps",
-            page: Some(Page::Apps),
-            badge: None,
-        },
-        NavItem {
-            icon: "sliders-horizontal",
-            label: "Arreglos",
-            page: Some(Page::Fixes),
-            badge: fixes_badge,
-        },
+        item("gauge", "Estado general", Page::Overview, None),
+        item("layers", "Drivers", Page::Drivers, drivers_badge),
+        item("gamepad-2", "Partidas", Page::Sessions, sessions_badge),
+        item("package", "Apps", Page::Apps, None),
+        item("power", "Inicio", Page::Startup, None),
+        item("sliders-horizontal", "Arreglos", Page::Fixes, fixes_badge),
     ]
 }
 
@@ -374,6 +356,7 @@ mod tests {
                 Action::Go(Page::Drivers),
                 Action::Go(Page::Sessions),
                 Action::Go(Page::Apps),
+                Action::Go(Page::Startup),
                 Action::Go(Page::Fixes)
             ]
         );

@@ -33,6 +33,7 @@ mod running_panel;
 mod scrollbar;
 pub mod sessions_page;
 pub mod shell;
+mod startup_page;
 pub mod theme;
 mod traces_dialog;
 pub mod ui;

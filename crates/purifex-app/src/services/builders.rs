@@ -22,6 +22,7 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
             inventory: None,
             cleaning: Cleaning::default(),
             monitoring: crate::monitoring::Monitoring::default(),
+            startup: None,
             elevation: None,
         }
     }
@@ -29,6 +30,12 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
     /// What uninstalls apps and cleans what they leave (none until given).
     pub fn with_cleaning(mut self, cleaning: Cleaning) -> Self {
         self.cleaning = cleaning;
+        self
+    }
+
+    /// What starts with Windows (none until given).
+    pub fn with_startup(mut self, startup: Box<dyn purifex_domain::ports::StartupSource>) -> Self {
+        self.startup = Some(startup);
         self
     }
 

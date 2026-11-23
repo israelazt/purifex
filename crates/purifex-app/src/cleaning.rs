@@ -25,6 +25,7 @@ mod logging;
 mod purging;
 mod rebooting;
 mod restoring;
+mod startup;
 
 #[derive(Default)]
 pub struct Cleaning {

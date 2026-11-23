@@ -290,3 +290,12 @@ pub trait InstallLogs {
 pub trait FilePicker {
     fn pick(&self, title: &str, extensions: &[&str]) -> Result<Option<String>, String>;
 }
+
+/// What starts with Windows, and turning it on and off.
+pub trait StartupSource {
+    /// Everything that starts with Windows or at logon. Reads only.
+    fn read(&self) -> Result<Vec<crate::startup::StartupItem>, String>;
+    /// Turns an entry on or off the way Windows itself does, without deleting it. `Err` says why
+    /// not (an entry of the machine needs an administrator).
+    fn set_enabled(&self, item: &crate::startup::StartupItem, on: bool) -> Result<(), String>;
+}

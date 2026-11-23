@@ -87,6 +87,41 @@ fn schtasks(args: &[&str]) -> Result<Vec<u8>, String> {
     }
 }
 
+/// The tasks that run when someone logs on or when Windows starts, other than those of
+/// Windows itself (`\Microsoft\`): path, what they run, and whether they are enabled.
+pub fn startup_tasks() -> Vec<(String, String, bool)> {
+    let Ok(output) = schtasks(&["/query", "/xml"]) else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&output)
+        .split("<!-- ")
+        .skip(1)
+        .filter_map(|chunk| {
+            let (path, xml) = chunk.split_once(" -->")?;
+            let path = path.trim();
+            let starts = xml.contains("<LogonTrigger") || xml.contains("<BootTrigger");
+            if !starts || path.to_lowercase().starts_with(r"\microsoft\") {
+                return None;
+            }
+            let command = texts_of(xml, "Command").into_iter().next()?;
+            let arguments = texts_of(xml, "Arguments").into_iter().next();
+            let line = match arguments {
+                Some(a) => format!("{command} {a}"),
+                None => command,
+            };
+            let settings = xml.split("<Settings>").nth(1).unwrap_or_default();
+            let enabled = !settings.contains("<Enabled>false</Enabled>");
+            Some((path.to_string(), expand(&line), enabled))
+        })
+        .collect()
+}
+
+/// Turns a task on or off (it stays defined).
+pub fn set_enabled(task: &str, on: bool) -> Result<(), String> {
+    let flag = if on { "/enable" } else { "/disable" };
+    schtasks(&["/change", "/tn", task, flag]).map(|_| ())
+}
+
 pub fn exists(task: &str) -> bool {
     schtasks(&["/query", "/tn", task]).is_ok()
 }

@@ -24,6 +24,7 @@ use purifex_domain::report::{ScanReport, Scope};
 use purifex_domain::safeguard::{BackupEntry, Started};
 use purifex_domain::scan_mode::ScanMode;
 use purifex_domain::session_list::SessionRow;
+use purifex_domain::startup::StartupItem;
 
 use crate::archive::Archive;
 use crate::candidates::Candidates;
@@ -49,6 +50,7 @@ pub struct App<I, C, S, C2, F, A> {
     inventory: Option<Box<dyn AppInventory>>,
     cleaning: Cleaning,
     monitoring: crate::monitoring::Monitoring,
+    startup: Option<Box<dyn purifex_domain::ports::StartupSource>>,
     elevation: Option<Box<dyn Elevation>>,
 }
 
@@ -269,6 +271,51 @@ where
         &mut self,
     ) -> Result<Option<purifex_domain::monitor::InstallLog>, String> {
         self.monitoring.import()
+    }
+
+    fn startup_items(&mut self) -> Result<Vec<StartupItem>, String> {
+        let source = self
+            .startup
+            .as_ref()
+            .ok_or("esta versión no lee el inicio")?;
+        let apps = self.apps().unwrap_or_default();
+        let items = source
+            .read()?
+            .into_iter()
+            .map(|i| i.with_app(&apps))
+            .collect();
+        Ok(purifex_domain::startup::sorted(items))
+    }
+
+    fn set_startup(&mut self, id: &str, on: bool) -> Result<StartupItem, String> {
+        let source = self
+            .startup
+            .as_ref()
+            .ok_or("esta versión no cambia el inicio")?;
+        let item = source
+            .read()?
+            .into_iter()
+            .find(|i| i.id == id)
+            .ok_or("esa entrada ya no está en el inicio")?;
+        source.set_enabled(&item, on)?;
+        Ok(StartupItem {
+            enabled: on,
+            ..item
+        })
+    }
+
+    fn remove_startup(&mut self, id: &str) -> Result<CleanupEntry, String> {
+        let source = self
+            .startup
+            .as_ref()
+            .ok_or("esta versión no cambia el inicio")?;
+        let item = source
+            .read()?
+            .into_iter()
+            .find(|i| i.id == id)
+            .ok_or("esa entrada ya no está en el inicio")?;
+        let trace = item.trace().ok_or("esta entrada no se quita desde aquí")?;
+        self.cleaning.remove_startup(&item.name, &trace)
     }
 
     fn begin_batch(&mut self, count: usize) -> purifex_domain::safeguard::RestorePointOutcome {

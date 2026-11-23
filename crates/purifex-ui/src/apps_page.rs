@@ -25,7 +25,7 @@ use crate::running_panel::running_panel;
 use crate::theme::{self, Tone};
 use crate::widgets::{button, button_width, panel};
 
-fn info(c: &mut Canvas, area: Rect, text: &str) -> f32 {
+pub(crate) fn info(c: &mut Canvas, area: Rect, text: &str) -> f32 {
     let style = theme::mono(12.5, theme::TEXT);
     let lines = c.wrap(text, &style, area.w - 56.0, Some(3));
     let h = 28.0 + lines.len() as f32 * 18.0;

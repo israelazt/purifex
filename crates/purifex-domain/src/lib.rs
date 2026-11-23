@@ -41,6 +41,7 @@ pub mod session_csv;
 pub mod session_header;
 pub mod session_id;
 pub mod session_list;
+pub mod startup;
 pub mod text;
 pub mod trace_rules;
 pub mod trace_text;

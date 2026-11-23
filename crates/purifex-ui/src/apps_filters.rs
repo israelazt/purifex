@@ -32,6 +32,47 @@ pub(crate) fn app_filters(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 
     38.0 + 16.0
 }
 
+/// When the list shows fewer apps than are installed, says how many and why, with a way back:
+/// a filter kept from another day must not look like apps that are missing.
+pub(crate) fn hidden_note(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
+    let Some(all) = m.apps.as_deref() else {
+        return 0.0;
+    };
+    let shown = m.visible_apps().len();
+    if shown == all.len() {
+        return 0.0;
+    }
+    let mut why = Vec::new();
+    if m.app_filter != AppFilter::All {
+        why.push(format!("filtro: {}", m.app_filter.label()));
+    }
+    if !m.query.trim().is_empty() {
+        why.push(format!("búsqueda: «{}»", m.query.trim()));
+    }
+    let text = format!(
+        "Mostrando {shown} de {} apps ({})",
+        all.len(),
+        why.join(" · ")
+    );
+    c.icon("triangle-alert", area.x + 4.0, y + 8.0, 16.0, theme::AMBER);
+    c.text(
+        area.x + 30.0,
+        y + 8.0,
+        &text,
+        theme::mono(12.5, theme::TEXT),
+    );
+    let label = "Quitar filtros";
+    let w = crate::widgets::button_width(c, label);
+    let rect = Rect::new(
+        area.x + 40.0 + c.width(&text, &theme::mono(12.5, theme::TEXT)),
+        y,
+        w,
+        34.0,
+    );
+    crate::widgets::button(c, rect, label, "x", false, Some(Action::ClearAppFilters));
+    34.0 + 12.0
+}
+
 /// «Detalles» and «Lista», at the right end of the row: how each app is drawn.
 fn view_toggle(c: &mut Canvas, m: &Model, area: Rect, y: f32) -> f32 {
     let mut right = area.right();

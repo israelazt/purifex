@@ -14,6 +14,7 @@ const WATCH_EVERY: Duration = if cfg!(test) {
 /// How long an uninstaller is waited for.
 const WATCH_FOR: Duration = Duration::from_secs(30 * 60);
 
+use purifex_domain::app_list::AppFilter;
 use purifex_domain::driver_offers::Offers;
 use purifex_domain::view::{Action, Confirm, Model, Page};
 
@@ -101,6 +102,10 @@ impl Core {
             Action::AskRestartAsAdmin(name) => self.ask(Confirm::RestartAsAdmin(name)),
             Action::AskDeleteAtReboot(name) => self.ask(Confirm::DeleteAtReboot(name)),
             Action::SetAppFilter(filter) => self.app_list_chosen(|m| m.app_filter = filter),
+            Action::ClearAppFilters => {
+                self.model.query.clear();
+                self.app_list_chosen(|m| m.app_filter = AppFilter::All);
+            }
             Action::SetAppSort(sort) => self.app_list_chosen(|m| m.app_sort = sort),
             Action::SetAppView(view) => self.app_list_chosen(|m| m.app_view = view),
             Action::SelectApp(id) => self.select_app(id),
@@ -2499,5 +2504,16 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains("nada marcado"));
+    }
+
+    #[test]
+    fn clearing_the_filters_shows_every_app_again_and_keeps_the_choice() {
+        use purifex_domain::app_list::AppFilter;
+        let (mut c, _, _, _) = monitor_core();
+        c.apply(Action::SetAppFilter(AppFilter::Store));
+        c.apply(Action::SetQuery("zz".into()));
+        c.apply(Action::ClearAppFilters);
+        assert_eq!(c.model().app_filter, AppFilter::All);
+        assert!(c.model().query.is_empty());
     }
 }

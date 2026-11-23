@@ -11,7 +11,7 @@ use purifex_domain::trace_text::Counts;
 use purifex_domain::view::{Action, Model};
 
 use crate::apps_detail::{app_detail, DETAIL_H};
-use crate::apps_filters::app_filters;
+use crate::apps_filters::{app_filters, hidden_note};
 use crate::apps_row::{app_row, row_height, CHECK_W};
 use crate::backups_panel::backups_panel;
 use crate::batch_panel::batch_panel;
@@ -335,6 +335,7 @@ pub fn draw(c: &mut Canvas, m: &Model, area: Rect) -> f32 {
         "Filtrar por nombre o editor… (si ya la desinstalaste, escribe su nombre, su carpeta o su .exe)",
     );
     y += app_filters(c, m, area, y);
+    y += hidden_note(c, m, area, y);
     y += already_gone(c, m, area, y);
     y += table(c, m, area, y);
     y - area.y
@@ -621,6 +622,36 @@ mod tests {
         m.message = Some("Se quitaron 2 restos de Discord".into());
         let (texts, _) = render(&m);
         assert!(texts.join(" ").contains("Se quitaron 2 restos"));
+    }
+
+    #[test]
+    fn a_filter_that_hides_apps_says_how_many_and_offers_to_remove_it() {
+        use purifex_domain::app_list::AppFilter;
+        let (texts, actions) = render(&model());
+        assert!(
+            !actions.contains(&Action::ClearAppFilters),
+            "nothing hidden, nothing said"
+        );
+        assert!(!texts.iter().any(|t| t.starts_with("Mostrando")));
+        let mut m = model();
+        m.app_filter = AppFilter::Store;
+        let (texts, actions) = render(&m);
+        assert!(
+            texts
+                .iter()
+                .any(|t| t == "Mostrando 0 de 2 apps (filtro: Apps de Windows)"),
+            "{texts:?}"
+        );
+        assert!(actions.contains(&Action::ClearAppFilters));
+        m.app_filter = AppFilter::All;
+        m.query = "disc".into();
+        let (texts, _) = render(&m);
+        assert!(
+            texts
+                .iter()
+                .any(|t| t == "Mostrando 1 de 2 apps (búsqueda: «disc»)"),
+            "{texts:?}"
+        );
     }
 
     #[test]

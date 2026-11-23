@@ -103,6 +103,11 @@ mod states {
         match state {
             "blocked" | "confirm" | "history" | "undo" => fixes_state(ready, state),
             "apps" => apps_state(ready, extra),
+            "filtered" => Model {
+                traces_open: false,
+                app_filter: purifex_domain::app_list::AppFilter::Store,
+                ..apps_state(ready, None)
+            },
             "junk" => junk_state(ready, extra.unwrap_or("list")),
             "startup" => startup_state(ready, extra.unwrap_or("list")),
             "monitor" => monitor_state(apps_state(ready, None), extra.unwrap_or("logs")),

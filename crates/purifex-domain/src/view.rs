@@ -240,6 +240,8 @@ pub enum Action {
     OpenHuntedFolder,
     SetFilter(DriverFilter),
     SetAppFilter(crate::app_list::AppFilter),
+    /// Shows every app again: no filter and no search.
+    ClearAppFilters,
     SetAppSort(crate::app_list::AppSort),
     SetAppView(crate::app_list::AppView),
     /// Asks to delete a copy of the registration, by its file.

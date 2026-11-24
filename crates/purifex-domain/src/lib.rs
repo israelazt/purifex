@@ -36,6 +36,7 @@ pub mod report;
 pub mod safeguard;
 pub mod sample;
 pub mod scan_mode;
+pub mod search_step;
 pub mod seeds;
 pub mod session;
 pub mod session_csv;

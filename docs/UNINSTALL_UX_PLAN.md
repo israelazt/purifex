@@ -574,3 +574,6 @@ al buscar y enseña qué está mirando. Orden completo: 0 → A → D → B → 
 ## Estado
 
 - 2026-11-24: plan escrito. Medidas de partida en «Punto de partida». Falta que el autor confirme U3.
+- 2026-11-24 · 0.1 hecho. CPU de la ventana real en reposo en Apps: 0 s de CPU en 10 s. Capturas de
+  antes (`before-waiting|finding|review|done.png`) y salidas de `apps traces` (DBeaver 25 líneas,
+  Inkscape 1599) guardadas en la carpeta temporal de la sesión; no se suben.

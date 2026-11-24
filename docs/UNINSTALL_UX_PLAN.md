@@ -308,6 +308,40 @@ ninguna espera pasa de 100 ms después de que aparece la ventana.
 una prueba en sandbox (`apps/purifex/tests/`) quita tres restos reales por tramos y los devuelve
 byte a byte.
 
+### A.7 Decir la verdad cuando no se quita nada (añadida tras la prueba del autor con VLC)
+Lo que pasó (2026-11-24, VLC media player, Purifex sin administrador): la lista tenía 75 claves y
+todas requerían administrador. Tras «Eliminar todo»:
+- la ventana de restos se cerró y no se vio nada mientras se intentaba (D.5 aún no existe);
+- al final dijo «Se quitaron 0 restos … (75 no se pudieron quitar)» como si fuera un éxito, y
+  el paso final del asistente se puso igual;
+- las 75 pasaron a `stuck`, así que el segundo clic dijo «No hay ningún resto marcado.», que es
+  falso: estaban marcados, pero ya habían fallado.
+
+(Que esas 75 claves fueran de Windows y no de VLC era otro fallo, ya corregido en `f93c62f`.)
+
+1. En `Core::cleaned` (`core/apps.rs`), antes de `begin_removal`, con `model.elevated == Some(false)`:
+   si **todos** los restos elegidos tienen `needs_admin()`, no intentes nada y pon
+   `model.confirm = Some(Confirm::RestartAsAdmin(name))`, la pregunta que ya existe. Si solo
+   algunos lo requieren, sigue: los demás se quitan.
+2. Cuando `checked_traces(true)` devuelve una lista vacía, distingue el motivo con una función
+   pura (en `core/apps.rs` o en el dominio, con tests):
+   - si hay restos en la lista y todos están en `stuck`: «Ya se intentó con todos y no se
+     pudieron quitar: {motivo del primero}.»;
+   - si la lista está vacía: «No hay restos que quitar.»;
+   - solo si de verdad no hay ninguno marcado: «No hay ningún resto marcado.».
+3. En `removal_said`, si `done == 0 && failed > 0`, no lo presentes como hecho:
+   - `model.error` = «No se pudo quitar ningún resto de {name}: {motivo del primero}.»;
+   - el asistente vuelve a la lista (`traces_open = true`, `wizard.done = None`) en lugar del
+     paso final.
+4. Tests con `FakeCleaning`:
+   - todo requiere administrador y Purifex no lo es: se pregunta por reiniciar y nada se intenta;
+   - todos fallan: hay error, la lista sigue abierta y no hay paso final;
+   - segundo intento tras fallar todos: el mensaje dice que ya se intentó, no «ningún resto
+     marcado».
+
+**Hecho cuando:** `tools/check.ps1` en verde, y con un app real cuyos restos requieran
+administrador, «Eliminar todo» sin serlo ofrece reiniciar como administrador.
+
 **Pausa de revisión del bloque A.**
 
 ---
@@ -568,7 +602,7 @@ comprobando las tres acciones.
 
 ```
 0.1 → A.1 → A.2 → A.3 → A.4 → A.5 → A.5b ──┐
-                                (U3) A.6 ──┤
+                                (U3) A.6 → A.7 ──┤
 D.1 → D.2 → D.3, D.4 (necesita A.5), D.5 (necesita A.6) → D.6
 B.1 → B.2 (necesita D.2: follow) → B.3 → B.4
 C.1 (necesita D.2) → C.2
@@ -632,3 +666,18 @@ al buscar y enseña qué está mirando. Orden completo: 0 → A → D → B → 
   que nunca pasa del total, y `apps/purifex/tests/sliced_removal_real.rs` (sandbox, tres restos
   reales quitados uno a uno y devueltos byte a byte). Bloque A cerrado salvo la mirada a mano de la
   ventana real (ver arriba). **Pausa de revisión del bloque A.**
+- 2026-11-24 · **Prueba del autor con VLC** (Purifex sin administrador): «Eliminar todo» «no hace
+  nada», y la app en general no dice qué está haciendo. Revisado (Opus 5.5):
+  - **Fallo de seguridad, corregido en `f93c62f`.** Las 75 claves propuestas eran
+    `HKLM\SOFTWARE\Classes\.avi`, `.mp3`, `.ac3`… enteras. El desinstalador de VLC devolvió esas
+    extensiones al Reproductor de Windows Media (o a PotPlayer), y las claves llevan datos de
+    Windows (`Content Type`, miniaturas en `ShellEx`, `PersistentHandler`). Solo no se borraron
+    porque Purifex no era administrador. Ahora una extensión que abre otro programa deja de ser
+    semilla (75 → 30), y la clave de una extensión solo se propone mientras siga abriendo la app
+    (30 → 0). `apps traces "VLC media player"`: «No se encontraron restos». Revo mostraba
+    1 elemento del registro que no está en las rutas típicas (`Software\VideoLAN`,
+    `Applications\vlc.exe`, `%APPDATA%\vlc`). Sin identificar.
+  - **«No hace nada».** El primer clic intentó las 75, fallaron todas y se anunció como «Se
+    quitaron 0 restos»; los siguientes dijeron «No hay ningún resto marcado». Nueva tarea **A.7**.
+  - **Falta de respuesta visual en general.** Es lo que cubren D (indicadores), B, C y E; aún no
+    empezados. Orden recomendado ahora: A.5b → A.7 → D.

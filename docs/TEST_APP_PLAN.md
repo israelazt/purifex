@@ -318,3 +318,12 @@ prueba que Revo ve los restos.
   - `purge` sigue aunque un elemento falle (en uso, etc.) y lo cuenta al final; solo se detiene si
     algo no es nuestro (`is_ours` otra vez, justo antes de quitar).
   Los `allow(dead_code)` temporales de T.1 ya se quitaron.
+- 2026-11-24 · T.5 escrita (Sonnet 5.5): `tools/sonda.ps1` con `ciclo` y `comparar`. Una fila cuenta
+  como propuesta si Purifex propone esa ruta, un ancestro suyo (se va entera) o algo dentro. Un
+  control falla si cualquiera de las tres cosas lo toca. Probado: el análisis de líneas con una
+  salida real de `apps traces` (DBeaver) y el camino de fallo de `comparar` (con todo ausente: 10
+  `FALLA`, código 1). **Sin probar:** `ciclo` y la comparación en verde, que necesitan una consola de
+  administrador. **Bloque T terminado en código; pausa de revisión.**
+  Lo que falta para cerrarlo, en este orden: (1) tú, en una consola de administrador:
+  `fex-sonda purge`, `tools/sonda.ps1 ciclo`, `tools/sonda.ps1 comparar`, y repetir el ciclo tres
+  veces; (2) pegar aquí lo que salga; (3) P.0 y P.1–P.3 con Revo.

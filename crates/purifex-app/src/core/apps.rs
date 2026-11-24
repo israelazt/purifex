@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use purifex_domain::batch::BatchResult;
 use purifex_domain::scan_mode::ScanMode;
-use purifex_domain::view::{InUse, Model, Wizard};
+use purifex_domain::view::{Model, Wizard};
 
 use super::{Core, WATCH_EVERY, WATCH_FOR};
 
@@ -88,32 +88,15 @@ impl Core {
     }
 
     /// Removes the traces of an app to the quarantine: all of them, or only the ones
-    /// the user left checked.
+    /// the user left checked. What the window showed is what goes, with no second search; the
+    /// app must still be gone.
     pub(super) fn cleaned(&mut self, name: &str, everything: bool) {
-        let checked = self.checked_traces(everything);
-        if checked.as_ref().is_some_and(Vec::is_empty) {
+        let checked = self.checked_traces(everything).unwrap_or_default();
+        if checked.is_empty() {
             self.model.message = Some("No hay ningún resto marcado.".into());
             return;
         }
-        match self.services.clean_app(name, true, checked.as_deref()) {
-            Ok(report) => {
-                (self.model.traces_open, self.model.unchecked) = (false, Vec::new());
-                // What failed now is added to what failed before for this app: it stays left alone.
-                for (t, why) in &report.failed {
-                    let key = t.key();
-                    self.model.stuck.retain(|(k, _)| *k != key);
-                    self.model.stuck.push((key, why.clone()));
-                }
-                self.removal_said(name, report.removed.len(), report.failed.len());
-                (self.model.traces, self.model.apps) = (None, None);
-                self.model.in_use = (!report.in_use.is_empty()).then(|| InUse {
-                    app: name.to_string(),
-                    items: report.in_use.len(),
-                });
-                self.expect_reading();
-            }
-            Err(error) => self.model.error = Some(error),
-        }
+        self.begin_removal(name, &checked);
     }
 
     /// The traces to remove, by key: all of them (but the guesses that were not checked and what
@@ -140,7 +123,7 @@ impl Core {
     }
 
     /// Says what a removal did: in the page's message and as the last step of the window.
-    fn removal_said(&mut self, name: &str, done: usize, failed: usize) {
+    pub(super) fn removal_said(&mut self, name: &str, done: usize, failed: usize) {
         let failures = match failed {
             0 => String::new(),
             n => format!(" ({n} no se pudieron quitar)"),

@@ -1,5 +1,6 @@
 //! The contract: everything the window, the command line and the MCP server may ask for.
 
+use purifex_domain::app_traces::Trace;
 use purifex_domain::junk::{JunkItem, JunkKind, JunkOutcome};
 use purifex_domain::monitor::InstallLog;
 use purifex_domain::startup::StartupItem;
@@ -103,6 +104,16 @@ pub trait Services {
     fn start_traces(&mut self, query: &str) -> Result<(), String>;
     /// What the search of `start_traces` has done; it never waits.
     fn poll_traces(&mut self) -> TracesPolled;
+    /// Checks that the app is gone before its traces are moved one by one with `remove_trace`.
+    fn begin_removal(&mut self, query: &str) -> Result<RemovalStart, String>;
+    /// Moves one trace that was shown to the quarantine, without looking again.
+    fn remove_trace(
+        &mut self,
+        app: &str,
+        trace: &Trace,
+        start: &mut RemovalStart,
+        done: &mut Removals,
+    ) -> Result<(), String>;
     /// Puts back what removal `seq` took out.
     fn restore_cleanup(&mut self, seq: u64) -> Result<CleanupEntry, String>;
     fn cleanup_history(&self) -> Result<Vec<CleanupEntry>, String>;

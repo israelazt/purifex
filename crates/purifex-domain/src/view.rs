@@ -85,6 +85,16 @@ impl Wizard {
     }
 }
 
+/// A removal of leftovers that is under way, as far as the window knows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Removing {
+    pub app: String,
+    pub done: usize,
+    pub total: usize,
+    pub bytes_done: u64,
+    pub bytes_total: u64,
+}
+
 /// Programs of an app that is gone that still run from its folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Running {
@@ -150,6 +160,8 @@ pub struct Model {
     pub traces: Option<CleanReport>,
     /// The name of an app whose traces are being looked for.
     pub finding: Option<String>,
+    /// The removal of leftovers going on, moved in slices so the window keeps answering.
+    pub removing: Option<Removing>,
     /// The parts of that search that have already finished.
     pub search_steps: Vec<crate::search_step::SearchStep>,
     /// An uninstaller started here is running: Purifex waits for the app to disappear.

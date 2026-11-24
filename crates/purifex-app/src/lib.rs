@@ -30,7 +30,7 @@ mod updates_wait;
 pub use apps_inventory::AllApps;
 pub use archive::Archive;
 pub use candidates::Candidates;
-pub use cleaning::Cleaning;
+pub use cleaning::{Cleaning, RemovalStart, Removals};
 pub use command::{Command, Output, Screenshot, UiOptions};
 pub use core::Core;
 pub use fixer::Fixer;

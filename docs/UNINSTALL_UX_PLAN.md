@@ -625,3 +625,10 @@ al buscar y enseña qué está mirando. Orden completo: 0 → A → D → B → 
 
   Las dos versiones tienen además una espera de 330–370 ms justo al aparecer la ventana (crearla y
   pintar la primera imagen). Ya existía, no es de este plan y queda anotada.
+- 2026-11-24 · U3 **confirmada por el autor**: la ventana quita exactamente los restos que mostró y
+  no vuelve a buscar (la comprobación de que la app ya no está instalada se mantiene). A.6 hecha:
+  `Cleaning::{begin_removal, remove_one}`, `Services::{begin_removal, remove_trace}`,
+  `Model.removing` y la cola por tramos de 30 ms en `core/removing.rs`. Pruebas: tramos con progreso
+  que nunca pasa del total, y `apps/purifex/tests/sliced_removal_real.rs` (sandbox, tres restos
+  reales quitados uno a uno y devueltos byte a byte). Bloque A cerrado salvo la mirada a mano de la
+  ventana real (ver arriba). **Pausa de revisión del bloque A.**

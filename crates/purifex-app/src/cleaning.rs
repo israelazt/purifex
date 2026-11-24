@@ -27,8 +27,10 @@ mod junk;
 mod logging;
 mod purging;
 mod rebooting;
+mod removing;
 mod restoring;
 mod searching;
+pub use removing::RemovalStart;
 pub use searching::SearchJob;
 mod startup;
 
@@ -81,11 +83,12 @@ pub fn find<'a>(apps: &'a [InstalledApp], query: &str) -> Result<&'a InstalledAp
 
 /// What removing a selection of traces did: the entries logged, and what could not be
 /// removed with why.
-struct Removals {
-    removed: Vec<CleanupEntry>,
-    failed: Vec<(Trace, String)>,
+#[derive(Default)]
+pub struct Removals {
+    pub removed: Vec<CleanupEntry>,
+    pub failed: Vec<(Trace, String)>,
     /// The ones that failed because a program has them open.
-    in_use: Vec<Trace>,
+    pub in_use: Vec<Trace>,
 }
 
 /// With a selection only those places go, and only if the rules still propose them: what
@@ -326,38 +329,13 @@ impl Cleaning {
     /// Moves each trace to the quarantine and logs it. A trace that cannot be removed
     /// (in use, needs an administrator) is reported with why, and the rest go on.
     fn remove_all(&mut self, app: &str, traces: &[Trace]) -> Result<Removals, String> {
-        let today = self.today();
-        let store = self.store()?;
-        let mut log = store.entries()?;
-        let mut done = Removals {
-            removed: Vec::new(),
-            failed: Vec::new(),
-            in_use: Vec::new(),
+        let mut start = RemovalStart {
+            log: self.store()?.entries()?,
+            today: self.today(),
         };
+        let mut done = Removals::default();
         for trace in traces {
-            let seq = next_seq(&log);
-            match store.remove(trace, seq) {
-                Ok(kept) => {
-                    let entry = CleanupEntry {
-                        seq,
-                        app: app.to_string(),
-                        trace: trace.clone(),
-                        kept,
-                        state: CleanupState::Removed,
-                        on: today,
-                        ..Default::default()
-                    };
-                    store.append(&entry)?;
-                    log.push(entry.clone());
-                    done.removed.push(entry);
-                }
-                Err(why) => {
-                    if store.is_locked(trace) {
-                        done.in_use.push(trace.clone());
-                    }
-                    done.failed.push((trace.clone(), why));
-                }
-            }
+            self.remove_one(app, trace, &mut start, &mut done)?;
         }
         Ok(done)
     }

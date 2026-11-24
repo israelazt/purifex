@@ -27,6 +27,7 @@ mod hunting;
 mod junk;
 mod monitoring;
 mod reading;
+mod removing;
 mod startup;
 
 pub struct Core {
@@ -43,6 +44,8 @@ pub struct Core {
     watching: Option<(purifex_domain::apps::InstalledApp, Instant, Instant)>,
     /// What had been in the quarantine for seven days was already let go this time.
     expired_checked: bool,
+    /// The traces still to move to the quarantine, a slice at a time.
+    removing: Option<removing::RemovalQueue>,
 }
 
 impl Core {
@@ -63,6 +66,7 @@ impl Core {
             watching: None,
             quit: false,
             expired_checked: false,
+            removing: None,
         }
     }
 
@@ -222,7 +226,8 @@ impl Core {
         if !self.pending {
             return false;
         }
-        let arrived = self.poll_offers() | self.check_watch() | self.poll_traces();
+        let arrived =
+            self.poll_offers() | self.check_watch() | self.poll_traces() | self.remove_some();
         if !self.missing() {
             // Only the search of offers is going: nothing to read, nothing blocks.
             self.pending = self.still_polling();
@@ -1044,10 +1049,11 @@ mod tests {
             log,
         } = apps_page();
         core.apply(Action::FindTraces("Discord".into()));
-        core.tick();
+        settle(&mut core);
         installed.0.borrow_mut().clear();
         core.apply(Action::AskClean("Discord".into()));
         core.apply(Action::Confirm);
+        settle(&mut core);
         assert_eq!(log.borrow().removed.len(), 1);
         let message = core.model().message.as_deref().unwrap();
         assert!(message.contains("Se quitaron 1 restos"));
@@ -1295,6 +1301,55 @@ mod tests {
         (core, log)
     }
 
+    #[test]
+    fn the_traces_shown_are_removed_in_slices_without_looking_again_and_the_progress_never_passes_the_total(
+    ) {
+        use purifex_domain::app_traces::{Candidate, TraceKind};
+        let found: Vec<Candidate> = [
+            r"C:\ProgramData\OBS Studio",
+            r"C:\ProgramData\obs-studio",
+            r"C:\Users\u\AppData\Roaming\OBS Studio",
+            r"C:\Users\u\AppData\Roaming\obs-studio",
+            r"C:\Users\u\AppData\Local\OBS Studio",
+        ]
+        .map(|location| Candidate {
+            kind: TraceKind::Folder,
+            location: location.into(),
+            bytes: 10,
+            ..Default::default()
+        })
+        .to_vec();
+        let installed = crate::testing::FakeApps::default();
+        let (mut c, log) =
+            core_finding(&installed, crate::testing::FakeProcesses::default(), found);
+        settle(&mut c);
+        c.apply(Action::Go(Page::Apps));
+        settle(&mut c);
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        settle(&mut c);
+        let total = c.model().traces.as_ref().unwrap().proposed.len();
+        assert!(total >= 3, "{total} traces");
+        log.borrow_mut().remove_delay_ms = 20;
+        c.apply(Action::AskCleanAll("OBS Studio".into()));
+        c.apply(Action::Confirm);
+        let mut seen = vec![c.model().removing.clone().unwrap().done];
+        while c.needs_tick() {
+            c.tick();
+            if let Some(r) = c.model().removing.as_ref() {
+                assert!(r.done <= r.total && r.total == total);
+                assert!(r.done >= *seen.last().unwrap());
+                seen.push(r.done);
+            }
+        }
+        assert!(
+            seen.len() > 1 && seen.iter().any(|d| *d > 0 && *d < total),
+            "{seen:?}"
+        );
+        assert_eq!(log.borrow().removed.len(), total);
+        assert!(c.model().removing.is_none());
+        assert!(c.model().wizard.as_ref().unwrap().done.is_some());
+    }
+
     /// A finder that takes the given milliseconds for each of the four parts of the search.
     struct SlowFinder(u64);
 
@@ -1518,6 +1573,7 @@ mod tests {
         // «Everything» leaves the guess alone; checking it takes it too.
         c.apply(Action::AskCleanAll("OBS Studio".into()));
         c.apply(Action::Confirm);
+        settle(&mut c);
         assert_eq!(log.borrow().removed, [r"C:\ProgramData\OBS Studio"]);
     }
 
@@ -1768,13 +1824,14 @@ mod tests {
         let (mut c, log) = two_traces_core(&installed);
         let open = r"C:\ProgramData\obs-studio".to_string();
         log.borrow_mut().stuck.push(open.clone());
-        c.tick();
+        settle(&mut c);
         c.apply(Action::Go(Page::Apps));
-        c.tick();
+        settle(&mut c);
         c.apply(Action::FindTraces("OBS Studio".into()));
-        c.tick();
+        settle(&mut c);
         c.apply(Action::AskCleanAll("OBS Studio".into()));
         c.apply(Action::Confirm);
+        settle(&mut c);
         assert_eq!(log.borrow().removed, [r"C:\ProgramData\OBS Studio"]);
         let in_use = c.model().in_use.clone().expect("it says what is open");
         assert_eq!((in_use.app.as_str(), in_use.items), ("OBS Studio", 1));
@@ -1792,6 +1849,7 @@ mod tests {
         assert!(log.borrow().scheduled.is_empty() && c.model().in_use.is_some());
         c.apply(Action::AskDeleteAtReboot("OBS Studio".into()));
         c.apply(Action::Confirm);
+        settle(&mut c);
         assert_eq!(log.borrow().scheduled, [open]);
         assert!(c.model().in_use.is_none());
         assert!(c.model().message.as_deref().unwrap().contains("reinicies"));
@@ -1811,15 +1869,17 @@ mod tests {
             .stuck
             .push(r"C:\ProgramData\obs-studio".into());
         log.borrow_mut().refuse_reboot = true;
-        c.tick();
+        settle(&mut c);
         c.apply(Action::Go(Page::Apps));
-        c.tick();
+        settle(&mut c);
         c.apply(Action::FindTraces("OBS Studio".into()));
-        c.tick();
+        settle(&mut c);
         c.apply(Action::AskCleanAll("OBS Studio".into()));
         c.apply(Action::Confirm);
+        settle(&mut c);
         c.apply(Action::AskDeleteAtReboot("OBS Studio".into()));
         c.apply(Action::Confirm);
+        settle(&mut c);
         assert!(c
             .model()
             .message
@@ -1871,6 +1931,7 @@ mod tests {
         assert_eq!(c.model().unchecked, std::slice::from_ref(&first));
         c.apply(Action::AskClean("OBS Studio".into()));
         c.apply(Action::Confirm);
+        settle(&mut c);
         assert_eq!(
             log.borrow().removed,
             [r"C:\ProgramData\OBS Studio"],
@@ -1888,6 +1949,7 @@ mod tests {
             Some(Confirm::CleanAll("OBS Studio".into()))
         );
         c.apply(Action::Confirm);
+        settle(&mut c);
         assert_eq!(
             log.borrow().removed.len(),
             3,
@@ -2053,6 +2115,7 @@ mod tests {
         settle(&mut c);
         c.apply(Action::AskCleanAll("OBS Studio".into()));
         c.apply(Action::Confirm);
+        settle(&mut c);
         assert_eq!(c.model().stuck.len(), 1);
         assert!(c.model().stuck[0].1.contains("en uso"));
         // Looking again lists it unchecked, and asking for everything does not try it again.
@@ -2062,6 +2125,7 @@ mod tests {
         let tried = log.borrow().removed.len();
         c.apply(Action::AskCleanAll("OBS Studio".into()));
         c.apply(Action::Confirm);
+        settle(&mut c);
         assert_eq!(
             log.borrow().removed.len(),
             tried + 1,
@@ -2639,6 +2703,7 @@ mod tests {
         assert!(c.model().traces_open && c.model().wizard.is_some());
         c.apply(Action::AskCleanAll("OBS Studio".into()));
         c.apply(Action::Confirm);
+        settle(&mut c);
         let done = c
             .model()
             .wizard

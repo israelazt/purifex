@@ -5,6 +5,7 @@
 use std::time::Duration;
 
 use purifex_domain::analysis::Analysis;
+use purifex_domain::app_traces::Trace;
 use purifex_domain::apps::{listed, InstalledApp};
 use purifex_domain::cleanup_log::{CleanReport, CleanupEntry};
 use purifex_domain::compare::ComparisonReport;
@@ -28,12 +29,12 @@ use purifex_domain::startup::StartupItem;
 
 use crate::archive::Archive;
 use crate::candidates::Candidates;
-use crate::cleaning::Cleaning;
+use crate::cleaning::{Cleaning, RemovalStart, Removals};
 use crate::fixer::Fixer;
 use crate::offering::Offering;
 use crate::recorder::{Recorder, Recording, WatchOptions};
 use crate::scanner::Scanner;
-use crate::trace_search::{Polled, TraceSearch};
+use crate::trace_search::TraceSearch;
 
 /// The services of the application over real (or fake) ports.
 pub struct App<I, C, S, C2, F, A> {
@@ -58,6 +59,8 @@ pub struct App<I, C, S, C2, F, A> {
 
 mod builders;
 mod contract;
+mod startup;
+mod tracing;
 
 pub use contract::{Services, TracesPolled};
 
@@ -276,61 +279,19 @@ where
     }
 
     fn startup_items(&mut self) -> Result<Vec<StartupItem>, String> {
-        let source = self
-            .startup
-            .as_ref()
-            .ok_or("esta versión no lee el arranque")?;
-        let apps = self.apps().unwrap_or_default();
-        let items = source
-            .read()?
-            .into_iter()
-            .map(|i| i.with_app(&apps))
-            .collect();
-        Ok(purifex_domain::startup::sorted(items))
+        self.read_startup()
     }
 
     fn startup_quick(&mut self) -> Result<Vec<StartupItem>, String> {
-        let source = self
-            .startup
-            .as_ref()
-            .ok_or("esta versión no lee el arranque")?;
-        let apps = self.apps().unwrap_or_default();
-        Ok(source
-            .read_quick()?
-            .into_iter()
-            .map(|i| i.with_app(&apps))
-            .collect())
+        self.read_startup_quick()
     }
 
     fn set_startup(&mut self, id: &str, on: bool) -> Result<StartupItem, String> {
-        let source = self
-            .startup
-            .as_ref()
-            .ok_or("esta versión no cambia el arranque")?;
-        let item = source
-            .read()?
-            .into_iter()
-            .find(|i| i.id == id)
-            .ok_or("esa entrada ya no está en el arranque")?;
-        source.set_enabled(&item, on)?;
-        Ok(StartupItem {
-            enabled: on,
-            ..item
-        })
+        self.change_startup(id, on)
     }
 
     fn remove_startup(&mut self, id: &str) -> Result<CleanupEntry, String> {
-        let source = self
-            .startup
-            .as_ref()
-            .ok_or("esta versión no cambia el arranque")?;
-        let item = source
-            .read()?
-            .into_iter()
-            .find(|i| i.id == id)
-            .ok_or("esa entrada ya no está en el arranque")?;
-        let trace = item.trace().ok_or("esta entrada no se quita desde aquí")?;
-        self.cleaning.remove_startup(&item.name, &trace)
+        self.take_out_startup(id)
     }
 
     fn junk_scan(&mut self) -> Result<Vec<purifex_domain::junk::JunkItem>, String> {
@@ -368,19 +329,25 @@ where
     }
 
     fn start_traces(&mut self, query: &str) -> Result<(), String> {
-        let (listed, all) = self.installed()?;
-        let job = self.cleaning.prepare_search(&listed, &all, query)?;
-        self.trace_search.start(job)
+        self.search_traces(query)
     }
 
     fn poll_traces(&mut self) -> TracesPolled {
-        match self.trace_search.poll() {
-            Polled::Idle => TracesPolled::Idle,
-            Polled::Working(steps) => TracesPolled::Working(steps),
-            Polled::Done(job, found) => {
-                TracesPolled::Done(found.map(|found| self.cleaning.finish_search(&job, &found)))
-            }
-        }
+        self.polled_traces()
+    }
+
+    fn begin_removal(&mut self, query: &str) -> Result<RemovalStart, String> {
+        self.start_removal(query)
+    }
+
+    fn remove_trace(
+        &mut self,
+        app: &str,
+        trace: &Trace,
+        start: &mut RemovalStart,
+        done: &mut Removals,
+    ) -> Result<(), String> {
+        self.cleaning.remove_one(app, trace, start, done)
     }
 
     fn set_scan_mode(&mut self, mode: ScanMode) {

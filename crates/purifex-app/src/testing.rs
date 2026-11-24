@@ -327,6 +327,8 @@ pub struct CleanLog {
     /// The removals whose quarantine copy was deleted, and the ones that refuse to be.
     pub purged: Vec<u64>,
     pub stuck_purge: Vec<u64>,
+    /// How long each removal takes (to see a removal go in slices).
+    pub remove_delay_ms: u64,
 }
 
 pub struct FakeCleaning(pub Rc<RefCell<CleanLog>>);
@@ -356,6 +358,7 @@ impl purifex_domain::ports::CleanupStore for FakeCleaning {
         seq: u64,
     ) -> Result<String, String> {
         let mut log = self.0.borrow_mut();
+        std::thread::sleep(std::time::Duration::from_millis(log.remove_delay_ms));
         if log.stuck.contains(&trace.location) {
             return Err("en uso".into());
         }

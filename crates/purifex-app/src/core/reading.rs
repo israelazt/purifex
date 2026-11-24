@@ -237,5 +237,6 @@ impl Core {
         self.model.offers == Offers::Searching
             || self.watching.is_some()
             || self.model.finding.is_some()
+            || self.removing.is_some()
     }
 }

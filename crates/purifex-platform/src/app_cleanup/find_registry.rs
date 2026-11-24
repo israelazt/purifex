@@ -234,14 +234,21 @@ pub fn find_associations(hives: &Hives, seeds: &Seeds) -> Vec<Candidate> {
     for ext in &seeds.extensions {
         for (label, root, base) in hives.each() {
             let classes = format!(r"{base}\Classes");
-            if exists(root, &format!(r"{classes}\{ext}")) {
-                found.push(key_candidate(label, &format!(r"{classes}\{ext}"), None));
-            }
-            let progid = pairs
+            let named = pairs
                 .iter()
                 .find(|(e, _)| e.eq_ignore_ascii_case(ext))
-                .map(|(_, p)| p.as_str())
-                .filter(|p| !p.starts_with('.'));
+                .map(|(_, p)| p.as_str());
+            if exists(root, &format!(r"{classes}\{ext}")) {
+                // What the extension opens now, for the judge to see whose it is.
+                let opens = named.map(|p| {
+                    commands_of(hives, p).join(
+                        "
+",
+                    )
+                });
+                found.push(key_candidate(label, &format!(r"{classes}\{ext}"), opens));
+            }
+            let progid = named.filter(|p| !p.starts_with('.'));
             if let Some(progid) = progid {
                 let path = format!(r"{classes}\{progid}");
                 if exists(root, &path) {

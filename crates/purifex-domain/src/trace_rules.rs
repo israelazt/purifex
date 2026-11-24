@@ -242,7 +242,16 @@ fn classes_key(c: &Ctx) -> Option<Found> {
         return None;
     }
     if c.name.starts_with('.') {
-        return c.seeds.extensions.iter().any(|e| e == c.name).then(|| {
+        // The key is the app's only while it still opens the app: one that another program or
+        // Windows fills too (`.avi`, `.ac3`) stays, even if the app once registered it.
+        let opens_the_app = c
+            .seeds
+            .folder
+            .as_deref()
+            .zip(c.candidate.text.as_deref())
+            .is_some_and(|(folder, text)| path_refers_to(text, folder));
+        let registered = c.seeds.extensions.iter().any(|e| e == c.name);
+        return (opens_the_app && registered).then(|| {
             (
                 Evidence::AssociatedExtension,
                 format!("extensión de archivo que registró la app: {}", c.name),
@@ -732,13 +741,23 @@ mod tests {
 
     #[test]
     fn the_registered_extension_and_its_progid_are_taken_and_txt_is_not() {
-        let ext = cand(
-            TraceKind::RegistryKey,
-            r"HKLM\SOFTWARE\Classes\.kdenlive",
-            None,
-            None,
-        );
-        assert_eq!(evidence(&ext), Evidence::AssociatedExtension);
+        let ext = |text: Option<&str>| {
+            cand(
+                TraceKind::RegistryKey,
+                r"HKLM\SOFTWARE\Classes\.kdenlive",
+                None,
+                text,
+            )
+        };
+        let opens = ext(Some(r#""C:\Program Files\Kdenlive\bin\kdenlive.exe" "%1""#));
+        assert_eq!(evidence(&opens), Evidence::AssociatedExtension);
+        // Given back to another program, or holding nothing that runs: Windows' data may
+        // live in it (`Content Type`, thumbnails), so it stays.
+        let given_back = ext(Some(
+            r#""C:\Program Files\Windows Media Player\wmplayer.exe""#,
+        ));
+        assert!(judge(&given_back, &[]).is_err());
+        assert!(judge(&ext(None), &[]).is_err());
         let progid = cand(
             TraceKind::RegistryKey,
             r"HKLM\SOFTWARE\Classes\Kdenlive",

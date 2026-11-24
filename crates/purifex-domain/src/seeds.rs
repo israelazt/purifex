@@ -117,6 +117,31 @@ pub fn extensions_into(
     found
 }
 
+/// The extensions no other program claims now. One whose ProgId runs a program outside the
+/// app's folder belongs to that program again (the uninstaller of VLC gives `.avi` back to the
+/// Windows player): neither its key nor what hangs from it is the app's. `registered` pairs each
+/// extension with the ProgId it names, as `extensions_into` takes them.
+pub fn unclaimed_extensions(
+    folder: Option<&str>,
+    extensions: &[String],
+    registered: &[(String, String)],
+    commands_of: impl Fn(&str) -> Vec<String>,
+) -> Vec<String> {
+    let claimed = |ext: &String| {
+        registered
+            .iter()
+            .filter(|(e, _)| e.eq_ignore_ascii_case(ext))
+            .any(|(_, progid)| {
+                let commands = commands_of(progid);
+                !commands.is_empty()
+                    && !commands.iter().any(|text| {
+                        folder.is_some_and(|f| crate::reference::path_refers_to(text, f))
+                    })
+            })
+    };
+    extensions.iter().filter(|e| !claimed(e)).cloned().collect()
+}
+
 fn parent(path: &str) -> Option<String> {
     path.rsplit_once('\\').map(|(p, _)| p.to_string())
 }
@@ -276,6 +301,44 @@ mod tests {
         let old = r#"{"id":"x","name":"Old","publisher":null,"version":null,"install_location":null,"uninstall":null,"quiet_uninstall":null,"size_kb":null,"kind":"desktop","hidden":false}"#;
         let a = InstalledApp::from_line(old).unwrap();
         assert!(a.observed.is_empty() && a.display_icon.is_none());
+    }
+
+    #[test]
+    fn an_extension_that_another_program_opens_now_is_no_longer_the_apps() {
+        let folder = Some(r"C:\Program Files\VideoLAN\VLC");
+        let mine = |list: &[&str]| list.iter().map(|e| e.to_string()).collect::<Vec<_>>();
+        let pairs = vec![
+            // Given back to the Windows player by the uninstaller.
+            (".avi".to_string(), "WMP11.AssocFile.AVI".to_string()),
+            // Still opened by the app (another hive may say otherwise: one claim is enough).
+            (".xspf".to_string(), "VLC.xspf".to_string()),
+            // A ProgId that is gone, or an extension key left with nothing: nobody claims it.
+            (".vlt".to_string(), "VLC.vlt".to_string()),
+            (".mkv".to_string(), "WMP11.AssocFile.MKV".to_string()),
+            (".mkv".to_string(), "VLC.mkv".to_string()),
+        ];
+        let commands = |progid: &str| match progid {
+            "WMP11.AssocFile.AVI" | "WMP11.AssocFile.MKV" => {
+                vec![
+                    r#""%ProgramFiles(x86)%\Windows Media Player\wmplayer.exe" /Open "%L""#
+                        .to_string(),
+                ]
+            }
+            "VLC.xspf" | "VLC.mkv" => {
+                vec![r#""C:\Program Files\VideoLAN\VLC\vlc.exe" "%1""#.to_string()]
+            }
+            _ => Vec::new(),
+        };
+        let all = mine(&[".avi", ".xspf", ".vlt", ".mkv"]);
+        assert_eq!(
+            unclaimed_extensions(folder, &all, &pairs, commands),
+            mine(&[".xspf", ".vlt"])
+        );
+        // Without a folder, any program that opens it claims it.
+        assert_eq!(
+            unclaimed_extensions(None, &all, &pairs, commands),
+            mine(&[".vlt"])
+        );
     }
 
     #[test]

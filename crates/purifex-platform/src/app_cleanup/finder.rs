@@ -11,13 +11,14 @@ use purifex_domain::app_traces::{names_of, names_relate, simple, Candidate, Trac
 use purifex_domain::apps::InstalledApp;
 use purifex_domain::ports::{Found, TraceFinder};
 use purifex_domain::search_step::SearchStep;
-use purifex_domain::seeds::{seeds_of, Seeds};
+use purifex_domain::seeds::{seeds_of, unclaimed_extensions, Seeds};
 use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
 use super::find_files::{find_files, UserPlaces};
 use super::find_firewall::find_firewall_rules;
 use super::find_registry::{
-    discover_extensions, exes_in_values, find_associations, find_program_keys, find_values, Hives,
+    commands_of, discover_extensions, exes_in_values, find_associations, find_program_keys,
+    find_values, registered_extensions, Hives,
 };
 use super::find_services::find_services;
 use super::find_shell::find_shell;
@@ -139,6 +140,12 @@ fn registered_folder(app: &InstalledApp) -> Vec<Candidate> {
 fn observed_seeds(app: &InstalledApp, hives: &Hives) -> (Seeds, Vec<Candidate>) {
     let mut seeds = seeds_of(app);
     seeds.extensions.extend(discover_extensions(hives, &seeds));
+    seeds.extensions = unclaimed_extensions(
+        seeds.folder.as_deref(),
+        &seeds.extensions,
+        &registered_extensions(hives),
+        |progid| commands_of(hives, progid),
+    );
     let values = find_values(hives, &seeds);
     let mut exes = seeds.exes.clone();
     exes.extend(exes_in_values(&values, seeds.folder.as_deref()));

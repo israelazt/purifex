@@ -129,6 +129,11 @@ impl<'a> Canvas<'a> {
         self.anims.value(name, target, duration_ms)
     }
 
+    /// The time of what moves as long as it is drawn (see `Anims::clock`).
+    pub fn clock(&mut self) -> Option<u64> {
+        self.anims.clock()
+    }
+
     /// Marks that something still moves.
     pub fn keep_going(&mut self) {
         self.anims.keep_going();

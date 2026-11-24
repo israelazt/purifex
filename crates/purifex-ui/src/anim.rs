@@ -104,6 +104,15 @@ impl Anims {
         self.hover = std::mem::take(&mut self.hover_next);
     }
 
+    /// The time, for what moves as long as it is drawn (a spinner): with motion it keeps the
+    /// window asking for pictures; without it, `None` (draw the still picture).
+    pub fn clock(&mut self) -> Option<u64> {
+        self.motion.then(|| {
+            self.active = true;
+            self.now_ms
+        })
+    }
+
     /// Whether anything is still moving after the last picture.
     pub fn active(&self) -> bool {
         self.active
@@ -222,6 +231,18 @@ mod tests {
         );
         at(&mut a, 1370);
         assert!(a.hover(1, false) < 1.0 && a.active(), "fading out");
+    }
+
+    #[test]
+    fn the_clock_keeps_the_window_moving_only_when_there_is_motion() {
+        let mut a = Anims::new();
+        a.begin(1000);
+        assert_eq!(a.clock(), Some(1000));
+        assert!(a.active());
+        a.set_motion(false);
+        at(&mut a, 1100);
+        assert_eq!(a.clock(), None);
+        assert!(!a.active(), "a still picture asks for nothing");
     }
 
     #[test]

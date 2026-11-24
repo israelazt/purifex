@@ -341,3 +341,8 @@ Lo primero que se nota:
 - 2026-11-24: plan escrito (Opus 5.5), tras la prueba del autor: «sigue siendo horrenda la
   experiencia de usuario, te pide más de una vez desinstalar, no damos retroalimentación entre
   acciones, no hay loaders, la app se muere». Faltan las decisiones M1, M2 y M3.
+- 2026-11-24 · M.1 hecha (Sonnet 5.5): `tools/respond.ps1`. Release, ventana ya abierta en Apps,
+  10 s: 490 preguntas, **0 esperas de más de 100 ms**, CPU 0 %. Con `-Launch "ui --find-traces
+  Inkscape"`: una espera de **452 ms** a los 1,9 s (la de A.5b, M.6) más la de 375–405 ms al
+  aparecer la ventana (ya conocida). Se guardan en UTF-8 con BOM `respond.ps1` y `sonda.ps1`:
+  PowerShell 5.1 estropeaba los acentos.

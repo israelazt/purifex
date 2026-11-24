@@ -1,4 +1,4 @@
-# Compares what Purifex proposes against what Fex Sonda really left (docs/TEST_APP_PLAN.md, T.5).
+﻿# Compares what Purifex proposes against what Fex Sonda really left (docs/TEST_APP_PLAN.md, T.5).
 #   tools/sonda.ps1 ciclo      install + uninstall (as administrator), then `purifex apps traces`.
 #   tools/sonda.ps1 comparar   crosses that output with `fex-sonda status --json`.
 # It removes nothing: `fex-sonda purge` does that.

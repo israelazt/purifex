@@ -6,6 +6,15 @@ use purifex_domain::startup::StartupItem;
 
 use super::*;
 
+/// What the search for traces started with `start_traces` has done since the last poll.
+pub enum TracesPolled {
+    /// None is running.
+    Idle,
+    /// Still looking; these parts of the search have finished.
+    Working(Vec<purifex_domain::search_step::SearchStep>),
+    Done(Result<CleanReport, String>),
+}
+
 pub trait Services {
     /// Reads the devices and their drivers.
     fn scan(&self, scope: Scope) -> Result<ScanReport, String>;
@@ -89,6 +98,11 @@ pub trait Services {
         confirmed: bool,
         only: Option<&[String]>,
     ) -> Result<CleanReport, String>;
+    /// Starts looking for the traces of an app without waiting for the result (a new search
+    /// replaces the one going). The result comes by `poll_traces`.
+    fn start_traces(&mut self, query: &str) -> Result<(), String>;
+    /// What the search of `start_traces` has done; it never waits.
+    fn poll_traces(&mut self) -> TracesPolled;
     /// Puts back what removal `seq` took out.
     fn restore_cleanup(&mut self, seq: u64) -> Result<CleanupEntry, String>;
     fn cleanup_history(&self) -> Result<Vec<CleanupEntry>, String>;

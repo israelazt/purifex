@@ -23,6 +23,7 @@ pub mod scanner;
 pub mod services;
 #[cfg(test)]
 mod testing;
+pub mod trace_search;
 mod uninstall_by_kind;
 mod updates_wait;
 

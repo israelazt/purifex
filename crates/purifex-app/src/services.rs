@@ -33,6 +33,7 @@ use crate::fixer::Fixer;
 use crate::offering::Offering;
 use crate::recorder::{Recorder, Recording, WatchOptions};
 use crate::scanner::Scanner;
+use crate::trace_search::{Polled, TraceSearch};
 
 /// The services of the application over real (or fake) ports.
 pub struct App<I, C, S, C2, F, A> {
@@ -41,6 +42,7 @@ pub struct App<I, C, S, C2, F, A> {
     archive: Archive<A>,
     fixer: Fixer,
     offering: Offering,
+    trace_search: TraceSearch,
     candidates: Candidates,
     opener: Option<Box<dyn UrlOpener>>,
     folder_opener: Option<Box<dyn purifex_domain::ports::FolderOpener>>,
@@ -57,7 +59,7 @@ pub struct App<I, C, S, C2, F, A> {
 mod builders;
 mod contract;
 
-pub use contract::Services;
+pub use contract::{Services, TracesPolled};
 
 impl<I, C, S, C2, F, A> Services for App<I, C, S, C2, F, A>
 where
@@ -363,6 +365,22 @@ where
     ) -> Result<CleanReport, String> {
         let (listed, all) = self.installed()?;
         self.cleaning.clean(&listed, &all, query, confirmed, only)
+    }
+
+    fn start_traces(&mut self, query: &str) -> Result<(), String> {
+        let (listed, all) = self.installed()?;
+        let job = self.cleaning.prepare_search(&listed, &all, query)?;
+        self.trace_search.start(job)
+    }
+
+    fn poll_traces(&mut self) -> TracesPolled {
+        match self.trace_search.poll() {
+            Polled::Idle => TracesPolled::Idle,
+            Polled::Working(steps) => TracesPolled::Working(steps),
+            Polled::Done(job, found) => {
+                TracesPolled::Done(found.map(|found| self.cleaning.finish_search(&job, &found)))
+            }
+        }
     }
 
     fn set_scan_mode(&mut self, mode: ScanMode) {

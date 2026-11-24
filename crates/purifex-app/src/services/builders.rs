@@ -13,6 +13,7 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
             archive,
             fixer: Fixer::disabled(),
             offering: Offering::default(),
+            trace_search: Default::default(),
             candidates: Candidates::default(),
             opener: None,
             folder_opener: None,

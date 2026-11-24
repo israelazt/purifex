@@ -155,6 +155,23 @@ Haz **D.3** de `UNINSTALL_UX_PLAN.md`.
 **Hecho cuando:** lo que dice D.3. Además, `respond.ps1` mide la CPU con el indicador girando
 durante un minuto. Si pasa del 8 % de un núcleo, haz la puerta de D.6 antes de seguir.
 
+### M.4b El indicador de «Desinstalando», dentro de su caja (añadida en la revisión)
+Con D.3 tal como estaba escrita, las rayas del indicador (radio 28, desde 15) cruzan el borde de
+la caja del icono, de unos 40 de lado. En la captura `wizard waiting` parece un sol encima de la
+papelera. El fallo era del plan, no de quien lo hizo.
+1. En `wizard_busy.rs::waiting`, con `Busy::Spinner` el icono de la caja **no** se dibuja y en su
+   lugar va `loaders::spinner` centrado en la caja con `r = 13`, así que nada sale de ella.
+   Como el icono lo dibuja `dialog::draw`, añade a `DialogView` lo mínimo para no pintarlo (por
+   ejemplo, `icon: ""` cuando hay `Busy::Spinner`, si `draw` ya se salta un icono vacío). Si no se
+   lo salta, que lo haga.
+2. «Ocultar» y «Dejar de esperar» llevan los dos el icono `x`. «Dejar de esperar» pasa a un icono
+   que exista en `icons::names()` y diga «parar» (por ejemplo, `circle-stop` si existe).
+3. Test: con `Busy::Spinner` no se dibuja el icono y todas las líneas del indicador quedan dentro
+   de la caja.
+
+**Hecho cuando:** en la captura `wizard waiting` el indicador gira dentro de la caja y no cruza
+su borde.
+
 ### M.5 Preparar fuera de la ventana, y el paso «Preparando»
 1. Parte `Cleaning::uninstall` (`cleaning.rs:212`) en tres:
    - `prepare_uninstall(&self, apps, query) -> Result<UninstallJob, String>`: busca la app y
@@ -316,7 +333,7 @@ Una fila en la que pierda se convierte en una tarea nueva, aquí.
 ## Orden y dependencias
 
 ```
-M.1 → M.2 → M.3 → M.4 → M.5 → M.6 → (pausa) → M.7 (M1) → M.8 (M2, M3) → M.9
+M.1 → M.2 → M.3 → M.4 → M.4b → M.5 → M.6 → (pausa) → M.7 (M1) → M.8 (M2, M3) → M.9
     → M.10 → M.11 → M.12 → M.13 → M.14 → (pausa) → M.15
 M.0 en cualquier momento antes de M.15.
 ```
@@ -370,3 +387,27 @@ Lo primero que se nota:
   Inkscape **pasa de una espera de 452 ms durante la búsqueda a ninguna** (máximo 18 ms);
   DBeaver igual (máximo 15 ms). Solo queda la de 314–358 ms al aparecer la ventana (ya conocida).
   **Pausa de revisión del bloque 1: el autor desinstala Fex Sonda y dice si ya no «se muere».**
+- 2026-11-24 · **Revisión de M.1–M.6** (Opus 5.5), sobre `0e6dcb8`:
+  - `tools/check.ps1` en verde: **707 tests, 0 fallos**. CI en verde en cada commit que terminó;
+    los runs cancelados se reemplazaron por el push siguiente.
+  - **A.5b no cambia el resultado:** `apps traces` de DBeaver (25 líneas), Inkscape (1591) y
+    Fex Sonda (11) son idénticas byte a byte entre `882e729` y `0e6dcb8`. Compilado y comparado
+    por separado.
+  - **Ventana real, medida otra vez** con `tools/respond.ps1 -Launch "ui --find-traces <app>"`:
+    Inkscape, peor espera durante la búsqueda **14 ms**, y DBeaver **13 ms**. Solo queda la de
+    260–310 ms al aparecer la ventana, que ya existía. Se confirma lo que dijo Sonnet.
+  - **Código:**
+    - M.2: `still_registered` abre solo la clave de la app, no acepta subclaves con `\`, y las
+      apps de la Tienda caen a la lista cada 1,5 s.
+    - M.5: el punto de restauración sigue yendo antes del desinstalador, un hilo que muere se
+      avisa como error, no se solapan dos preparaciones y la ventana oculta sigue oculta.
+    - A.5b: buscar y juzgar ocurren en el mismo hilo, con una sola `judge` pura.
+    - Correcto.
+  - **Detalle menor, sin tarea:** `Core::uninstalled` toma la app de `model.apps`. Si la lista
+    se está releyendo (`apps = None` justo después de quitar restos), un «Desinstalar» en ese
+    instante dice «Esa app ya no está en la lista». Es raro, porque la lista vuelve enseguida.
+  - **Mal:** el indicador de «Desinstalando» se sale de la caja del icono, por un fallo del plan
+    (D.3). Nueva tarea **M.4b**. «Buscando» aún no tiene indicador: es M.10, como estaba previsto.
+  - **Sin probar por Opus** (hace falta administrador y pulsar en la ventana): el recorrido real
+    con Fex Sonda, la CPU con el indicador girando (puerta de D.6) y `respond.ps1` desde el clic
+    hasta que se abre el desinstalador. Es la pausa de revisión del bloque 1, para el autor.

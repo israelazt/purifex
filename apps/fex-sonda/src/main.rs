@@ -3,8 +3,12 @@
 //! writes is listed in `manifest`. See `docs/TEST_APP_PLAN.md`.
 
 mod command;
+mod install;
+mod items;
 mod manifest;
+mod places;
 mod say;
+mod system;
 
 use std::process::ExitCode;
 
@@ -18,14 +22,14 @@ fn started_as() -> String {
 }
 
 fn run(command: Command) -> Result<(), String> {
-    let planned = match command {
-        Command::Install => "install",
-        Command::Uninstall => "uninstall",
-        Command::Status { .. } => "status",
-        Command::Purge => "purge",
-        Command::Run => "run",
-    };
-    Err(format!("«{planned}» todavía no está hecha"))
+    match command {
+        Command::Install => install::install(),
+        Command::Run => install::usage(),
+        Command::Update => Ok(()),
+        Command::Uninstall => Err("«uninstall» todavía no está hecha".into()),
+        Command::Status { .. } => Err("«status» todavía no está hecha".into()),
+        Command::Purge => Err("«purge» todavía no está hecha".into()),
+    }
 }
 
 fn main() -> ExitCode {

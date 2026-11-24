@@ -298,3 +298,13 @@ prueba que Revo ve los restos.
     `fex-sonda status` o `purge` desde una consola normal (ni Opus ni `check.ps1` podrían).
     `install` comprobará el administrador por sí mismo (T.2.1) y dirá claro que lo necesita.
   - `#![allow(dead_code)]` temporal en `manifest.rs` y en `say::line`: se quitan en T.2–T.4.
+- 2026-11-24 · T.2 escrita (Sonnet 5.5): `install` y `run` (`install.rs`, `items.rs`, `system.rs`,
+  `places.rs`). El manifiesto ganó C1a y C1b (la clase `FexOtra.Doc` y su `otra.exe`), porque
+  `purge` también tiene que devolver C1 «como antes de instalar» y esas filas no existían. También
+  tiene `--update` (la tarea programada) como orden que no hace nada.
+  **Lo que NO se ha probado:** ejecutar `install` de verdad. Hace falta administrador y escribe en
+  HKLM, `Program Files`, `ProgramData` y el Programador de tareas, así que lo dejo para el autor o
+  para una consola elevada. Probado: sin administrador `install` termina con código 1 y su mensaje,
+  sin escribir nada; y con tests, la escritura de carpetas y archivos (idempotente), el nombre de
+  las claves y la lectura de `reg query`. La tarea programada es semanal (domingo 03:00) y solo
+  ejecuta `fexsonda.exe --update`, que no hace nada.

@@ -36,6 +36,7 @@ pub enum Content {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Data {
     Text(&'static str),
+    Dword(u32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,7 +129,15 @@ pub const ITEMS: &[Row] = &[
         reg(
             Hive::Hklm,
             r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\FexSonda",
-            &[],
+            &[
+                ("DisplayName", Data::Text("Fex Sonda")),
+                ("DisplayVersion", Data::Text("1.0.0")),
+                ("Publisher", Data::Text("Fexarium (prueba)")),
+                ("InstallLocation", Data::Text("{F}")),
+                ("DisplayIcon", Data::Text(r"{F}\fexsonda.exe")),
+                ("UninstallString", Data::Text(r#""{F}\uninstall.exe""#)),
+                ("EstimatedSize", Data::Dword(256)),
+            ],
         ),
     ),
     row(
@@ -216,6 +225,25 @@ pub const ITEMS: &[Row] = &[
     ),
     // The case of VLC: an extension that was another program's, taken on install and given back
     // on uninstall. It is not Fex Sonda's, so Purifex must not propose it.
+    // What `.fexcomun` belonged to before Fex Sonda took it: another program's class and file.
+    row(
+        "C1a",
+        Role::Control,
+        reg(
+            Hive::Hklm,
+            r"SOFTWARE\Classes\FexOtra.Doc\shell\open\command",
+            &[("", Data::Text(r#""C:\ProgramData\FexOtra\otra.exe" "%1""#))],
+        ),
+    ),
+    row(
+        "C1b",
+        Role::Control,
+        Item::Dir {
+            root: Root::ProgramData,
+            path: "FexOtra",
+            files: &[("otra.exe", Content::Empty)],
+        },
+    ),
     row(
         "C1",
         Role::Control,
@@ -274,6 +302,11 @@ pub fn is_ours(path: &str) -> bool {
     OURS.iter().any(|name| lower.contains(name))
 }
 
+/// The row with this id.
+pub fn by_id(id: &str) -> Option<&'static Row> {
+    ITEMS.iter().find(|r| r.id == id)
+}
+
 /// Puts the install folder where a text says `{F}`.
 pub fn expand(text: &str, install_dir: &str) -> String {
     text.replace("{F}", install_dir)
@@ -308,7 +341,7 @@ mod tests {
             .filter(|r| r.role == Role::Control)
             .map(|r| r.id)
             .collect();
-        assert_eq!(controls, ["C1", "C2", "C2b", "C2c"]);
+        assert_eq!(controls, ["C1a", "C1b", "C1", "C2", "C2b", "C2c"]);
     }
 
     #[test]

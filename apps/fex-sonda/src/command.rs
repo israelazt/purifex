@@ -4,15 +4,22 @@
 pub enum Command {
     Install,
     Uninstall,
-    Status { json: bool },
+    Status {
+        json: bool,
+    },
     Purge,
     Run,
+    /// What the scheduled task runs: it only has to exist.
+    Update,
 }
 
 /// The command in `args` (without the program name). With none, a program called `uninstall.exe`
 /// uninstalls, which is how Windows starts the uninstaller of an app.
 pub fn parse(args: &[String], started_as: &str) -> Result<Command, String> {
     let json = args.iter().any(|a| a == "--json");
+    if args.iter().any(|a| a == "--update") {
+        return Ok(Command::Update);
+    }
     let word = args.iter().find(|a| !a.starts_with("--"));
     match word.map(String::as_str) {
         Some("install") => Ok(Command::Install),
@@ -20,6 +27,7 @@ pub fn parse(args: &[String], started_as: &str) -> Result<Command, String> {
         Some("status") => Ok(Command::Status { json }),
         Some("purge") => Ok(Command::Purge),
         Some("run") => Ok(Command::Run),
+
         Some(other) => Err(format!(
             "orden desconocida «{other}»: install, uninstall, status, purge o run"
         )),

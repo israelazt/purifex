@@ -7,6 +7,16 @@ use purifex_domain::startup::StartupItem;
 
 use super::*;
 
+/// What preparing an uninstall, started with `start_uninstall`, has done since the last poll.
+pub enum UninstallPolled {
+    /// None is going.
+    Idle,
+    /// Still preparing; these parts have finished.
+    Working(Vec<purifex_domain::prep_step::PrepStep>),
+    /// The uninstaller was started (or it could not be).
+    Done(Result<Box<Started>, String>),
+}
+
 /// What the search for traces started with `start_traces` has done since the last poll.
 pub enum TracesPolled {
     /// None is running.
@@ -94,6 +104,11 @@ pub trait Services {
     fn end_batch(&mut self);
     /// Starts the uninstaller of an app (by name or id), after asking Windows for a restore point.
     fn uninstall_app(&mut self, query: &str) -> Result<Started, String>;
+    /// Starts preparing to uninstall an app the window already lists, without waiting. The
+    /// uninstaller is started by `poll_uninstall` once the safety nets are ready.
+    fn start_uninstall(&mut self, app: &InstalledApp) -> Result<(), String>;
+    /// What the preparation has done; it never waits for it.
+    fn poll_uninstall(&mut self) -> UninstallPolled;
     /// The traces of an app; with `confirmed` (and the app already uninstalled) it
     /// removes them to the quarantine, without it only says which.
     fn clean_app(

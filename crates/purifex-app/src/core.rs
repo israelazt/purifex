@@ -33,6 +33,7 @@ mod batch;
 mod hunting;
 mod junk;
 mod monitoring;
+mod preparing;
 mod reading;
 mod removing;
 mod startup;
@@ -233,8 +234,11 @@ impl Core {
         if !self.pending {
             return false;
         }
-        let arrived =
-            self.poll_offers() | self.check_watch() | self.poll_traces() | self.remove_some();
+        let arrived = self.poll_offers()
+            | self.poll_preparing()
+            | self.check_watch()
+            | self.poll_traces()
+            | self.remove_some();
         if !self.missing() {
             // Only the search of offers is going: nothing to read, nothing blocks.
             self.pending = self.still_polling();
@@ -288,6 +292,15 @@ mod tests {
     fn settle(c: &mut Core) {
         let end = Instant::now() + Duration::from_secs(5);
         while c.needs_tick() && Instant::now() < end {
+            c.tick();
+            std::thread::yield_now();
+        }
+    }
+
+    /// Ticks until the uninstaller was started (the preparation runs on its own thread).
+    fn prepared(c: &mut Core) {
+        let end = Instant::now() + Duration::from_secs(5);
+        while c.model().preparing.is_some() && Instant::now() < end {
             c.tick();
             std::thread::yield_now();
         }
@@ -1028,6 +1041,7 @@ mod tests {
         assert!(log.borrow().launched.is_empty());
         core.apply(Action::AskUninstall(id));
         core.apply(Action::Confirm);
+        prepared(&mut core);
         assert_eq!(log.borrow().launched, ["Discord"]);
         assert_eq!(core.model().uninstalled.as_deref(), Some("Discord"));
         let message = core.model().message.as_deref().unwrap();
@@ -1355,6 +1369,77 @@ mod tests {
         assert_eq!(log.borrow().removed.len(), total);
         assert!(c.model().removing.is_none());
         assert!(c.model().wizard.as_ref().unwrap().done.is_some());
+    }
+
+    /// A core over these installed apps and this cleaning.
+    fn core_over(installed: crate::testing::FakeApps, cleaning: crate::Cleaning) -> Core {
+        Core::new(Box::new(
+            App::new(
+                Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
+                Recorder::new(
+                    FakeSampler::new(0, 1, true),
+                    FakeClock::ticking(0),
+                    FakeFile::default(),
+                ),
+                Archive::new(FakeArchive::with(&[])),
+            )
+            .with_apps(Box::new(installed))
+            .with_cleaning(cleaning),
+        ))
+    }
+
+    #[test]
+    fn a_slow_restore_point_leaves_the_window_free_and_the_uninstaller_opens_only_after_it() {
+        use crate::testing::{CleanLog, FakeCleaning, FakeFinder, FakeRestorePoints};
+        use purifex_domain::prep_step::PrepStep;
+        let installed = crate::testing::FakeApps::default();
+        installed.0.borrow_mut().push(fake_app("OBS Studio"));
+        let log = std::rc::Rc::new(std::cell::RefCell::new(CleanLog::default()));
+        let points = FakeRestorePoints {
+            takes_ms: 800,
+            ..Default::default()
+        };
+        let cleaning = crate::Cleaning::new(
+            Box::new(FakeFinder(vec![])),
+            Box::new(FakeCleaning(log.clone())),
+            Box::new(FakeCleaning(log.clone())),
+        )
+        .with_restore_points(Box::new(points.clone()));
+        let mut c = core_over(installed, cleaning);
+        settle(&mut c);
+        c.apply(Action::Go(Page::Apps));
+        settle(&mut c);
+        c.apply(Action::AskUninstall("HKLM64:OBS Studio".into()));
+        let started = Instant::now();
+        c.apply(Action::Confirm);
+        assert!(
+            started.elapsed() < Duration::from_millis(50),
+            "the click answers at once"
+        );
+        assert!(c.model().wizard.is_some() && c.model().preparing.is_some());
+        let mut longest = Duration::ZERO;
+        let mut saw_the_first_part = false;
+        while c.model().preparing.is_some() && started.elapsed() < Duration::from_secs(5) {
+            let before = Instant::now();
+            c.tick();
+            longest = longest.max(before.elapsed());
+            if let Some(p) = &c.model().preparing {
+                saw_the_first_part |= p.done == [PrepStep::Registry];
+                assert!(
+                    log.borrow().launched.is_empty(),
+                    "not before the restore point"
+                );
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            longest < Duration::from_millis(50),
+            "a tick took {longest:?}"
+        );
+        assert!(saw_the_first_part, "the parts show up one by one");
+        assert_eq!(points.asked.lock().unwrap().len(), 1);
+        assert_eq!(log.borrow().launched, ["OBS Studio"]);
+        assert!(c.model().waiting);
     }
 
     /// A finder that takes the given milliseconds for each of the four parts of the search.
@@ -1758,6 +1843,7 @@ mod tests {
         c.tick();
         c.apply(Action::AskUninstall("HKLM64:OBS Studio".into()));
         c.apply(Action::Confirm);
+        prepared(&mut c);
         assert!(
             c.needs_tick(),
             "it keeps looking while the uninstaller runs"
@@ -1804,12 +1890,14 @@ mod tests {
         c.tick();
         c.apply(Action::AskUninstall("HKLM64:OBS Studio".into()));
         c.apply(Action::Confirm);
+        prepared(&mut c);
         assert!(c.model().waiting);
         c.apply(Action::StopWaiting);
         assert!(!c.model().waiting && !c.needs_tick());
         // The wait that is never answered ends by itself and says what happened.
         c.apply(Action::AskUninstall("HKLM64:OBS Studio".into()));
         c.apply(Action::Confirm);
+        prepared(&mut c);
         let long_ago = Instant::now() - WATCH_FOR - Duration::from_secs(1);
         let (app, _, _) = c.watching.take().unwrap();
         c.watching = Some((app, long_ago, long_ago));
@@ -2722,6 +2810,7 @@ mod tests {
         assert!(c.model().wizard.is_none());
         c.apply(Action::AskUninstall("HKLM64:OBS Studio".into()));
         c.apply(Action::Confirm);
+        prepared(&mut c);
         let w = c
             .model()
             .wizard
@@ -2771,6 +2860,7 @@ mod tests {
         c.apply(Action::AskUninstall("HKLM64:OBS Studio".into()));
         c.apply(Action::Confirm);
         c.apply(Action::CloseWizard);
+        prepared(&mut c);
         assert!(
             c.model().wizard.is_none() && c.model().waiting,
             "the wait goes on"

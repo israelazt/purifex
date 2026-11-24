@@ -13,7 +13,7 @@ use crate::theme::{self, Tone};
 use crate::traces_dialog::traces_view;
 use crate::widgets::{button, button_width, checkbox, icon_box, panel, tag};
 
-pub use crate::dialog_view::{Btn, Busy, DialogView, Row};
+pub use crate::dialog_view::{Btn, Busy, Check, DialogView, Row};
 
 /// How long a dialog takes to appear or go away, in ms.
 pub const DIALOG_MS: u64 = 190;

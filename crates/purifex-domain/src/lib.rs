@@ -29,6 +29,7 @@ pub mod log;
 pub mod monitor;
 pub mod overview;
 pub mod ports;
+pub mod prep_step;
 pub mod process_group;
 pub mod quarantine;
 pub mod reference;

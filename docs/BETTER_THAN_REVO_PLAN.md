@@ -354,3 +354,13 @@ Lo primero que se nota:
   «Desinstalando» en la ventana real: exige pulsar en la ventana y lo hace el autor.
 - 2026-11-24 · M.3 hecha (D.1 y D.2): reloj `clock` y `loaders.rs` (spinner, barra, anillo, ✓ y puntos), con `Canvas::line_w` y `Anims::follow`.
 - 2026-11-24 · M.4 hecha (D.3): indicador alrededor del icono en «Desinstalando», texto corto y «Esperando al desinstalador» con puntos; dibujo de lo ocupado en `wizard_busy.rs`. Captura `waiting` revisada. Antes: `DialogView` ganó `Default` y sus tipos se movieron a `dialog_view.rs` (`dialog.rs` pasaba de 400 líneas). **Falta medir la CPU** con el indicador girando un minuto (puerta de D.6): hace falta la ventana real esperando a un desinstalador, lo hace el autor con `tools/respond.ps1 -Seconds 60`.
+- 2026-11-24 · M.5 hecha: `Cleaning` parte desinstalar en `prepare_uninstall` / `UninstallJob::run`
+  (observar la app y el punto de restauración, en un hilo) / `finish_uninstall` (recordar, copiar el
+  registro y abrir el desinstalador). La copia del registro tarda 26–60 ms (normal ~30): se queda en
+  la ventana. **Otro bloqueo que el plan no tenía:** `uninstall_app` leía primero la lista entera de
+  apps (~500 ms) en el mismo clic; `start_uninstall` recibe la app que la ventana ya muestra.
+  El asistente sale al instante en «Preparando» con la lista de partes (`Busy::Checklist`, que D.4
+  usará tal cual). Si otra preparación está en marcha, se rechaza. El lote (varias apps) y la línea
+  de órdenes siguen por `uninstall_app`, sin cambios. Test con un punto de restauración de 800 ms:
+  ningún `tick` pasa de 50 ms y el desinstalador se abre solo después. Captura `preparing` revisada.
+  **Falta `respond.ps1` con Fex Sonda en la ventana real** (hay que pulsar): lo hace el autor.

@@ -85,6 +85,14 @@ impl Wizard {
     }
 }
 
+/// An uninstall being prepared, before its uninstaller opens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Preparing {
+    pub app: String,
+    /// The parts already done.
+    pub done: Vec<crate::prep_step::PrepStep>,
+}
+
 /// A removal of leftovers that is under way, as far as the window knows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Removing {
@@ -160,6 +168,8 @@ pub struct Model {
     pub traces: Option<CleanReport>,
     /// The name of an app whose traces are being looked for.
     pub finding: Option<String>,
+    /// The uninstall being prepared; its uninstaller has not opened yet.
+    pub preparing: Option<Preparing>,
     /// The removal of leftovers going on, moved in slices so the window keeps answering.
     pub removing: Option<Removing>,
     /// The parts of that search that have already finished.

@@ -4,10 +4,11 @@
 //! from the model, never kept apart.
 
 use purifex_domain::draw::Rect;
+use purifex_domain::prep_step::PrepStep;
 use purifex_domain::view::{Action, Model, Wizard};
 
 use crate::canvas::Canvas;
-use crate::dialog::{Btn, Busy, DialogView};
+use crate::dialog::{Btn, Busy, Check, DialogView};
 use crate::theme::{self, Tone};
 
 /// The steps, in order.
@@ -44,6 +45,8 @@ pub(crate) fn view(m: &Model) -> Option<DialogView> {
             done_body(m, done),
             done_buttons(m, wizard),
         )
+    } else if m.preparing.is_some() {
+        preparing_step(app)
     } else if m.waiting {
         waiting_step(app)
     } else if m.finding.is_some() {
@@ -59,18 +62,42 @@ pub(crate) fn view(m: &Model) -> Option<DialogView> {
         Some(error) => format!("{body} Problema: {error}"),
         None => body,
     };
-    let busy = if wizard.done.is_none() && m.waiting {
-        Busy::Spinner
-    } else {
-        Busy::None
-    };
     Some(DialogView {
-        busy,
+        busy: busy_of(m, wizard),
         ..window(step, title, body, buttons)
     })
 }
 
+/// The sign of what is going on, if the window waits for something.
+fn busy_of(m: &Model, wizard: &Wizard) -> Busy {
+    if wizard.done.is_some() {
+        return Busy::None;
+    }
+    if let Some(preparing) = &m.preparing {
+        let part = |step: PrepStep| Check {
+            label: step.label(),
+            icon: step.icon(),
+            done: preparing.done.contains(&step),
+        };
+        return Busy::Checklist(PrepStep::ALL.map(part).to_vec());
+    }
+    if m.waiting {
+        Busy::Spinner
+    } else {
+        Busy::None
+    }
+}
+
 type Step = (usize, String, String, Vec<Btn>);
+
+fn preparing_step(app: &str) -> Step {
+    (
+        0,
+        format!("Preparando {app}"),
+        format!("Antes de abrir el desinstalador de {app}, Purifex guarda lo necesario para encontrar sus restos y pide a Windows un punto de restauración. Puede tardar un momento."),
+        vec![button("Ocultar", "x", false, Action::CloseWizard)],
+    )
+}
 
 fn waiting_step(app: &str) -> Step {
     (
@@ -264,6 +291,24 @@ mod tests {
         });
         m.traces_open = true;
         assert!(view(&m).is_none(), "step 3 is the traces window");
+    }
+
+    #[test]
+    fn while_preparing_the_window_lists_each_part_with_what_is_done() {
+        let mut m = model(Wizard::new("Zed"));
+        m.preparing = Some(purifex_domain::view::Preparing {
+            app: "Zed".into(),
+            done: vec![PrepStep::Registry],
+        });
+        let v = view(&m).unwrap();
+        assert_eq!(v.steps, Some(Steps(0)));
+        let Busy::Checklist(parts) = v.busy else {
+            panic!("a checklist");
+        };
+        assert_eq!(
+            parts.iter().map(|p| p.done).collect::<Vec<_>>(),
+            [true, false]
+        );
     }
 
     #[test]

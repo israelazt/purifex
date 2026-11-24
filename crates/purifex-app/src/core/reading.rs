@@ -238,5 +238,6 @@ impl Core {
             || self.watching.is_some()
             || self.model.finding.is_some()
             || self.removing.is_some()
+            || self.model.preparing.is_some()
     }
 }

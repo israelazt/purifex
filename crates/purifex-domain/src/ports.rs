@@ -125,7 +125,7 @@ pub struct Found {
 
 /// Looks at an app that is still installed and says what its traces will be
 /// recognised by once it is gone: its programs and the extensions it registered.
-pub trait SeedProbe {
+pub trait SeedProbe: Send + Sync {
     fn observe(&self, app: &crate::apps::InstalledApp) -> crate::seeds::Seeds;
 }
 
@@ -179,7 +179,7 @@ pub trait Backups {
 
 /// The restore points of Windows: the way back for the whole system, taken before an
 /// uninstaller starts.
-pub trait RestorePoints {
+pub trait RestorePoints: Send + Sync {
     /// Asks Windows for a restore point. `Err` says why not (it needs an administrator).
     fn create(&self, description: &str) -> Result<(), String>;
 }

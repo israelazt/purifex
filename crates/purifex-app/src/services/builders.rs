@@ -14,6 +14,7 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
             fixer: Fixer::disabled(),
             offering: Offering::default(),
             trace_search: Default::default(),
+            uninstall_prep: Default::default(),
             candidates: Candidates::default(),
             opener: None,
             folder_opener: None,

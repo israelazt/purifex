@@ -82,12 +82,15 @@ impl purifex_domain::ports::Backups for FakeBackups {
 #[derive(Clone, Default)]
 pub struct FakeRestorePoints {
     pub fails: Option<String>,
-    pub asked: Rc<RefCell<Vec<String>>>,
+    pub asked: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    /// How long Windows takes to make one.
+    pub takes_ms: u64,
 }
 
 impl purifex_domain::ports::RestorePoints for FakeRestorePoints {
     fn create(&self, description: &str) -> Result<(), String> {
-        self.asked.borrow_mut().push(description.to_string());
+        std::thread::sleep(std::time::Duration::from_millis(self.takes_ms));
+        self.asked.lock().unwrap().push(description.to_string());
         self.fails.clone().map_or(Ok(()), Err)
     }
 }

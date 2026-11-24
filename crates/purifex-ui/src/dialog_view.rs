@@ -32,6 +32,16 @@ pub enum Busy {
     None,
     /// Something else is working (the app's uninstaller): a spinner around the icon.
     Spinner,
+    /// Work in parts, each done or not.
+    Checklist(Vec<Check>),
+}
+
+/// One part of work that is going on.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Check {
+    pub label: &'static str,
+    pub icon: &'static str,
+    pub done: bool,
 }
 
 /// Everything a dialog needs to be drawn.

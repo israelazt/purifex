@@ -17,7 +17,7 @@ use purifex_domain::forced::{forced_app, installed_there, is_path};
 use purifex_domain::ports::{
     Backups, CleanupStore, Clock, Processes, RestorePoints, SeedProbe, TraceFinder, Uninstaller,
 };
-use purifex_domain::safeguard::{RestorePointOutcome, Started};
+use purifex_domain::safeguard::RestorePointOutcome;
 use purifex_domain::scan_mode::ScanMode;
 
 mod backing_up;
@@ -30,8 +30,10 @@ mod rebooting;
 mod removing;
 mod restoring;
 mod searching;
+mod uninstalling;
 pub use removing::RemovalStart;
 pub use searching::SearchJob;
+pub use uninstalling::{Prepared, UninstallJob};
 mod startup;
 
 #[derive(Default)]
@@ -39,9 +41,9 @@ pub struct Cleaning {
     finder: Option<Arc<dyn TraceFinder>>,
     launcher: Option<Box<dyn Uninstaller>>,
     store: Option<Box<dyn CleanupStore>>,
-    probe: Option<Box<dyn SeedProbe>>,
+    probe: Option<Arc<dyn SeedProbe>>,
     clock: Option<Box<dyn Clock>>,
-    restore_points: Option<Box<dyn RestorePoints>>,
+    restore_points: Option<Arc<dyn RestorePoints>>,
     backups: Option<Box<dyn Backups>>,
     processes: Option<Box<dyn Processes>>,
     mode: ScanMode,
@@ -147,43 +149,23 @@ impl Cleaning {
 
     /// A restore point of Windows is asked for before each uninstaller starts.
     pub fn with_restore_points(mut self, points: Box<dyn RestorePoints>) -> Self {
-        self.restore_points = Some(points);
+        self.restore_points = Some(Arc::from(points));
         self
     }
 
     /// One restore point for a batch of `count` apps, taken now; the uninstallers that follow
     /// do not ask again until `end_batch`. Returns what Windows said.
     pub fn begin_batch(&mut self, count: usize) -> RestorePointOutcome {
-        let outcome = match &self.restore_points {
-            None => RestorePointOutcome::NotAsked,
-            Some(points) => {
-                match points.create(&format!("Purifex: antes de desinstalar {count} apps")) {
-                    Ok(()) => RestorePointOutcome::Requested,
-                    Err(why) => RestorePointOutcome::Unavailable(why),
-                }
-            }
-        };
+        let outcome = uninstalling::asked(
+            self.restore_points.as_deref(),
+            &format!("Purifex: antes de desinstalar {count} apps"),
+        );
         self.batch_point = Some(outcome.clone());
         outcome
     }
 
     pub fn end_batch(&mut self) {
         self.batch_point = None;
-    }
-
-    fn restore_point_for(&self, app: &InstalledApp) -> RestorePointOutcome {
-        if let Some(taken) = &self.batch_point {
-            return taken.clone();
-        }
-        match &self.restore_points {
-            None => RestorePointOutcome::NotAsked,
-            Some(points) => {
-                match points.create(&format!("Purifex: antes de desinstalar {}", app.name)) {
-                    Ok(()) => RestorePointOutcome::Requested,
-                    Err(why) => RestorePointOutcome::Unavailable(why),
-                }
-            }
-        }
     }
 
     /// The day is written on each removal, so the quarantine can let go of old ones.
@@ -198,7 +180,7 @@ impl Cleaning {
 
     /// What is observed of an app before its uninstaller starts (kept with it).
     pub fn with_probe(mut self, probe: Box<dyn SeedProbe>) -> Self {
-        self.probe = Some(probe);
+        self.probe = Some(Arc::from(probe));
         self
     }
 
@@ -206,34 +188,6 @@ impl Cleaning {
         self.store
             .as_mut()
             .ok_or_else(|| "esta versión no puede limpiar restos".to_string())
-    }
-
-    /// Starts the uninstaller of the app. Protected apps are refused.
-    pub fn uninstall(&mut self, apps: &[InstalledApp], query: &str) -> Result<Started, String> {
-        let mut app = find(apps, query)?.clone();
-        if let Some(why) = app.protection() {
-            return Err(format!("{} no se desinstala desde aquí: {why}", app.name));
-        }
-        if self.launcher.is_none() {
-            return Err("esta versión no sabe desinstalar".into());
-        }
-        // Observed and remembered first: once the uninstaller finishes the system
-        // forgets the app, and its folder and programs are gone.
-        if let Some(probe) = &self.probe {
-            app.observed = probe.observe(&app);
-        }
-        self.store()?.remember(&app)?;
-        // The way back for the whole system goes before the uninstaller does anything.
-        let restore_point = self.restore_point_for(&app);
-        let registry_copy = self.registry_copy_of(&app);
-        if let Some(launcher) = &self.launcher {
-            launcher.launch(&app)?;
-        }
-        Ok(Started {
-            app,
-            restore_point,
-            registry_copy,
-        })
     }
 
     /// Keeps what is known of an app that has just disappeared from the list, so its
@@ -554,15 +508,15 @@ mod tests {
             let started = c.uninstall(&apps, name).unwrap();
             assert_eq!(started.restore_point, RestorePointOutcome::Requested);
         }
-        assert_eq!(points.asked.borrow().len(), 1, "asked once for both");
+        assert_eq!(points.asked.lock().unwrap().len(), 1, "asked once for both");
         assert_eq!(
-            points.asked.borrow()[0],
+            points.asked.lock().unwrap()[0],
             "Purifex: antes de desinstalar 2 apps"
         );
         // After the batch each uninstaller asks for its own again.
         c.end_batch();
         c.uninstall(&apps, "Git").unwrap();
-        assert_eq!(points.asked.borrow().len(), 2);
+        assert_eq!(points.asked.lock().unwrap().len(), 2);
     }
 
     #[test]
@@ -575,7 +529,7 @@ mod tests {
         let started = c.uninstall(&apps, "Discord").unwrap();
         assert_eq!(started.restore_point, RestorePointOutcome::Requested);
         assert_eq!(
-            points.asked.borrow()[0],
+            points.asked.lock().unwrap()[0],
             "Purifex: antes de desinstalar Discord"
         );
         // Without administrator the point is not made, and the uninstaller starts all the same.

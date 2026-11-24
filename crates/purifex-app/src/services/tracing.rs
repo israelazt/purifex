@@ -1,4 +1,5 @@
-//! The search for traces and the removal in slices, as the window asks for them.
+//! What the window asks for that takes long: preparing an uninstall, the search for traces and
+//! the removal in slices.
 
 use super::*;
 use crate::trace_search::Polled;
@@ -17,6 +18,26 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
             Polled::Done(job, found) => {
                 TracesPolled::Done(found.map(|found| self.cleaning.finish_search(&job, &found)))
             }
+        }
+    }
+
+    pub(super) fn prepare(&mut self, app: &InstalledApp) -> Result<(), String> {
+        let job = self
+            .cleaning
+            .prepare_uninstall(std::slice::from_ref(app), &app.id)?;
+        self.uninstall_prep.start(job)
+    }
+
+    pub(super) fn polled_uninstall(&mut self) -> UninstallPolled {
+        use crate::uninstall_prep::Polled as Prep;
+        match self.uninstall_prep.poll() {
+            Prep::Idle => UninstallPolled::Idle,
+            Prep::Working(steps) => UninstallPolled::Working(steps),
+            Prep::Done(prepared) => UninstallPolled::Done(
+                prepared
+                    .and_then(|ready| self.cleaning.finish_uninstall(*ready))
+                    .map(Box::new),
+            ),
         }
     }
 

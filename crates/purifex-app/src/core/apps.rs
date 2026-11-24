@@ -46,29 +46,6 @@ impl Core {
         Some(gone.name)
     }
 
-    /// Starts the uninstaller of an app; its traces are looked for afterwards.
-    pub(super) fn uninstalled(&mut self, id: &str) {
-        match self.services.uninstall_app(id) {
-            Ok(started) => {
-                let app = started.app.clone();
-                self.model.message = Some(format!(
-                    "Se abrió el desinstalador de {}. Cuando termine, Purifex busca sus restos y te los muestra. {}",
-                    app.name,
-                    started.safeguards_text()
-                ));
-                (self.model.uninstalled, self.model.traces) = (Some(app.name.clone()), None);
-                self.model.traces_open = false;
-                self.model.wizard = Some(Wizard::new(app.name.clone()));
-                self.model.waiting = true;
-                // From now on the list is read now and then: when the app is gone the
-                // uninstaller has finished and its traces are looked for.
-                self.watching = Some((app, Instant::now(), Instant::now()));
-                self.pending = true;
-            }
-            Err(error) => self.model.error = Some(error),
-        }
-    }
-
     /// Forces the removal of an app after the person confirmed: no uninstaller runs, its entry
     /// goes to the quarantine, and what it left is looked for and shown.
     pub(super) fn force_uninstalled(&mut self, id: &str) {

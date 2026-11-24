@@ -44,6 +44,7 @@ pub struct App<I, C, S, C2, F, A> {
     fixer: Fixer,
     offering: Offering,
     trace_search: TraceSearch,
+    uninstall_prep: crate::uninstall_prep::UninstallPrep,
     candidates: Candidates,
     opener: Option<Box<dyn UrlOpener>>,
     folder_opener: Option<Box<dyn purifex_domain::ports::FolderOpener>>,
@@ -62,7 +63,7 @@ mod contract;
 mod startup;
 mod tracing;
 
-pub use contract::{Services, TracesPolled};
+pub use contract::{Services, TracesPolled, UninstallPolled};
 
 impl<I, C, S, C2, F, A> Services for App<I, C, S, C2, F, A>
 where
@@ -320,6 +321,14 @@ where
     fn uninstall_app(&mut self, query: &str) -> Result<Started, String> {
         let apps = self.apps()?;
         self.cleaning.uninstall(&apps, query)
+    }
+
+    fn start_uninstall(&mut self, app: &InstalledApp) -> Result<(), String> {
+        self.prepare(app)
+    }
+
+    fn poll_uninstall(&mut self) -> UninstallPolled {
+        self.polled_uninstall()
     }
 
     fn clean_app(

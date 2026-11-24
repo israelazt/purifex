@@ -25,6 +25,7 @@ pub mod services;
 mod testing;
 pub mod trace_search;
 mod uninstall_by_kind;
+pub mod uninstall_prep;
 mod updates_wait;
 
 pub use apps_inventory::AllApps;

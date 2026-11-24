@@ -263,6 +263,13 @@ mod states {
         use purifex_domain::view::Wizard;
         model.wizard = Some(Wizard::new("Inkscape"));
         match step {
+            "preparing" => {
+                (model.traces, model.traces_open) = (None, false);
+                model.preparing = Some(purifex_domain::view::Preparing {
+                    app: "Inkscape".into(),
+                    done: vec![purifex_domain::prep_step::PrepStep::Registry],
+                });
+            }
             "waiting" => {
                 (model.traces, model.traces_open, model.waiting) = (None, false, true);
             }

@@ -1,4 +1,4 @@
-# Purifex · App de prueba «Fex Sonda» y comparación con Revo (plan, 2026-11-24)
+# Purifex · Eliminación completa, medida con Revo (plan, 2026-11-24)
 
 > Estado: **solo plan**. Lo ejecuta Sonnet; Opus prueba y revisa. Decisiones marcadas (D) esperan
 > confirmación del autor.
@@ -13,14 +13,25 @@
 
 ## Objetivo
 
-Tener una app **instalable de verdad** que deja restos conocidos al desinstalarse, para comprobar
-con Revo como árbitro:
+**Lo que pide el autor:** que después de desinstalar una app con Purifex, Revo ya no diga que
+quedan restos. Hoy no pasa: con VLC, Revo vio 1 elemento del registro que Purifex no vio.
 
-1. **Revo ve los restos.** Al desinstalar Fex Sonda, el aviso de Revo «Desinstalar restos detectados»
-   sale con números distintos de cero. Así se sabe que la app de prueba sirve.
-2. **Purifex los quita.** Tras «Eliminar todo» en Purifex, Revo ya no encuentra nada de Fex Sonda.
-3. **Purifex no se pasa.** Lo que no es de Fex Sonda (los controles) sigue en su sitio.
-4. **Se puede deshacer.** «Devolver todo» lo pone de nuevo y Revo lo vuelve a ver.
+Al final:
+1. **Purifex lo quita todo.** Tras «Desinstalar y limpiar» en Purifex, Revo no encuentra ningún
+   resto de la app: ni en su aviso ni en una búsqueda forzada. Se comprueba con una app de prueba
+   (Fex Sonda) y con cada app real que el autor desinstale.
+2. **Purifex no se pasa.** Lo que es de Windows o de otra app no se toca, aunque Revo lo marque.
+   Si Revo marca algo así, es un error de Revo y queda anotado.
+3. **Se puede deshacer.** «Devolver todo» lo pone de nuevo.
+
+**Lo que no depende de Purifex:** el aviso de Revo sale al terminar el desinstalador oficial, y
+Purifex limpia después. Si Revo cuenta los restos en ese momento, el aviso saldrá siempre,
+haga lo que haga Purifex. La tarea **P.0** lo averigua antes de nada. El criterio que se puede
+medir es este: **la lista de Revo, abierta cuando Purifex ha terminado, está vacía**. Además, si
+Revo vuelve a contar al pulsar «Limpiar», el aviso dirá cero.
+
+Fex Sonda sirve para repetir la prueba igual cada vez. Lo que de verdad dice si falta algo son
+las apps reales (bloque G).
 
 ## Punto de partida (2026-11-24)
 
@@ -168,6 +179,21 @@ y abre una tarea en `UNINSTALL_UX_PLAN.md` o en `REVO_PARITY_PLAN.md`.
 
 Antes de cada prueba: `fex-sonda purge`, y Purifex abierto **como administrador**.
 
+### P.0 Cuándo cuenta Revo (investigación, antes de T.1)
+Con una app real pequeña que el autor quiera quitar de todos modos, o con Fex Sonda cuando exista:
+1. Desinstálala desde Purifex. Cuando salga el aviso de Revo, **no lo toques**.
+2. Deja que Purifex termine de quitar los restos («Eliminar todo»).
+3. Ahora pulsa «Limpiar» en el aviso de Revo y mira la lista que abre: ¿están los restos que
+   Purifex ya quitó, o la lista está vacía o más corta? **No confirmes nada en Revo**: cancela.
+4. Anota en «Estado» si Revo vuelve a contar al pulsar «Limpiar» (sí o no).
+
+**Puerta:**
+- **Revo vuelve a contar:** el objetivo es que esa lista salga vacía.
+- **Revo no vuelve a contar** (enseña lo de antes): el criterio pasa a ser la búsqueda forzada
+  de P.2.
+
+En los dos casos, que salga el aviso no es un fallo: lo que cuenta es lo que queda.
+
 ### P.1 Revo ve los restos (la app de prueba sirve)
 1. `fex-sonda install`, como administrador.
 2. Desinstala «Fex Sonda» **desde Purifex** (asistente, «Desinstalar y limpiar»).
@@ -197,10 +223,48 @@ Antes de cada prueba: `fex-sonda purge`, y Purifex abierto **como administrador*
 
 ---
 
+---
+
+## Bloque G · Lo que Revo ve y Purifex no (con apps reales)
+
+Es el bucle que lleva a la eliminación completa. Cada vez que el autor desinstala una app real
+desde Purifex:
+
+### G.1 Recoger la lista de Revo (a mano, el autor)
+1. Desinstala desde Purifex y deja que Purifex quite lo que propone.
+2. En el aviso de Revo, pulsa «Limpiar» para ver la lista; o usa su búsqueda forzada con el
+   nombre de la app. Haz una captura de cada elemento (ruta completa) y **cancela**: Revo no borra nada.
+3. Pega las rutas en «Estado», en una tabla `App | Ruta que ve Revo | Tipo`. Las capturas
+   se guardan fuera del repositorio.
+
+### G.2 Clasificar cada elemento (Opus)
+Opus revisa cada ruta, en solo lectura, y la pone en una de estas filas:
+
+| Clase | Qué significa | Qué se hace |
+|---|---|---|
+| Falta una regla | Es de la app y ninguna regla lo propone | Tarea nueva para Sonnet: la regla en el dominio, con su test y el caso real como dato (sin datos personales) |
+| La regla existe y no se usó | Por ejemplo, solo en modo «Avanzado», o requiere administrador | Tarea nueva sobre qué se marca por defecto, o anotarlo |
+| Lo bloquea una regla de seguridad | Es compartido o de Windows | No se quita. Se anota como «Revo se pasa», con el motivo |
+| Revo se equivoca | No es de la app | Se anota, y nada más |
+
+### G.3 Tareas para Sonnet
+Cada «Falta una regla» se convierte en una tarea de `REVO_PARITY_PLAN.md` (R3, escaneo), con:
+- el caso real;
+- el test que debe pasar;
+- **Hecho cuando:** `purifex apps traces <app>` lo propone, en un caso nuevo o en la siguiente
+  desinstalación real.
+Si el caso se puede reproducir, se añade también como fila nueva del manifiesto de Fex Sonda,
+y queda cubierto para siempre.
+
+**Primer caso pendiente:** VLC (2026-11-24). Revo vio 1 elemento del registro; Purifex, nada (y
+antes, 75 de Windows). No está en `Software\VideoLAN`, `Applications\vlc.exe` ni
+`%APPDATA%\vlc`. Si VLC se reinstala y se vuelve a desinstalar, G.1 dirá cuál es.
+
 ## Orden y dependencias
 
 ```
-T.1 → T.2 → T.3 → T.4 → T.5 → (pausa) → P.1 → P.2 → P.3
+P.0 → T.1 → T.2 → T.3 → T.4 → T.5 → (pausa) → P.1 → P.2 → P.3
+G.1 → G.2 → G.3   (cada vez que se desinstala una app real; no espera a T)
 ```
 
 Con `UNINSTALL_UX_PLAN.md`: P.2 necesita **A.7** (si no, «Eliminar todo» sin administrador falla sin
@@ -220,3 +284,6 @@ prueba que Revo ve los restos.
 ## Estado
 
 - 2026-11-24: plan escrito (Opus 5.5). Falta que el autor confirme T1, T2 y T4.
+- 2026-11-24: el autor aclara el objetivo: que Revo ya no vea restos tras Purifex, porque hoy
+  Purifex no hace la eliminación completa. Se añaden P.0 (cuándo cuenta Revo) y el bloque G (las
+  apps reales como medida).

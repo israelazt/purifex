@@ -577,3 +577,13 @@ al buscar y enseña qué está mirando. Orden completo: 0 → A → D → B → 
 - 2026-11-24 · 0.1 hecho. CPU de la ventana real en reposo en Apps: 0 s de CPU en 10 s. Capturas de
   antes (`before-waiting|finding|review|done.png`) y salidas de `apps traces` (DBeaver 25 líneas,
   Inkscape 1599) guardadas en la carpeta temporal de la sesión; no se suben.
+- 2026-11-24 · A.1–A.5 hechas y subidas (un commit por tarea). Igualdad de A.2: `apps traces`
+  de DBeaver e Inkscape idénticas byte a byte antes y después. A.5: `Core::tick` ya no bloquea (test
+  `a_slow_search_leaves_the_window_free_…`: ningún tick pasa de 50 ms con un buscador de 300 ms).
+  `expect_reading` deja `busy` encendido mientras se busca, para no cambiar lo que comprobaba un test.
+  Ventana real (`ui --find-traces Inkscape`, 4 s): `Process.Responding` fue siempre verdadero, pero
+  esa señal solo salta tras ~5 s sin atender mensajes, así que **no prueba** que arrastrar la ventana
+  funcione durante la búsqueda: queda **pendiente de que el autor lo mire a mano** (mover la ventana y
+  pasar el ratón por los botones mientras busca).
+- A.6 **parada**: depende de U3 (la ventana quita exactamente los restos que mostró, sin volver a
+  buscar). Esperando la confirmación del autor.

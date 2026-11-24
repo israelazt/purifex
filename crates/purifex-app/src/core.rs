@@ -171,9 +171,9 @@ impl Core {
     /// Marks as busy if the current page lacks something.
     fn expect_reading(&mut self) {
         let missing = self.missing();
-        // A search of offers still going must be picked up, whatever page is shown.
-        self.pending = missing || self.model.offers == Offers::Searching || self.watching.is_some();
-        self.model.busy = missing;
+        // A search going (of offers, of traces, a watch) must be picked up, whatever page is shown.
+        self.pending = missing || self.still_polling();
+        self.model.busy = missing || self.model.finding.is_some();
     }
 
     /// Whether the page being shown (and the sidebar) lack data.
@@ -184,7 +184,6 @@ impl Core {
             Page::Fixes => m.fixes.is_none() || m.history.is_none(),
             Page::Apps => {
                 m.apps.is_none()
-                    || m.finding.is_some()
                     || m.quarantine.is_none()
                     || m.backups.is_none()
                     || m.install_logs.is_none()
@@ -223,7 +222,7 @@ impl Core {
         if !self.pending {
             return false;
         }
-        let arrived = self.poll_offers() | self.check_watch();
+        let arrived = self.poll_offers() | self.check_watch() | self.poll_traces();
         if !self.missing() {
             // Only the search of offers is going: nothing to read, nothing blocks.
             self.pending = self.still_polling();
@@ -272,6 +271,15 @@ mod tests {
 
     const GAME: &str =
         "t_s,cpu_total,cpu_max_core,game_cpu,game_mb\n1.0,1.0,1.0,5.0,900\n300.0,1.0,1.0,5.0,900\n";
+
+    /// Ticks until the search that runs on its own thread has been picked up.
+    fn settle(c: &mut Core) {
+        let end = Instant::now() + Duration::from_secs(5);
+        while c.needs_tick() && Instant::now() < end {
+            c.tick();
+            std::thread::yield_now();
+        }
+    }
 
     fn gpu() -> Device {
         Device {
@@ -1019,7 +1027,7 @@ mod tests {
         let AppsFixture { mut core, log, .. } = apps_page();
         core.apply(Action::FindTraces("Discord".into()));
         assert!(core.model().busy);
-        core.tick();
+        settle(&mut core);
         assert_eq!(core.model().traces.as_ref().unwrap().proposed.len(), 1);
         core.apply(Action::AskClean("Discord".into()));
         core.apply(Action::Confirm);
@@ -1133,13 +1141,13 @@ mod tests {
             .borrow_mut()
             .extend([fake_app("OBS Studio"), fake_app("Git")]);
         let (mut c, log) = apps_core(&installed);
-        c.tick();
+        settle(&mut c);
         c.apply(Action::Go(Page::Apps));
-        c.tick();
+        settle(&mut c);
         assert_eq!(c.model().visible_apps().len(), 2);
         // Nothing changed: coming back reads again and finds nothing new.
         c.apply(Action::RefreshApps);
-        c.tick();
+        settle(&mut c);
         assert_eq!(c.model().uninstalled, None);
         // The user uninstalled OBS in its own window and comes back.
         installed.0.borrow_mut().retain(|a| a.name != "OBS Studio");
@@ -1151,7 +1159,7 @@ mod tests {
         );
         assert!(!c.model().busy, "no loading state shows");
         assert!(c.needs_tick());
-        c.tick();
+        settle(&mut c);
         assert_eq!(c.model().visible_apps().len(), 1, "OBS is no longer listed");
         assert_eq!(c.model().uninstalled.as_deref(), Some("OBS Studio"));
         assert!(c
@@ -1193,7 +1201,7 @@ mod tests {
         use crate::testing::FakeApps;
         let installed = FakeApps::default();
         let (mut c, _) = apps_core(&installed);
-        c.tick();
+        settle(&mut c);
         c.apply(Action::Go(Page::Drivers));
         c.apply(Action::SetQuery("nvidia".into()));
         c.apply(Action::Go(Page::Apps));
@@ -1203,7 +1211,7 @@ mod tests {
             "the drivers' search does not hide the apps"
         );
         c.apply(Action::FindTraces("OBS Studio".into()));
-        c.tick();
+        settle(&mut c);
         assert_eq!(c.model().uninstalled.as_deref(), Some("OBS Studio"));
         assert_eq!(c.model().traces.as_ref().unwrap().proposed.len(), 1);
     }
@@ -1245,7 +1253,23 @@ mod tests {
         Core,
         std::rc::Rc<std::cell::RefCell<crate::testing::CleanLog>>,
     ) {
-        use crate::testing::{CleanLog, FakeCleaning, FakeFinder};
+        core_finding_with(
+            installed,
+            processes,
+            Box::new(crate::testing::FakeFinder(found)),
+        )
+    }
+
+    /// A core whose finder is the one given.
+    fn core_finding_with(
+        installed: &crate::testing::FakeApps,
+        processes: crate::testing::FakeProcesses,
+        finder: Box<dyn purifex_domain::ports::TraceFinder>,
+    ) -> (
+        Core,
+        std::rc::Rc<std::cell::RefCell<crate::testing::CleanLog>>,
+    ) {
+        use crate::testing::{CleanLog, FakeCleaning};
         use crate::Cleaning;
         let log = std::rc::Rc::new(std::cell::RefCell::new(CleanLog::default()));
         let core = Core::new(Box::new(
@@ -1261,7 +1285,7 @@ mod tests {
             .with_apps(Box::new(installed.clone()))
             .with_cleaning(
                 Cleaning::new(
-                    Box::new(FakeFinder(found)),
+                    finder,
                     Box::new(FakeCleaning(log.clone())),
                     Box::new(FakeCleaning(log.clone())),
                 )
@@ -1269,6 +1293,71 @@ mod tests {
             ),
         ));
         (core, log)
+    }
+
+    /// A finder that takes the given milliseconds for each of the four parts of the search.
+    struct SlowFinder(u64);
+
+    impl purifex_domain::ports::TraceFinder for SlowFinder {
+        fn candidates(
+            &self,
+            _: &purifex_domain::apps::InstalledApp,
+        ) -> Result<Vec<purifex_domain::app_traces::Candidate>, String> {
+            Ok(vec![])
+        }
+        fn search_reporting(
+            &self,
+            app: &purifex_domain::apps::InstalledApp,
+            step: &dyn Fn(purifex_domain::search_step::SearchStep),
+        ) -> Result<purifex_domain::ports::Found, String> {
+            for part in purifex_domain::search_step::SearchStep::ALL {
+                std::thread::sleep(Duration::from_millis(self.0));
+                step(part);
+            }
+            self.search(app)
+        }
+    }
+
+    #[test]
+    fn a_slow_search_leaves_the_window_free_and_shows_each_part_as_it_finishes() {
+        use purifex_domain::search_step::SearchStep;
+        let installed = crate::testing::FakeApps::default();
+        let (mut c, _) = core_finding_with(
+            &installed,
+            crate::testing::FakeProcesses::default(),
+            Box::new(SlowFinder(75)),
+        );
+        settle(&mut c);
+        c.apply(Action::Go(Page::Apps));
+        settle(&mut c);
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        assert_eq!(c.model().finding.as_deref(), Some("OBS Studio"));
+        let mut longest = Duration::ZERO;
+        let end = Instant::now() + Duration::from_secs(5);
+        while c.model().finding.is_some() && Instant::now() < end {
+            let started = Instant::now();
+            c.tick();
+            longest = longest.max(started.elapsed());
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            longest < Duration::from_millis(50),
+            "a tick took {longest:?}"
+        );
+        assert!(c.model().finding.is_none() && c.model().traces.is_some());
+        assert!(c.model().search_steps.is_empty(), "cleared at the end");
+        let mut seen = Vec::new();
+        c.apply(Action::FindTraces("OBS Studio".into()));
+        while c.model().finding.is_some() && Instant::now() < end {
+            c.tick();
+            if seen.last() != Some(&c.model().search_steps) {
+                seen.push(c.model().search_steps.clone());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let most = seen.iter().max_by_key(|s| s.len()).unwrap();
+        assert!(most.len() >= 3, "the parts show up one by one: {seen:?}");
+        assert_eq!(most[..], SearchStep::ALL[..most.len()]);
     }
 
     #[test]
@@ -1404,15 +1493,15 @@ mod tests {
         };
         let found = vec![folder("OBS Studio"), folder("OBS Studio Beta")];
         let (mut c, log) = core_finding(&FakeApps::default(), FakeProcesses::default(), found);
-        c.tick();
+        settle(&mut c);
         c.apply(Action::Go(Page::Apps));
-        c.tick();
+        settle(&mut c);
         let listed = |c: &Core| c.model().traces.as_ref().unwrap().proposed.len();
         c.apply(Action::FindTraces("OBS Studio".into()));
-        c.tick();
+        settle(&mut c);
         assert_eq!(listed(&c), 1, "Moderate does not guess");
         c.apply(Action::SetScanMode(ScanMode::Advanced));
-        c.tick();
+        settle(&mut c);
         let report = c.model().traces.clone().unwrap();
         assert_eq!(listed(&c), 2);
         let guess = report
@@ -1555,11 +1644,11 @@ mod tests {
             (13, r"C:\Windows\explorer.exe"),
         ]);
         let (mut c, _log) = two_traces_core_running(&FakeApps::default(), processes.clone());
-        c.tick();
+        settle(&mut c);
         c.apply(Action::Go(Page::Apps));
-        c.tick();
+        settle(&mut c);
         c.apply(Action::FindTraces(OLD.into()));
-        c.tick();
+        settle(&mut c);
         let running = c.model().running.clone().expect("it says what still runs");
         assert_eq!(running.names, ["helper.exe", "obs64.exe"]);
         // Asking is not enough, and saying no closes nothing.
@@ -1569,7 +1658,7 @@ mod tests {
         assert!(processes.closed.borrow().is_empty());
         c.apply(Action::AskCloseProcesses(OLD.into()));
         c.apply(Action::Confirm);
-        c.tick();
+        settle(&mut c);
         let mut closed = processes.closed.borrow().clone();
         closed.sort_unstable();
         assert_eq!(closed, [10, 11], "only what runs from inside the folder");
@@ -1749,19 +1838,19 @@ mod tests {
         use purifex_domain::scan_mode::ScanMode;
         let installed = FakeApps::default();
         let (mut c, _) = two_traces_core(&installed);
-        c.tick();
+        settle(&mut c);
         c.apply(Action::Go(Page::Apps));
-        c.tick();
+        settle(&mut c);
         c.apply(Action::FindTraces("OBS Studio".into()));
-        c.tick();
+        settle(&mut c);
         assert_eq!(c.model().traces.as_ref().unwrap().proposed.len(), 2);
         assert_eq!(c.model().scan_mode, ScanMode::Moderate);
         c.apply(Action::SetScanMode(ScanMode::Safe));
-        c.tick();
+        settle(&mut c);
         assert_eq!(c.model().scan_mode, ScanMode::Safe);
         assert!(c.model().traces.as_ref().unwrap().proposed.is_empty());
         c.apply(Action::SetScanMode(ScanMode::Moderate));
-        c.tick();
+        settle(&mut c);
         assert_eq!(c.model().traces.as_ref().unwrap().proposed.len(), 2);
     }
 
@@ -1770,11 +1859,11 @@ mod tests {
         use crate::testing::FakeApps;
         let installed = FakeApps::default();
         let (mut c, log) = two_traces_core(&installed);
-        c.tick();
+        settle(&mut c);
         c.apply(Action::Go(Page::Apps));
-        c.tick();
+        settle(&mut c);
         c.apply(Action::FindTraces("OBS Studio".into()));
-        c.tick();
+        settle(&mut c);
         assert!(c.model().traces_open);
         let first = r"C:\ProgramData\obs-studio".to_string();
         // Uncheck one, remove the rest.
@@ -1790,7 +1879,7 @@ mod tests {
         assert!(!c.model().traces_open);
         // "Eliminar todo rastro" ignores the checkboxes.
         c.apply(Action::FindTraces("OBS Studio".into()));
-        c.tick();
+        settle(&mut c);
         c.apply(Action::SelectTraces(false));
         assert_eq!(c.model().unchecked.len(), 2);
         c.apply(Action::AskCleanAll("OBS Studio".into()));
@@ -1811,11 +1900,11 @@ mod tests {
         use crate::testing::FakeApps;
         let installed = FakeApps::default();
         let (mut c, log) = two_traces_core(&installed);
-        c.tick();
+        settle(&mut c);
         c.apply(Action::Go(Page::Apps));
-        c.tick();
+        settle(&mut c);
         c.apply(Action::FindTraces("OBS Studio".into()));
-        c.tick();
+        settle(&mut c);
         c.apply(Action::SelectTraces(false));
         c.apply(Action::AskClean("OBS Studio".into()));
         c.apply(Action::Confirm);
@@ -1957,18 +2046,18 @@ mod tests {
         use crate::testing::FakeApps;
         let (mut c, log) = two_traces_core(&FakeApps::default());
         log.borrow_mut().stuck = vec![r"C:\ProgramData\OBS Studio".into()];
-        c.tick();
+        settle(&mut c);
         c.apply(Action::Go(Page::Apps));
-        c.tick();
+        settle(&mut c);
         c.apply(Action::FindTraces("OBS Studio".into()));
-        c.tick();
+        settle(&mut c);
         c.apply(Action::AskCleanAll("OBS Studio".into()));
         c.apply(Action::Confirm);
         assert_eq!(c.model().stuck.len(), 1);
         assert!(c.model().stuck[0].1.contains("en uso"));
         // Looking again lists it unchecked, and asking for everything does not try it again.
         c.apply(Action::FindTraces("OBS Studio".into()));
-        c.tick();
+        settle(&mut c);
         assert_eq!(c.model().unchecked, [c.model().stuck[0].0.clone()]);
         let tried = log.borrow().removed.len();
         c.apply(Action::AskCleanAll("OBS Studio".into()));

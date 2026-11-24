@@ -150,6 +150,8 @@ pub struct Model {
     pub traces: Option<CleanReport>,
     /// The name of an app whose traces are being looked for.
     pub finding: Option<String>,
+    /// The parts of that search that have already finished.
+    pub search_steps: Vec<crate::search_step::SearchStep>,
     /// An uninstaller started here is running: Purifex waits for the app to disappear.
     pub waiting: bool,
     /// What the quarantine holds (read on the apps page).

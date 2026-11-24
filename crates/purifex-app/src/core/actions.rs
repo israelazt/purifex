@@ -121,7 +121,8 @@ impl Core {
         }
         (self.model.traces, self.model.message) = (None, None);
         self.model.wizard = Some(Wizard::new(name.clone()));
-        (self.model.uninstalled, self.model.finding) = (Some(name.clone()), Some(name));
+        self.model.uninstalled = Some(name.clone());
+        self.begin_finding(name);
         self.expect_reading();
     }
 

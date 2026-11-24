@@ -7,6 +7,8 @@ use purifex_domain::quarantine::{QuarantineInfo, QUARANTINE_DAYS};
 use purifex_domain::trace_text::Counts;
 use purifex_domain::view::{Page, Running};
 
+use crate::services::TracesPolled;
+
 use super::Core;
 
 /// The result of a reading, or `None` after noting the failure in `errors`.
@@ -67,12 +69,9 @@ impl Core {
                 // A batch looks for the traces at its end, app by app: not here.
                 let gone = old.as_deref().filter(|_| !self.batch_running());
                 if let Some(gone) = gone.and_then(|o| self.vanished(o)) {
-                    self.model.finding = Some(gone);
+                    self.begin_finding(gone);
                 }
             }
-        }
-        if let Some(name) = self.model.finding.take() {
-            self.find_traces_of(&name, errors);
         }
         self.read_quarantine();
         if self.model.startup_quick.is_none() {
@@ -121,13 +120,38 @@ impl Core {
         }));
     }
 
-    /// Looks for the traces of an app. When some are found the window with the list
-    /// opens by itself, with everything checked.
-    fn find_traces_of(&mut self, name: &str, errors: &mut Vec<String>) {
-        let Some(report) = read(self.services.clean_app(name, false, None), "restos", errors)
-        else {
-            return;
-        };
+    /// Picks up the search for traces if it has moved. It never waits. Returns whether the
+    /// model changed.
+    pub(super) fn poll_traces(&mut self) -> bool {
+        if self.model.finding.is_none() {
+            return false;
+        }
+        match self.services.poll_traces() {
+            TracesPolled::Working(steps) => {
+                let changed = steps != self.model.search_steps;
+                self.model.search_steps = steps;
+                changed
+            }
+            TracesPolled::Done(result) => {
+                let name = self.model.finding.take().unwrap_or_default();
+                self.model.search_steps.clear();
+                match result {
+                    Ok(report) => self.traces_found(&name, report),
+                    Err(error) => self.model.error = Some(format!("restos: {error}")),
+                }
+                true
+            }
+            TracesPolled::Idle => {
+                self.model.finding = None;
+                self.model.search_steps.clear();
+                true
+            }
+        }
+    }
+
+    /// The traces of an app were found. When some are, the window with the list opens by
+    /// itself, with everything checked.
+    fn traces_found(&mut self, name: &str, report: purifex_domain::cleanup_log::CleanReport) {
         // A search that began without the window (the list saw the app gone) opens it now.
         if self.model.wizard.as_ref().is_none_or(|w| w.app != name) {
             self.model.wizard = Some(purifex_domain::view::Wizard::new(name));
@@ -210,6 +234,8 @@ impl Core {
 
     /// Whether the search of offers or the watch of an uninstaller still needs a visit.
     pub(super) fn still_polling(&self) -> bool {
-        self.model.offers == Offers::Searching || self.watching.is_some()
+        self.model.offers == Offers::Searching
+            || self.watching.is_some()
+            || self.model.finding.is_some()
     }
 }

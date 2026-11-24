@@ -10,6 +10,20 @@ use purifex_domain::view::{InUse, Model, Wizard};
 use super::{Core, WATCH_EVERY, WATCH_FOR};
 
 impl Core {
+    /// Starts looking for the traces of an app without blocking the window: the search runs on
+    /// its own thread and `poll_traces` picks the result up.
+    pub(super) fn begin_finding(&mut self, name: String) {
+        self.model.search_steps.clear();
+        match self.services.start_traces(&name) {
+            Ok(()) => self.model.finding = Some(name),
+            Err(error) => {
+                self.model.finding = None;
+                self.model.error = Some(format!("restos: {error}"));
+            }
+        }
+        self.pending = true;
+    }
+
     /// The app that was in `old` and is no longer listed (the user uninstalled it,
     /// here or elsewhere): remembered, shown, and its name returned to look for its
     /// traces. Protected apps are not considered: their ids change when they update.
@@ -386,7 +400,7 @@ impl Core {
             "{} ya se desinstaló. Estos son los restos que dejó.",
             app.name
         ));
-        self.model.finding = Some(app.name);
+        self.begin_finding(app.name);
         true
     }
 }

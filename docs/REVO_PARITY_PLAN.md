@@ -399,6 +399,7 @@ Hecho tras R9:
 - **R5, «Detener y quitar del inicio»:** el Cazador ofrece «Quitar del inicio» si el programa (o su app) tiene una entrada que se puede quitar; los servicios solo se muestran.
 - **Consola:** `purifex apps startup|logs|junk [--json]`, solo lectura.
 - **Asistente para quitar una app** (a petición del usuario, 2026-11-23): una sola ventana con cuatro pasos (Desinstalar, Buscar restos, Quitar restos, Listo) en lugar del aviso arriba de la lista. El paso se lee del estado real (desinstalador esperado, búsqueda en marcha, lista de restos, resultado), así que no puede desincronizarse. «Ocultar» esconde la ventana sin cancelar la espera, y la búsqueda que termine después la vuelve a abrir. El último paso ofrece «Borrar al reiniciar», «Cerrar programas» y «Devolver todo». Capturas: `ui_states wizard <waiting|finding|review|done>`.
+- **R9, limpieza real en una carpeta aislada** (`apps/purifex/tests/junk_real.rs`): con `TEMP`, `LOCALAPPDATA` y `WINDIR` apuntando a una carpeta de la prueba, el limpiador y la cuarentena reales mueven lo viejo, dejan lo de hoy y lo devuelven con los mismos bytes. No toca archivos del usuario. Falta solo la pasada sobre el `Temp` real del usuario.
 - Probado de verdad en esta máquina (solo lectura): `apps junk` encontró unos 7 GB en `Temp` (464 elementos), y `apps startup` lista las entradas reales.
 
 Sigue abierto, y por qué:

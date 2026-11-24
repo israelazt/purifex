@@ -76,7 +76,7 @@ pub trait AppInventory {
 
 /// Looks for places that might hold the traces of an app. It only reads and
 /// proposes; `app_traces::judge` decides.
-pub trait TraceFinder {
+pub trait TraceFinder: Send + Sync {
     fn candidates(
         &self,
         app: &crate::apps::InstalledApp,
@@ -91,6 +91,20 @@ pub trait TraceFinder {
             candidates: self.candidates(app)?,
             ..Found::default()
         })
+    }
+
+    /// The search, saying when each part of it has finished (for a window that shows progress).
+    /// By default, the whole search and then every part at once.
+    fn search_reporting(
+        &self,
+        app: &crate::apps::InstalledApp,
+        step: &dyn Fn(crate::search_step::SearchStep),
+    ) -> Result<Found, String> {
+        let found = self.search(app);
+        crate::search_step::SearchStep::ALL
+            .into_iter()
+            .for_each(step);
+        found
     }
 }
 

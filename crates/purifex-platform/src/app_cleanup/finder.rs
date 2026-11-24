@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use purifex_domain::app_traces::{names_of, names_relate, simple, Candidate, TraceKind};
 use purifex_domain::apps::InstalledApp;
 use purifex_domain::ports::{Found, TraceFinder};
+use purifex_domain::search_step::SearchStep;
 use purifex_domain::seeds::{seeds_of, Seeds};
 use windows::Win32::System::Registry::{HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
@@ -235,10 +236,21 @@ impl TraceFinder for WindowsTraceFinder {
     }
 
     fn search(&self, app: &InstalledApp) -> Result<Found, String> {
+        self.search_reporting(app, &|_| {})
+    }
+
+    fn search_reporting(
+        &self,
+        app: &InstalledApp,
+        step: &dyn Fn(SearchStep),
+    ) -> Result<Found, String> {
         let names = names_of(app);
         let hives = Hives::real();
         let (seeds, values) = observed_seeds(app, &hives);
         let others = other_users();
+        let registered = registered_folder(app);
+        let named = places_named(&names, &others.roots());
+        step(SearchStep::Folders);
         let (files, complete) = files_of_everyone(&others, &names, &seeds);
         if !complete {
             purifex_domain::log_warn!(
@@ -246,17 +258,18 @@ impl TraceFinder for WindowsTraceFinder {
                 app.name
             );
         }
-        let candidates = [
-            registered_folder(app),
-            files,
+        step(SearchStep::Files);
+        let registry = [
             values,
             find_associations(&hives, &seeds),
             find_program_keys(&hives, &names, &seeds),
-            places_named(&names, &others.roots()),
-            keys_named(&names),
-            system_places(&seeds),
         ]
         .concat();
+        let keys = keys_named(&names);
+        step(SearchStep::Registry);
+        let system = system_places(&seeds);
+        step(SearchStep::System);
+        let candidates = [registered, files, registry, named, keys, system].concat();
         Ok(Found {
             seeds,
             candidates,
@@ -285,6 +298,20 @@ mod tests {
         let ms = started.elapsed().as_secs_f64() * 1e3;
         println!("{label:<18} {ms:>6.0} ms  {found}");
         value
+    }
+
+    #[test]
+    fn a_search_says_when_each_of_its_four_parts_finishes_in_order() {
+        let app = InstalledApp {
+            id: "nothing".into(),
+            name: "Purifex Invented Zzyzx".into(),
+            ..Default::default()
+        };
+        let seen = std::sync::Mutex::new(Vec::new());
+        WindowsTraceFinder
+            .search_reporting(&app, &|step| seen.lock().unwrap().push(step))
+            .unwrap();
+        assert_eq!(*seen.lock().unwrap(), SearchStep::ALL.to_vec());
     }
 
     /// Not a test: `cargo test -p purifex-platform measure_the_real_search -- --ignored

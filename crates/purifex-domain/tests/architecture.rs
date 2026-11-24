@@ -62,7 +62,7 @@ fn dependencies_of(krate: &str) -> Vec<String> {
 fn each_crate_depends_only_on_what_the_layers_allow() {
     // crate -> every dependency it may have. Dependencies go only downward:
     // domain <- platform, app <- the binary.
-    let allowed: [(&str, &[&str]); 5] = [
+    let allowed: [(&str, &[&str]); 6] = [
         ("purifex-domain", &["serde", "serde_json"]),
         (
             "purifex-platform",
@@ -80,6 +80,8 @@ fn each_crate_depends_only_on_what_the_layers_allow() {
                 "purifex-ui",
             ],
         ),
+        // A test app that installs for real: it needs nothing from the others.
+        ("fex-sonda", &[]),
     ];
     for (krate, may) in allowed {
         assert!(
@@ -175,10 +177,16 @@ fn before_the_tests_module(text: &str) -> &str {
 /// Where the program may still print straight to the console, and why. Every
 /// other message goes through the log (`log_info!`, `log_warn!`, `log_error!`),
 /// which reaches the file and, when there is one, the console.
-const PRINT_EXCEPTIONS: [(&str, &str); 1] = [(
-    "apps/purifex/src/main.rs",
-    "the report is the program's output: it goes to the standard output, for people and scripts",
-)];
+const PRINT_EXCEPTIONS: [(&str, &str); 2] = [
+    (
+        "apps/purifex/src/main.rs",
+        "the report is the program's output: it goes to the standard output, for people and scripts",
+    ),
+    (
+        "apps/fex-sonda/src/say.rs",
+        "a test tool that talks through the console: everything it prints goes through this file",
+    ),
+];
 
 #[test]
 fn production_code_logs_instead_of_printing() {

@@ -1,0 +1,13 @@
+[package]
+name = "fex-sonda"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+# A test app for Purifex: it installs for real, leaves known traces when it is uninstalled, and
+# can remove everything it ever wrote. No dependencies: it calls reg.exe, schtasks.exe and
+# PowerShell. Everything it writes is named FexSonda, FexOtra or fexcomun.
+[dependencies]

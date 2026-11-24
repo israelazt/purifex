@@ -287,3 +287,14 @@ prueba que Revo ve los restos.
 - 2026-11-24: el autor aclara el objetivo: que Revo ya no vea restos tras Purifex, porque hoy
   Purifex no hace la eliminación completa. Se añaden P.0 (cuándo cuenta Revo) y el bloque G (las
   apps reales como medida).
+- 2026-11-24 · T.1 hecha (Sonnet 5.5): crate `apps/fex-sonda` sin dependencias, manifiesto en
+  `manifest.rs` (12 filas + controles C1, C2, C2b, C2c: la vecina se parte en registro, carpeta y
+  HKCU), órdenes parseadas en `command.rs` y toda la salida por `say.rs` (única excepción de
+  `println!`). Se siguió T1 y T4 tal como el plan los recomienda; **T2 sigue sin confirmar** (solo
+  afecta a las pruebas P.*, a mano). Desvíos a revisar:
+  - `purge` (T.4) aceptará rutas con `fexsonda`, `fexotra` **o `fexcomun`**: C1 es `.fexcomun` y no
+    contiene ninguno de los otros dos. Está en `manifest::is_ours`, con test.
+  - **No se incrusta el manifiesto `requireAdministrator`** (T5): haría imposible lanzar
+    `fex-sonda status` o `purge` desde una consola normal (ni Opus ni `check.ps1` podrían).
+    `install` comprobará el administrador por sí mismo (T.2.1) y dirá claro que lo necesita.
+  - `#![allow(dead_code)]` temporal en `manifest.rs` y en `say::line`: se quitan en T.2–T.4.

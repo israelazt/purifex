@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/purifex-domain", "crates/purifex-platform", "crates/purifex-app", "crates/purifex-ui", "apps/purifex"]
+members = ["crates/purifex-domain", "crates/purifex-platform", "crates/purifex-app", "crates/purifex-ui", "apps/purifex", "apps/fex-sonda"]
 
 [workspace.package]
 version = "0.1.0"

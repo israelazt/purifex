@@ -254,6 +254,27 @@ de código. Este paso no se sube salvo el cambio en «Estado», que va junto con
 **Hecho cuando:** `tools/check.ps1` está en verde y, en la ventana real, mover la ventana y pasar
 el ratón por los botones durante la búsqueda funciona. Escríbelo en «Estado».
 
+### A.5b Juzgar también fuera de la ventana (añadida tras probar A.5)
+La prueba real del 2026-11-24 (ver «Estado») mostró que, al llegar el resultado, `finish_search`
+bloquea la ventana unos **410 ms** con Inkscape. Toda esa espera es `judging` (`propose_with` /
+`propose_guessing`: 799 candidatos contra 458 apps), que es cálculo puro. `with_logged` tarda 0 ms.
+1. En `cleaning/searching.rs`, `prepare_search` guarda en `SearchJob` lo que el juicio necesita y no
+   es `Send`: `logged: Vec<Candidate>` (sale de `self.logged(&app)`, en `cleaning/logging.rs`) y
+   `mode: ScanMode`.
+2. Saca de `with_logged` una función libre y pura `merge_logged(found, logged) -> Vec<Candidate>`,
+   para que `with_logged` y el trabajo la compartan (DRY). Haz lo mismo con el cuerpo de `propose`:
+   `fn judge(app, others, seeds, candidates, mode) -> Vec<Trace>`. `Cleaning::propose` pasa a
+   llamarla.
+3. `SearchJob::run` devuelve `Result<CleanReport, String>`: busca, junta, juzga y arma el
+   `CleanReport` de vista previa, todo en el hilo. `finish_search` deja de existir y
+   `Cleaning::clean` usa `run`. `TraceSearch` y `Services::poll_traces` transportan el
+   `CleanReport` en lugar del `Found` y el `SearchJob`.
+4. La salida de `apps traces DBeaver` e `apps traces Inkscape` sigue siendo idéntica byte a byte.
+
+**Hecho cuando:** `tools/check.ps1` está en verde y, con la ventana real
+(`purifex ui --find-traces Inkscape`, preguntándole con `SendMessageTimeout(WM_NULL)` cada 15 ms),
+ninguna espera pasa de 100 ms después de que aparece la ventana.
+
 ### A.6 Quitar por tramos (requiere U3 confirmada)
 1. En `cleaning.rs`, extrae el cuerpo del bucle de `remove_all` a
    `pub fn remove_one(&mut self, app: &str, trace: &Trace, log: &mut Vec<CleanupEntry>, today: Date, done: &mut Removals) -> Result<(), String>`
@@ -546,8 +567,8 @@ comprobando las tres acciones.
 ## Orden y dependencias
 
 ```
-0.1 → A.1 → A.2 → A.3 → A.4 → A.5 ──┐
-                         (U3) A.6 ──┤
+0.1 → A.1 → A.2 → A.3 → A.4 → A.5 → A.5b ──┐
+                                (U3) A.6 ──┤
 D.1 → D.2 → D.3, D.4 (necesita A.5), D.5 (necesita A.6) → D.6
 B.1 → B.2 (necesita D.2: follow) → B.3 → B.4
 C.1 (necesita D.2) → C.2
@@ -587,3 +608,20 @@ al buscar y enseña qué está mirando. Orden completo: 0 → A → D → B → 
   pasar el ratón por los botones mientras busca).
 - A.6 **parada**: depende de U3 (la ventana quita exactamente los restos que mostró, sin volver a
   buscar). Esperando la confirmación del autor.
+- 2026-11-24 · **Prueba independiente de A.1–A.5** (Opus 5.5). `tools/check.ps1` en verde: 672 tests,
+  0 fallos. `apps traces` de DBeaver (25 líneas) e Inkscape (1599) son idénticas byte a byte a las
+  de antes del cambio. Ventana real, release, `ui --find-traces <app>`: se le pregunta a la ventana
+  cada 15 ms con `SendMessageTimeout(WM_NULL)` durante 7 s y se anota la espera más larga después
+  de aparecer. Esto sustituye la prueba a mano pendiente: mide si la ventana atiende mensajes.
+
+  | | Inkscape | DBeaver |
+  |---|---|---|
+  | Antes (`7b3f762`) | **1859 ms** sin responder | **1560 ms** |
+  | Después (`109ef8b`) | **435 ms** | ninguna espera por encima de 16 ms |
+
+  Los 435 ms que quedan los causa `finish_search`, que sigue en el hilo de la ventana: el juicio de
+  las reglas tarda 408–417 ms (799 candidatos contra 458 apps) y `with_logged` 0 ms. Medido con
+  instrumentación temporal, ya quitada. Arreglo: tarea **A.5b**.
+
+  Las dos versiones tienen además una espera de 330–370 ms justo al aparecer la ventana (crearla y
+  pintar la primera imagen). Ya existía, no es de este plan y queda anotada.

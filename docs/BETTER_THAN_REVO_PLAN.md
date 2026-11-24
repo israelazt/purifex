@@ -353,3 +353,4 @@ Lo primero que se nota:
   lista no se lee ni una vez mientras se espera. **Falta** `respond.ps1` durante un minuto de
   «Desinstalando» en la ventana real: exige pulsar en la ventana y lo hace el autor.
 - 2026-11-24 · M.3 hecha (D.1 y D.2): reloj `clock` y `loaders.rs` (spinner, barra, anillo, ✓ y puntos), con `Canvas::line_w` y `Anims::follow`.
+- 2026-11-24 · M.4 hecha (D.3): indicador alrededor del icono en «Desinstalando», texto corto y «Esperando al desinstalador» con puntos; dibujo de lo ocupado en `wizard_busy.rs`. Captura `waiting` revisada. Antes: `DialogView` ganó `Default` y sus tipos se movieron a `dialog_view.rs` (`dialog.rs` pasaba de 400 líneas). **Falta medir la CPU** con el indicador girando un minuto (puerta de D.6): hace falta la ventana real esperando a un desinstalador, lo hace el autor con `tools/respond.ps1 -Seconds 60`.

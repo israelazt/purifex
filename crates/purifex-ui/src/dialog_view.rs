@@ -25,6 +25,15 @@ pub struct Btn {
     pub action: Option<Action>,
 }
 
+/// The sign of something going on that a window shows.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum Busy {
+    #[default]
+    None,
+    /// Something else is working (the app's uninstaller): a spinner around the icon.
+    Spinner,
+}
+
 /// Everything a dialog needs to be drawn.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DialogView {
@@ -44,6 +53,8 @@ pub struct DialogView {
     pub cancel: Action,
     /// The steps drawn at the top, when the window is one of a way with several (removing an app).
     pub steps: Option<crate::wizard_dialog::Steps>,
+    /// What is going on, if the window is waiting for something.
+    pub busy: Busy,
 }
 
 impl Default for DialogView {
@@ -60,6 +71,7 @@ impl Default for DialogView {
             buttons: Vec::new(),
             cancel: Action::CancelConfirm,
             steps: None,
+            busy: Busy::None,
         }
     }
 }

@@ -13,7 +13,7 @@ use crate::theme::{self, Tone};
 use crate::traces_dialog::traces_view;
 use crate::widgets::{button, button_width, checkbox, icon_box, panel, tag};
 
-pub use crate::dialog_view::{Btn, DialogView, Row};
+pub use crate::dialog_view::{Btn, Busy, DialogView, Row};
 
 /// How long a dialog takes to appear or go away, in ms.
 pub const DIALOG_MS: u64 = 190;
@@ -242,7 +242,8 @@ fn height_of(c: &Canvas, v: &DialogView) -> f32 {
         16.0 + list_metrics(v).view
     };
     let steps = v.steps.map_or(0.0, |_| crate::wizard_dialog::STEPS_H);
-    steps + 24.0 + 40.0 + 14.0 + body + list + 24.0 + 44.0 + 24.0
+    let busy = crate::wizard_busy::height(&v.busy);
+    steps + 24.0 + 40.0 + 14.0 + body + busy + list + 24.0 + 44.0 + 24.0
 }
 
 /// Draws the dialog at `t` (0 gone, 1 settled) over a window of `width` x `height`, with its
@@ -277,6 +278,7 @@ pub fn draw(
         None => rect,
     };
     let y = heading_and_body(c, v, rect);
+    crate::wizard_busy::draw(c, &v.busy, rect, y);
     if !v.rows.is_empty() {
         list(c, v, rect, y, scroll);
     }

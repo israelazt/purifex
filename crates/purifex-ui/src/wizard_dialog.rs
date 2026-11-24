@@ -7,7 +7,7 @@ use purifex_domain::draw::Rect;
 use purifex_domain::view::{Action, Model, Wizard};
 
 use crate::canvas::Canvas;
-use crate::dialog::{Btn, DialogView};
+use crate::dialog::{Btn, Busy, DialogView};
 use crate::theme::{self, Tone};
 
 /// The steps, in order.
@@ -59,7 +59,15 @@ pub(crate) fn view(m: &Model) -> Option<DialogView> {
         Some(error) => format!("{body} Problema: {error}"),
         None => body,
     };
-    Some(window(step, title, body, buttons))
+    let busy = if wizard.done.is_none() && m.waiting {
+        Busy::Spinner
+    } else {
+        Busy::None
+    };
+    Some(DialogView {
+        busy,
+        ..window(step, title, body, buttons)
+    })
 }
 
 type Step = (usize, String, String, Vec<Btn>);
@@ -68,7 +76,7 @@ fn waiting_step(app: &str) -> Step {
     (
         0,
         format!("Desinstalando {app}"),
-        format!("Se abrió el desinstalador de {app}. Termínalo en su ventana: no hace falta que pulses nada aquí. Cuando {app} desaparezca de la lista, Purifex busca lo que dejó y te lo muestra."),
+        format!("Termina el desinstalador en su ventana. Purifex sigue solo cuando {app} desaparezca de la lista."),
         vec![
             button("Ocultar", "x", false, Action::CloseWizard),
             button("Dejar de esperar", "x", false, Action::StopWaiting),
@@ -231,6 +239,7 @@ mod tests {
         m.waiting = true;
         let waiting = view(&m).unwrap();
         assert_eq!(waiting.steps, Some(Steps(0)));
+        assert_eq!(waiting.busy, Busy::Spinner);
         assert!(waiting
             .buttons
             .iter()

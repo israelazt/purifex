@@ -39,6 +39,7 @@ pub(crate) fn traces_view(m: &Model, report: &CleanReport) -> DialogView {
         buttons: buttons(m, report, checked),
         cancel: Action::CloseTraces,
         steps: Some(Steps(if report.still_installed { 0 } else { 2 })),
+        busy: crate::dialog::Busy::None,
     }
 }
 

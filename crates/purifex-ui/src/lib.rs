@@ -42,6 +42,7 @@ mod traces_dialog;
 pub mod ui;
 mod updates_panel;
 pub mod widgets;
+mod wizard_busy;
 mod wizard_dialog;
 
 pub use ui::{Ui, UiOutput};

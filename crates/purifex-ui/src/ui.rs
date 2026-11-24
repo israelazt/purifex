@@ -474,6 +474,27 @@ mod tests {
     }
 
     /// A frame of `model` at `ms` milliseconds.
+    #[test]
+    fn waiting_for_an_uninstaller_keeps_a_spinner_moving_long_after_the_window_appeared() {
+        let mut model = Model {
+            page: purifex_domain::view::Page::Apps,
+            wizard: Some(purifex_domain::view::Wizard::new("Zed")),
+            waiting: true,
+            ..Model::default()
+        };
+        let mut ui = ui_with_frame(&model);
+        frame_at(&mut ui, &model, 5_000);
+        frame_at(&mut ui, &model, 10_000);
+        assert!(ui.animating(), "the spinner turns");
+        model.waiting = false;
+        frame_at(&mut ui, &model, 15_000);
+        frame_at(&mut ui, &model, 20_000);
+        assert!(
+            !ui.animating(),
+            "once there is nothing to wait for, it rests"
+        );
+    }
+
     fn frame_at(ui: &mut Ui, model: &Model, ms: u64) -> Vec<Op> {
         ui.frame(model, 1440.0, 900.0, &FakeText, Duration::from_millis(ms))
             .ops

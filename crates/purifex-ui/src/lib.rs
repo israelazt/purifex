@@ -16,6 +16,7 @@ pub mod canvas;
 mod compare_panel;
 mod context_menu;
 mod dialog;
+mod dialog_view;
 mod drivers_filters;
 pub mod drivers_page;
 mod fix_history;

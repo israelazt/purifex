@@ -118,12 +118,10 @@ fn window(step: usize, title: String, body: String, buttons: Vec<Btn>) -> Dialog
         tone: if step == 3 { Tone::Green } else { Tone::Amber },
         title,
         body,
-        rows: vec![],
-        aside: None,
-        corner: Vec::new(),
         buttons,
         cancel: Action::CloseWizard,
         steps: Some(Steps(step)),
+        ..DialogView::default()
     }
 }
 

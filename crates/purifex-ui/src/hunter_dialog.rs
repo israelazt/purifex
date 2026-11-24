@@ -75,12 +75,9 @@ fn hunted_view(found: &Hunted, m: &Model) -> DialogView {
         tone: Tone::Blue,
         title,
         body: format!("{whose} El programa es {program}, en {}.", found.folder()),
-        rows: vec![],
-        aside: None,
-        corner: Vec::new(),
         buttons,
         cancel: Action::CloseHunt,
-        steps: None,
+        ..DialogView::default()
     }
 }
 

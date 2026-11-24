@@ -13,6 +13,8 @@ use crate::theme::{self, Tone};
 use crate::traces_dialog::traces_view;
 use crate::widgets::{button, button_width, checkbox, icon_box, panel, tag};
 
+pub use crate::dialog_view::{Btn, DialogView, Row};
+
 /// How long a dialog takes to appear or go away, in ms.
 pub const DIALOG_MS: u64 = 190;
 /// How far below its place a dialog starts, in units.
@@ -24,60 +26,12 @@ const HEADING_H: f32 = 30.0;
 /// the smallest the program can be.
 const LIST_MAX_H: f32 = 9.0 * ROW_H + 2.0 * HEADING_H;
 
-/// One line of a list with a checkbox.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Row {
-    /// The heading of the group this row opens (drawn above it), if it starts one.
-    pub heading: Option<String>,
-    pub label: String,
-    pub detail: String,
-    pub size: String,
-    pub user_data: bool,
-    pub checked: bool,
-    pub toggle: Action,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Btn {
-    pub label: String,
-    pub icon: &'static str,
-    pub primary: bool,
-    pub action: Option<Action>,
-}
-
-/// Everything a dialog needs to be drawn.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DialogView {
-    pub width: f32,
-    pub icon: &'static str,
-    pub tone: Tone,
-    pub title: String,
-    pub body: String,
-    pub rows: Vec<Row>,
-    /// A link-like button at the left of the buttons (select all / none).
-    pub aside: Option<Btn>,
-    /// Buttons in the top right corner, beside the title, from the right edge in (a way out
-    /// of what the dialog warns about, or a setting of it: they do not fit among the buttons).
-    pub corner: Vec<Btn>,
-    pub buttons: Vec<Btn>,
-    /// What Escape does.
-    pub cancel: Action,
-    /// The steps drawn at the top, when the window is one of a way with several (removing an app).
-    pub steps: Option<crate::wizard_dialog::Steps>,
-}
-
 const CLEAN_BODY: &str = "Los restos se mueven a una cuarentena (las claves del registro se guardan antes) y quedan en el historial, donde puedes devolverlos. Incluye datos tuyos de la app, como ajustes y partidas guardadas.";
 
 pub(crate) fn confirm_view(title: String, body: &str, yes: &str, icon: &'static str) -> DialogView {
     DialogView {
-        width: 520.0,
-        icon: "triangle-alert",
-        tone: Tone::Amber,
         title,
         body: body.to_string(),
-        rows: vec![],
-        aside: None,
-        corner: Vec::new(),
         buttons: vec![
             Btn {
                 label: "Cancelar".into(),
@@ -92,8 +46,7 @@ pub(crate) fn confirm_view(title: String, body: &str, yes: &str, icon: &'static 
                 action: Some(Action::Confirm),
             },
         ],
-        cancel: Action::CancelConfirm,
-        steps: None,
+        ..DialogView::default()
     }
 }
 

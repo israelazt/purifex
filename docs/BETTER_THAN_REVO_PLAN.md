@@ -335,6 +335,26 @@ asistente no lo enseña).
 Haz **E.1** de `UNINSTALL_UX_PLAN.md` (sin E.2 ni E.3). El botón «Devolver todo» está en este
 paso, a la vista.
 
+### M.12b Comprobar el desinstalador antes de empezar (añadida 2026-11-24)
+**Lo que pasó:** el autor llegó al desinstalador de «Fex Sonda Vecina» (por el fallo de M.0b), cuyo
+`UninstallString` apunta a un archivo vacío. Windows dijo «no encuentra el desinstalador», y
+Purifex habría seguido en «Desinstalando» para siempre.
+1. Añade al puerto `Uninstaller` `fn check(&self, app: &InstalledApp) -> Result<(), String>`. En
+   `launcher.rs`: `safe_command`, y después que el programa del comando exista y no esté vacío. El
+   programa es la primera parte del comando, con o sin comillas: reutiliza la función
+   `command_path` de `seeds.rs` haciéndola `pub`, no la copies. Para `msiexec` y `rundll32` basta
+   con que el comando esté bien formado.
+2. `Cleaning::prepare_uninstall` llama a `check` **antes** de preparar nada: si el desinstalador
+   no está, no se crea el punto de restauración ni se abre «Preparando».
+   - Mensaje: «El desinstalador de {app} no está en su sitio ({ruta}). Puedes quitarla con la
+     desinstalación forzada.».
+   - En la pregunta de desinstalar, botón «Desinstalación forzada» (`AskForceUninstall(id)`).
+3. Tests: con un desinstalador que no existe, se ve el error con su ruta, no se pide punto de
+   restauración y no se lanza nada. Con uno de 0 bytes, lo mismo.
+
+**Hecho cuando:** con la Vecina de Fex Sonda tal como hoy (desinstalador vacío), «Desinstalar»
+dice por qué no puede y ofrece la forzada, sin abrir ventanas de Windows.
+
 ### M.13 El desinstalador se cerró, pero la app sigue
 1. Cambia `Uninstaller::launch` para que devuelva un `Box<dyn Running>`, con el puerto
    `trait Running { fn finished(&self) -> bool; }`. En Windows guarda el `Child` del `cmd /C` y
@@ -378,7 +398,7 @@ Una fila en la que pierda se convierte en una tarea nueva, aquí.
 
 ```
 M.0b (M7) → M.1 → M.2 → M.3 → M.4 → M.4b → M.5 → M.6 → (pausa) → M.7 (M1) → M.8 (M2, M3) → M.9
-    → M.10 → M.11 → M.12 → M.13 → M.14 → (pausa) → M.15
+    → M.10 → M.11 → M.12 → M.12b → M.13 → M.14 → (pausa) → M.15
 M.0 en cualquier momento antes de M.15.
 ```
 
@@ -460,3 +480,7 @@ Lo primero que se nota:
   (`find`). Reproducido en solo lectura. Nueva tarea **M.0b**, la primera. El control C2 de la app
   de prueba sirvió para esto en su primera prueba real. Mientras no esté hecha, no pulses
   «Desinstalar y limpiar» si el asistente nombra una app distinta de la que desinstalaste.
+- 2026-11-24 · El autor: «Windows no encuentra el desinstalador». Era el de «Fex Sonda Vecina»
+  (`vecina.exe`, de 0 bytes), al que llegó por el fallo de M.0b. Purifex no comprueba el
+  desinstalador antes de lanzarlo: nueva tarea **M.12b**. El archivo vacío de la Vecina venía de
+  `TEST_APP_PLAN.md` (T.2), corregido allí con T.6.

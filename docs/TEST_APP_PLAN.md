@@ -171,6 +171,23 @@ estaba. Repetir el ciclo tres veces da siempre lo mismo.
 Purifex no propone algo, no lo arregles aquí: anótalo en «Estado» con la línea de `traces.txt`
 y abre una tarea en `UNINSTALL_UX_PLAN.md` o en `REVO_PARITY_PLAN.md`.
 
+### T.6 La Vecina tiene un desinstalador que avisa (añadida 2026-11-24)
+T.2 decía que para la Vecina «un `.exe` vacío basta». No basta: si Purifex se equivoca de app
+(pasó, ver M.0b de `BETTER_THAN_REVO_PLAN.md`), Windows dice «no encuentra el desinstalador» y no
+se entiende qué pasó.
+1. `install` copia el propio ejecutable a `C:\Program Files\FexSondaVecina\vecina.exe`, en vez
+   del archivo vacío.
+2. Llamado `vecina.exe`, el programa no desinstala nada. Abre un cuadro de Windows (`MessageBoxW`
+   desde `user32`, sin crates nuevos: declara la función con `extern "system"`, que es el único
+   `unsafe` de esta herramienta, con su `// SAFETY:`) que dice: «Fex Sonda Vecina es la app de
+   control de las pruebas. Si estás viendo esto, Purifex eligió la app equivocada: anótalo.» Sale
+   con código 1.
+3. `status` y `purge` no cambian, porque la ruta es la misma. Los tests de `install` que
+   comprueban el archivo vacío pasan a comprobar la copia.
+
+**Hecho cuando:** con la Vecina instalada, abrir su desinstalador desde Configuración enseña ese
+aviso y la Vecina sigue instalada.
+
 **Pausa de revisión del bloque T.**
 
 ---
@@ -327,3 +344,6 @@ prueba que Revo ve los restos.
   Lo que falta para cerrarlo, en este orden: (1) tú, en una consola de administrador:
   `fex-sonda purge`, `tools/sonda.ps1 ciclo`, `tools/sonda.ps1 comparar`, y repetir el ciclo tres
   veces; (2) pegar aquí lo que salga; (3) P.0 y P.1–P.3 con Revo.
+- 2026-11-24 · Primera prueba real del autor: tras desinstalar Fex Sonda, Purifex le llevó a
+  desinstalar la Vecina (`BETTER_THAN_REVO_PLAN.md`, M.0b), y Windows dijo que no encontraba su
+  desinstalador (el archivo vacío de T.2). El control C2 cumplió su función. Nueva tarea **T.6**.

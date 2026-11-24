@@ -1,7 +1,9 @@
 # Purifex · Experiencia del asistente de desinstalación (plan, 2026-11-24)
 
-> Estado: **solo plan**. Las decisiones marcadas (D) esperan confirmación del autor antes de su
-> bloque. Pensado para que lo ejecute Sonnet 5.5 tarea por tarea, sin volver a deducir nada.
+> Estado: **en curso, el orden lo manda `BETTER_THAN_REVO_PLAN.md`** (2026-11-24). Bloque A hecho
+> salvo A.5b y A.7. Las tareas A.5b, A.7, D.1–D.5, B.1 y E.1 se ejecutan cuando aquel plan lo
+> dice, con los pasos escritos aquí. C, E.2, E.3 y F quedan para después. No sigas este plan por
+> su cuenta.
 
 ## Cómo usar este plan (para quien lo ejecuta)
 

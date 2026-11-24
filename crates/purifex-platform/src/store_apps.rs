@@ -11,6 +11,11 @@ use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 pub struct StorePackages;
 
 impl AppInventory for StorePackages {
+    /// There is no cheap question for a package: the caller reads the list for these.
+    fn still_registered(&self, _: &str) -> Result<bool, String> {
+        Err("un paquete de la Tienda se busca en la lista".into())
+    }
+
     fn apps(&self) -> Result<Vec<InstalledApp>, String> {
         init_com();
         let manager = PackageManager::new().map_err(|e| format!("paquetes de la Tienda: {e}"))?;

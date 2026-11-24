@@ -5,9 +5,16 @@
 
 use std::time::{Duration, Instant};
 
-/// How often the list is read while an uninstaller started here is running.
+/// How often an app is looked for while its uninstaller, started here, is running.
 const WATCH_EVERY: Duration = if cfg!(test) {
     Duration::from_millis(10)
+} else {
+    Duration::from_millis(500)
+};
+/// How often the whole list is read instead, for an app whose own key cannot be asked: reading
+/// it takes half a second, in which the window does not answer.
+const LIST_EVERY: Duration = if cfg!(test) {
+    Duration::from_millis(30)
 } else {
     Duration::from_millis(1500)
 };
@@ -2002,7 +2009,10 @@ mod tests {
             ..Default::default()
         };
         let log = std::rc::Rc::new(std::cell::RefCell::new(CleanLog::default()));
-        let installed = FakeApps(std::rc::Rc::new(std::cell::RefCell::new(vec![obs])));
+        let installed = FakeApps(
+            std::rc::Rc::new(std::cell::RefCell::new(vec![obs])),
+            Default::default(),
+        );
         let mut c = Core::new(Box::new(
             App::new(
                 Scanner::new(FakeInventory::with(vec![gpu()]), FakeClock::ticking(1)),
@@ -2158,6 +2168,36 @@ mod tests {
         c.apply(Action::Go(Page::Apps));
         c.tick();
         (c, installed, log)
+    }
+
+    #[test]
+    fn while_an_uninstaller_runs_only_the_app_is_asked_about_never_the_whole_list() {
+        use crate::testing::FakeApps;
+        let installed = FakeApps::default();
+        installed.0.borrow_mut().push(fake_app("OBS Studio"));
+        let (mut c, _) = two_traces_core(&installed);
+        settle(&mut c);
+        c.apply(Action::Go(Page::Apps));
+        settle(&mut c);
+        c.apply(Action::AskUninstall("HKLM64:OBS Studio".into()));
+        c.apply(Action::Confirm);
+        let read_before = installed.1.get();
+        for _ in 0..8 {
+            std::thread::sleep(Duration::from_millis(15));
+            c.tick();
+        }
+        assert!(c.model().waiting, "still waiting");
+        assert_eq!(
+            installed.1.get(),
+            read_before,
+            "the list was read while waiting"
+        );
+        remove(&installed, "OBS Studio");
+        tick_until(&mut c, |c| !c.model().waiting);
+        assert!(
+            installed.1.get() > read_before,
+            "it is read once it is gone"
+        );
     }
 
     fn remove(installed: &crate::testing::FakeApps, name: &str) {

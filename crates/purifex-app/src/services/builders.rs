@@ -113,6 +113,13 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
         self
     }
 
+    pub(super) fn registered(&self, id: &str) -> Result<bool, String> {
+        self.inventory
+            .as_ref()
+            .ok_or("esta versión no sabe leer las apps instaladas")?
+            .still_registered(id)
+    }
+
     /// The apps installed: the ones to show, and everything installed.
     pub(super) fn installed(&self) -> Result<(Vec<InstalledApp>, Vec<InstalledApp>), String> {
         let all = self

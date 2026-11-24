@@ -28,11 +28,19 @@ impl purifex_domain::ports::Elevation for FakeElevation {
 
 /// Installed apps that a test can change (an uninstaller finishing removes one).
 #[derive(Clone, Default)]
-pub struct FakeApps(pub Rc<RefCell<Vec<purifex_domain::apps::InstalledApp>>>);
+pub struct FakeApps(
+    pub Rc<RefCell<Vec<purifex_domain::apps::InstalledApp>>>,
+    /// How many times the whole list was read.
+    pub Rc<std::cell::Cell<usize>>,
+);
 
 impl purifex_domain::ports::AppInventory for FakeApps {
     fn apps(&self) -> Result<Vec<purifex_domain::apps::InstalledApp>, String> {
+        self.1.set(self.1.get() + 1);
         Ok(self.0.borrow().clone())
+    }
+    fn still_registered(&self, id: &str) -> Result<bool, String> {
+        Ok(self.0.borrow().iter().any(|a| a.id == id))
     }
 }
 

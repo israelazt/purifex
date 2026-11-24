@@ -7,7 +7,7 @@ use purifex_domain::batch::BatchResult;
 use purifex_domain::scan_mode::ScanMode;
 use purifex_domain::view::{Model, Wizard};
 
-use super::{Core, WATCH_EVERY, WATCH_FOR};
+use super::{Core, LIST_EVERY, WATCH_EVERY, WATCH_FOR};
 
 impl Core {
     /// Starts looking for the traces of an app without blocking the window: the search runs on
@@ -363,6 +363,13 @@ impl Core {
         }
         *last = Instant::now();
         let app = app.clone();
+        match self.services.app_still_registered(&app.id) {
+            Ok(true) => return false,
+            Ok(false) => {}
+            // Only its list can tell, and it is slow: the next look waits longer.
+            Err(_) => *last = Instant::now() + (LIST_EVERY - WATCH_EVERY),
+        }
+        // The whole list is read once, when the app is gone (or when only it can tell).
         let Ok(now) = self.services.apps() else {
             return false;
         };

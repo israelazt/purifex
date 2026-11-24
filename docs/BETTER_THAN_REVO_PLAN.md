@@ -346,3 +346,9 @@ Lo primero que se nota:
   Inkscape"`: una espera de **452 ms** a los 1,9 s (la de A.5b, M.6) más la de 375–405 ms al
   aparecer la ventana (ya conocida). Se guardan en UTF-8 con BOM `respond.ps1` y `sonda.ps1`:
   PowerShell 5.1 estropeaba los acentos.
+- 2026-11-24 · M.2 hecha: `AppInventory::still_registered` (solo la clave de la app; Tienda
+  responde `Err` y para ella se lee la lista cada **1,5 s**, no cada 500 ms, para no empeorarla) y
+  `WATCH_EVERY` en 500 ms. Medido en release: **15 µs** preguntar por una app frente a 32 ms de la
+  lista del registro sola (la lista entera con la Tienda son ~500 ms, la cifra del plan). Test: la
+  lista no se lee ni una vez mientras se espera. **Falta** `respond.ps1` durante un minuto de
+  «Desinstalando» en la ventana real: exige pulsar en la ventana y lo hace el autor.

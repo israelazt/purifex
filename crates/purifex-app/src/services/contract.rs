@@ -65,6 +65,9 @@ pub trait Services {
     fn candidates(&self) -> Result<Vec<Candidate>, String>;
     /// Opens the official page of a proposal in the browser (nothing is downloaded).
     fn open_page(&mut self, url: &str) -> Result<(), String>;
+    /// Whether an app is still registered, without reading the whole list (`Err`: only the list
+    /// can tell).
+    fn app_still_registered(&self, id: &str) -> Result<bool, String>;
     /// The apps installed (the ones worth listing, by name).
     fn apps(&self) -> Result<Vec<InstalledApp>, String>;
     /// Opens the install folder of an app in Explorer.

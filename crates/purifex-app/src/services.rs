@@ -237,6 +237,10 @@ where
             .open(url)
     }
 
+    fn app_still_registered(&self, id: &str) -> Result<bool, String> {
+        self.registered(id)
+    }
+
     fn apps(&self) -> Result<Vec<InstalledApp>, String> {
         let inventory = self
             .inventory

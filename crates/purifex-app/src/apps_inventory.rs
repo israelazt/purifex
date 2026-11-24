@@ -14,6 +14,18 @@ impl AllApps {
 }
 
 impl AppInventory for AllApps {
+    /// The first source that can say, says. If none can, the list is the way to know.
+    fn still_registered(&self, id: &str) -> Result<bool, String> {
+        let mut why = "ninguna fuente sabe decirlo".to_string();
+        for source in &self.0 {
+            match source.still_registered(id) {
+                Ok(found) => return Ok(found),
+                Err(error) => why = error,
+            }
+        }
+        Err(why)
+    }
+
     fn apps(&self) -> Result<Vec<InstalledApp>, String> {
         let mut apps = Vec::new();
         let mut first_error = None;
@@ -44,6 +56,9 @@ mod tests {
 
     struct Broken;
     impl AppInventory for Broken {
+        fn still_registered(&self, _: &str) -> Result<bool, String> {
+            Err("no se pudo leer".into())
+        }
         fn apps(&self) -> Result<Vec<InstalledApp>, String> {
             Err("no se pudo leer".into())
         }

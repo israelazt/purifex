@@ -72,6 +72,9 @@ pub trait WindowPicker {
 /// The apps installed in the computer. Reading it changes nothing.
 pub trait AppInventory {
     fn apps(&self) -> Result<Vec<crate::apps::InstalledApp>, String>;
+    /// Whether the app is still registered, opening only what is its own (reading the whole
+    /// list takes half a second). `Err` when this inventory cannot say cheaply: read the list.
+    fn still_registered(&self, id: &str) -> Result<bool, String>;
 }
 
 /// Looks for places that might hold the traces of an app. It only reads and

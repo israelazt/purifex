@@ -105,6 +105,50 @@ anota, en «Estado»:
 
 Después, `fex-sonda purge`. Con esto, la tabla del Objetivo deja de ser de memoria.
 
+### M.0b Nunca otra app por parecido de nombre (urgente: va antes que todo lo demás)
+**Lo que pasó** (el autor, 2026-11-24, con Fex Sonda): tras desinstalar «Fex Sonda», el asistente
+pasó a ofrecer «Desinstalar y limpiar» para **«Fex Sonda Vecina»**, el control C2 de
+`TEST_APP_PLAN.md`, sin decir por qué. Reproducido en solo lectura: con Fex Sonda desinstalada y la
+Vecina instalada, `purifex apps traces "Fex Sonda"` responde «Restos de Fex Sonda Vecina».
+
+**Causa:** `find` (`cleaning.rs:58`) busca primero el nombre o el id exactos y, si no los hay, se
+queda con **la única app instalada cuyo nombre lo contiene**. `Cleaning::resolve` prueba primero
+`find` con las apps instaladas, así que una app ya desinstalada se confunde con otra instalada que
+la contiene en el nombre. Pasa en el recorrido normal: `check_watch` → `begin_finding(app.name)`.
+Pasaría igual con «Zoom» y «Zoom Workplace». `find` también lo usan `forcing.rs:20` (la
+desinstalación forzada podría tocar otra app) y la línea de órdenes `apps uninstall`.
+
+1. **Decisión M7 (D), recomendada:** coincidir solo con parte del nombre **nunca elige**: es un
+   error que sugiere. «No hay ninguna app que se llame «Fex Sonda». ¿Querías decir «Fex Sonda
+   Vecina»? Escribe su nombre completo.» Esto cambia el test de `cleaning.rs:371` («cord» →
+   Discord), que pasa a esperar el error con la sugerencia.
+2. En `resolve`, el orden pasa a ser:
+   1. la app instalada con ese id o ese nombre exactos;
+   2. **la app recordada** (desinstalada) con ese id o ese nombre exactos, la más reciente;
+   3. después, lo de hoy (la comprobación de nombres que se solapan, la recordada que lo contiene
+      y la forzada).
+
+   El paso 2 va **antes** de la comprobación de solapes. Si «Fex Sonda» está recordada, sus
+   restos se buscan aunque «Fex Sonda Vecina» siga instalada: la Vecina va en `others` y las
+   reglas que ya existen protegen su carpeta y sus claves (`SharedWithOtherApp`,
+   `installed_there`). Añade un test que lo compruebe.
+3. **Defensa en la ventana:** en `traces_found` (`core/reading.rs`), si `report.app` no es la app
+   que se pidió (`model.wizard.app` o el nombre de `FindTraces`), no se enseña la lista. Se pone
+   `model.error` = «No encuentro «{pedida}». La app de nombre parecido, «{otra}», sigue instalada y
+   no se toca.», y el asistente queda en su paso con «Cerrar». En `traces_dialog.rs::buttons`,
+   «Desinstalar y limpiar» solo aparece si `report.app` es la app del asistente.
+4. **Tests:**
+   - con «Fex Sonda Vecina» instalada y «Fex Sonda» recordada, `FindTraces("Fex Sonda")` da un
+     informe de «Fex Sonda», con `still_installed == false`, sin la carpeta ni las claves de la
+     Vecina;
+   - el recorrido completo: desinstalar «Fex Sonda» lleva a sus restos, nunca a la Vecina;
+   - `find(&apps, "Fex Sonda")` con solo la Vecina da el error con la sugerencia;
+   - la desinstalación forzada con un nombre a medias no elige ninguna app.
+
+**Hecho cuando:** `tools/check.ps1` en verde, y con Fex Sonda desinstalada y la Vecina instalada,
+`purifex apps traces "Fex Sonda"` dice «Restos de Fex Sonda» sin nada de la Vecina. El autor lo
+confirma con `tools/sonda.ps1 ciclo` y `comparar` en verde.
+
 ### M.1 `tools/respond.ps1`
 1. Script de PowerShell que se engancha a un `purifex.exe` **ya abierto**
    (`-Name purifex`, el primero con ventana), o lo lanza con `-Launch "<argumentos>"`.
@@ -333,7 +377,7 @@ Una fila en la que pierda se convierte en una tarea nueva, aquí.
 ## Orden y dependencias
 
 ```
-M.1 → M.2 → M.3 → M.4 → M.4b → M.5 → M.6 → (pausa) → M.7 (M1) → M.8 (M2, M3) → M.9
+M.0b (M7) → M.1 → M.2 → M.3 → M.4 → M.4b → M.5 → M.6 → (pausa) → M.7 (M1) → M.8 (M2, M3) → M.9
     → M.10 → M.11 → M.12 → M.13 → M.14 → (pausa) → M.15
 M.0 en cualquier momento antes de M.15.
 ```
@@ -411,3 +455,8 @@ Lo primero que se nota:
   - **Sin probar por Opus** (hace falta administrador y pulsar en la ventana): el recorrido real
     con Fex Sonda, la CPU con el indicador girando (puerta de D.6) y `respond.ps1` desde el clic
     hasta que se abre el desinstalador. Es la pausa de revisión del bloque 1, para el autor.
+- 2026-11-24 · **Fallo grave encontrado por el autor con Fex Sonda:** tras desinstalarla, Purifex
+  ofreció desinstalar «Fex Sonda Vecina», sin explicación. Causa: buscar por parte del nombre
+  (`find`). Reproducido en solo lectura. Nueva tarea **M.0b**, la primera. El control C2 de la app
+  de prueba sirvió para esto en su primera prueba real. Mientras no esté hecha, no pulses
+  «Desinstalar y limpiar» si el asistente nombra una app distinta de la que desinstalaste.

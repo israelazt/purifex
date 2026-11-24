@@ -7,8 +7,12 @@ mod install;
 mod items;
 mod manifest;
 mod places;
+mod purge;
+mod removal;
 mod say;
+mod status;
 mod system;
+mod uninstall;
 
 use std::process::ExitCode;
 
@@ -26,9 +30,9 @@ fn run(command: Command) -> Result<(), String> {
         Command::Install => install::install(),
         Command::Run => install::usage(),
         Command::Update => Ok(()),
-        Command::Uninstall => Err("«uninstall» todavía no está hecha".into()),
-        Command::Status { .. } => Err("«status» todavía no está hecha".into()),
-        Command::Purge => Err("«purge» todavía no está hecha".into()),
+        Command::Uninstall => uninstall::uninstall(),
+        Command::Status { json } => status::status(json),
+        Command::Purge => purge::purge(),
     }
 }
 

@@ -1,9 +1,6 @@
 //! The list of everything Fex Sonda writes, in one place: `install`, `status` and `purge` all read
 //! it. Adding a trace is adding a row.
 
-// Nothing reads the list until `install` (T.2), `status` and `purge` (T.4) exist: remove this then.
-#![allow(dead_code)]
-
 /// Where a path starts. Resolved from the environment by `places`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Root {
@@ -87,8 +84,6 @@ pub struct Row {
     pub item: Item,
     pub role: Role,
 }
-
-pub const UNINSTALL_KEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
 
 const fn row(id: &'static str, role: Role, item: Item) -> Row {
     Row { id, item, role }
@@ -294,12 +289,32 @@ pub const ITEMS: &[Row] = &[
 ];
 
 /// What every path of this tool must hold before it is removed: only what this tool wrote.
-const OURS: [&str; 3] = ["fexsonda", "fexotra", "fexcomun"];
+const OURS: [&str; 4] = ["fexsonda", "fexotra", "fexcomun", "fex sonda"];
 
 /// Whether a path or key belongs to Fex Sonda or to its controls. `purge` refuses anything else.
 pub fn is_ours(path: &str) -> bool {
     let lower = path.to_lowercase();
     OURS.iter().any(|name| lower.contains(name))
+}
+
+/// The name of the place a row writes, as the manifest gives it (relative to its root).
+pub fn name_of(item: &Item) -> &'static str {
+    match *item {
+        Item::File { path, .. }
+        | Item::Dir { path, .. }
+        | Item::Lnk { path, .. }
+        | Item::RegKey { path, .. } => path,
+        Item::Task { name, .. } => name,
+    }
+}
+
+/// The key to delete for a row of the registry: from the first part of the path that is ours
+/// down, so `...\FexSonda.Doc\shell\open\command` does not leave `FexSonda.Doc` behind. `None`
+/// when no part of the path is ours.
+pub fn owned_root(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('\\').collect();
+    let first = parts.iter().position(|part| is_ours(part))?;
+    Some(parts[..=first].join("\\"))
 }
 
 /// The row with this id.
@@ -347,13 +362,8 @@ mod tests {
     #[test]
     fn nothing_in_the_list_is_named_like_something_real() {
         for row in ITEMS {
-            let place = match row.item {
-                Item::File { path, .. } | Item::Dir { path, .. } | Item::Lnk { path, .. } => path,
-                Item::RegKey { path, .. } => path,
-                Item::Task { name, .. } => name,
-            };
-            let shortcut = place == "Fex Sonda.lnk";
-            assert!(shortcut || is_ours(place), "{}: {place}", row.id);
+            let place = name_of(&row.item);
+            assert!(is_ours(place), "{}: {place}", row.id);
         }
     }
 
@@ -363,6 +373,18 @@ mod tests {
         assert!(is_ours(r"HKLM\SOFTWARE\Classes\.fexcomun"));
         assert!(!is_ours(r"C:\Program Files\VideoLAN"));
         assert!(!is_ours(r"HKLM\SOFTWARE\Classes\.mp3"));
+    }
+
+    #[test]
+    fn a_nested_key_is_deleted_from_the_first_part_that_is_ours() {
+        let nested = r"SOFTWARE\Classes\FexSonda.Doc\shell\open\command";
+        assert_eq!(
+            owned_root(nested).as_deref(),
+            Some(r"SOFTWARE\Classes\FexSonda.Doc")
+        );
+        let entry = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\FexSonda";
+        assert_eq!(owned_root(entry).as_deref(), Some(entry));
+        assert_eq!(owned_root(r"SOFTWARE\Classes\.mp3"), None);
     }
 
     #[test]

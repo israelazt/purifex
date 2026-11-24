@@ -1,9 +1,6 @@
 //! What this tool asks of Windows: the registry through `reg.exe`, tasks through `schtasks.exe` and
 //! shortcuts through PowerShell. Arguments always go as a list, never inside a shell text.
 
-// The deletions are used from `uninstall` (T.3) on: remove this then.
-#![allow(dead_code)]
-
 use std::process::{Command, Output};
 
 use crate::manifest::{Data, Hive};

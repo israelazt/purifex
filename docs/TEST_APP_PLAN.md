@@ -308,3 +308,13 @@ prueba que Revo ve los restos.
   sin escribir nada; y con tests, la escritura de carpetas y archivos (idempotente), el nombre de
   las claves y la lectura de `reg query`. La tarea programada es semanal (domingo 03:00) y solo
   ejecuta `fexsonda.exe --update`, que no hace nada.
+- 2026-11-24 · T.3 y T.4 escritas (Sonnet 5.5), **en un solo commit** (comparten `removal.rs` y
+  `main.rs`): `uninstall`, `status` (texto y `--json`) y `purge`. Probado de verdad: `status` en este
+  PC (todo ausente, 18 filas, el PC está limpio) y `purge` sin administrador (se niega, código 1).
+  **Sin probar** (necesitan administrador): `uninstall` y `purge` sobre algo instalado, y el ciclo
+  `install → uninstall → purge ×3` de «Hecho cuando». Ojo con dos decisiones:
+  - Una clave anidada (`FexSonda.Doc\shell\open\command`, `FexOtra.Doc\…`) se borra desde la primera
+    parte del camino que es nuestra (`owned_root`), si no quedarían claves vacías de resto.
+  - `purge` sigue aunque un elemento falle (en uso, etc.) y lo cuenta al final; solo se detiene si
+    algo no es nuestro (`is_ours` otra vez, justo antes de quitar).
+  Los `allow(dead_code)` temporales de T.1 ya se quitaron.

@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use purifex_domain::app_traces::{propose_guessing, propose_with, simple, Trace};
+use purifex_domain::app_traces::{simple, Trace};
 use purifex_domain::apps::InstalledApp;
 use purifex_domain::cleanup_log::{
     is_purged, is_restored, next_seq, CleanReport, CleanupEntry, CleanupState,
@@ -136,15 +136,7 @@ impl Cleaning {
         others: &[InstalledApp],
         found: &purifex_domain::ports::Found,
     ) -> Vec<Trace> {
-        let candidates = self.with_logged(app, &found.candidates);
-        let judging = if self.mode == ScanMode::Advanced {
-            propose_guessing
-        } else {
-            propose_with
-        };
-        let mut traces = judging(app, others, &found.seeds, &candidates);
-        traces.retain(|t| self.mode.allows(t.evidence));
-        traces
+        searching::judge(app, others, found, self.logged(app), self.mode)
     }
 
     /// A restore point of Windows is asked for before each uninstaller starts.
@@ -260,8 +252,7 @@ impl Cleaning {
         only: Option<&[String]>,
     ) -> Result<CleanReport, String> {
         let job = self.prepare_search(apps, all, query)?;
-        let found = job.run(&|_| {})?;
-        let preview = self.finish_search(&job, &found);
+        let preview = job.run(&|_| {})?;
         if !confirmed {
             return Ok(preview);
         }

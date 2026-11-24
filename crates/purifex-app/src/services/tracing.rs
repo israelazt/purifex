@@ -15,9 +15,7 @@ impl<I, C, S, C2, F, A> App<I, C, S, C2, F, A> {
         match self.trace_search.poll() {
             Polled::Idle => TracesPolled::Idle,
             Polled::Working(steps) => TracesPolled::Working(steps),
-            Polled::Done(job, found) => {
-                TracesPolled::Done(found.map(|found| self.cleaning.finish_search(&job, &found)))
-            }
+            Polled::Done(report) => TracesPolled::Done(report),
         }
     }
 

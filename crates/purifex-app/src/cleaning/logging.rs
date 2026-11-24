@@ -20,7 +20,7 @@ impl Cleaning {
     }
 
     /// The places that the logs of this app name.
-    fn logged(&self, app: &InstalledApp) -> Vec<Candidate> {
+    pub(super) fn logged(&self, app: &InstalledApp) -> Vec<Candidate> {
         let Some(Ok(all)) = self.logs.as_ref().map(|l| l.all()) else {
             return Vec::new();
         };
@@ -29,16 +29,15 @@ impl Cleaning {
             .flat_map(|l| l.candidates())
             .collect()
     }
+}
 
-    /// What the finder found plus what the logs name, each place once (the log's reading wins).
-    pub(super) fn with_logged(&self, app: &InstalledApp, found: &[Candidate]) -> Vec<Candidate> {
-        let logged = self.logged(app);
-        let mut all: Vec<Candidate> = found
-            .iter()
-            .filter(|c| !logged.iter().any(|l| same_place(l, c)))
-            .cloned()
-            .collect();
-        all.extend(logged);
-        all
-    }
+/// What the finder found plus what the logs name, each place once (the log's reading wins).
+pub(super) fn merge_logged(found: &[Candidate], logged: Vec<Candidate>) -> Vec<Candidate> {
+    let mut all: Vec<Candidate> = found
+        .iter()
+        .filter(|c| !logged.iter().any(|l| same_place(l, c)))
+        .cloned()
+        .collect();
+    all.extend(logged);
+    all
 }

@@ -3,20 +3,18 @@
 //! one, whose result is never heard. The result is picked up by polling, without waiting.
 
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
-use std::sync::Arc;
 
-use purifex_domain::ports::Found;
+use purifex_domain::cleanup_log::CleanReport;
 use purifex_domain::search_step::SearchStep;
 
 use crate::cleaning::SearchJob;
 
 enum Msg {
     Step(SearchStep),
-    Done(Result<Found, String>),
+    Done(Result<CleanReport, String>),
 }
 
 struct Running {
-    job: Arc<SearchJob>,
     receive: Receiver<Msg>,
     steps: Vec<SearchStep>,
 }
@@ -26,7 +24,7 @@ pub enum Polled {
     Idle,
     /// Still looking, and these parts have finished.
     Working(Vec<SearchStep>),
-    Done(Arc<SearchJob>, Result<Found, String>),
+    Done(Result<CleanReport, String>),
 }
 
 #[derive(Default)]
@@ -37,22 +35,19 @@ pub struct TraceSearch {
 impl TraceSearch {
     /// Starts looking. If a search was going, this one replaces it.
     pub fn start(&mut self, job: SearchJob) -> Result<(), String> {
-        let job = Arc::new(job);
         let (send, receive) = channel();
-        let worker = job.clone();
         std::thread::Builder::new()
             .name("trace-search".into())
             .spawn(move || {
                 // The window may be closed or the search replaced: nobody listening is fine.
                 let said = send.clone();
-                let found = worker.run(&move |step| {
+                let found = job.run(&move |step| {
                     let _ = said.send(Msg::Step(step));
                 });
                 let _ = send.send(Msg::Done(found));
             })
             .map_err(|e| format!("no se pudo iniciar la búsqueda: {e}"))?;
         self.running = Some(Running {
-            job,
             receive,
             steps: Vec::new(),
         });
@@ -76,10 +71,9 @@ impl TraceSearch {
         };
         match result {
             None => Polled::Working(running.steps.clone()),
-            Some(found) => {
-                let job = running.job.clone();
+            Some(report) => {
                 self.running = None;
-                Polled::Done(job, found)
+                Polled::Done(report)
             }
         }
     }
@@ -94,7 +88,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use purifex_domain::apps::InstalledApp;
-    use purifex_domain::ports::TraceFinder;
+    use purifex_domain::ports::{Found, TraceFinder};
 
     use super::*;
     use crate::cleaning::Cleaning;
@@ -146,13 +140,13 @@ mod tests {
             .unwrap()
     }
 
-    fn until_done(search: &mut TraceSearch) -> (Vec<Vec<SearchStep>>, Found) {
+    fn until_done(search: &mut TraceSearch) -> (Vec<Vec<SearchStep>>, CleanReport) {
         let (mut seen, end) = (vec![], Instant::now() + Duration::from_secs(5));
         while Instant::now() < end {
             match search.poll() {
                 Polled::Idle => panic!("not started"),
                 Polled::Working(steps) => seen.push(steps),
-                Polled::Done(_, found) => return (seen, found.unwrap()),
+                Polled::Done(report) => return (seen, report.unwrap()),
             }
             std::thread::sleep(Duration::from_millis(5));
         }

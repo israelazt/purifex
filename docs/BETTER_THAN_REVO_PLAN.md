@@ -364,3 +364,9 @@ Lo primero que se nota:
   de órdenes siguen por `uninstall_app`, sin cambios. Test con un punto de restauración de 800 ms:
   ningún `tick` pasa de 50 ms y el desinstalador se abre solo después. Captura `preparing` revisada.
   **Falta `respond.ps1` con Fex Sonda en la ventana real** (hay que pulsar): lo hace el autor.
+- 2026-11-24 · M.6 hecha (A.5b): las reglas juzgan en el hilo de la búsqueda (`judge` y
+  `merge_logged` son funciones puras; los registros de instalación y el modo se leen antes).
+  `apps traces` de DBeaver e Inkscape idénticos byte a byte. `respond.ps1` con `ui --find-traces`:
+  Inkscape **pasa de una espera de 452 ms durante la búsqueda a ninguna** (máximo 18 ms);
+  DBeaver igual (máximo 15 ms). Solo queda la de 314–358 ms al aparecer la ventana (ya conocida).
+  **Pausa de revisión del bloque 1: el autor desinstala Fex Sonda y dice si ya no «se muere».**

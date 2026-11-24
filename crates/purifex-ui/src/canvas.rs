@@ -129,6 +129,11 @@ impl<'a> Canvas<'a> {
         self.anims.value(name, target, duration_ms)
     }
 
+    /// Like `value`, but a name seen for the first time starts at `target` (see `Anims::follow`).
+    pub fn follow(&mut self, name: &'static str, target: f32, duration_ms: u64) -> f32 {
+        self.anims.follow(name, target, duration_ms)
+    }
+
     /// The time of what moves as long as it is drawn (see `Anims::clock`).
     pub fn clock(&mut self) -> Option<u64> {
         self.anims.clock()
@@ -180,12 +185,16 @@ impl<'a> Canvas<'a> {
     }
 
     pub fn line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, color: Color) {
+        self.line_w(x1, y1, x2, y2, 1.0, color);
+    }
+
+    pub fn line_w(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, width: f32, color: Color) {
         self.list.push(Op::Line {
             x1,
             y1: y1 + self.dy,
             x2,
             y2: y2 + self.dy,
-            width: 1.0,
+            width,
             color: self.tint(color),
         });
     }

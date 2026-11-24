@@ -24,6 +24,7 @@ mod hunter_dialog;
 mod in_use_panel;
 mod junk_page;
 mod lead_list;
+pub mod loaders;
 mod monitor_panel;
 mod overview_cards;
 pub mod overview_page;

@@ -352,3 +352,4 @@ Lo primero que se nota:
   lista del registro sola (la lista entera con la Tienda son ~500 ms, la cifra del plan). Test: la
   lista no se lee ni una vez mientras se espera. **Falta** `respond.ps1` durante un minuto de
   «Desinstalando» en la ventana real: exige pulsar en la ventana y lo hace el autor.
+- 2026-11-24 · M.3 hecha (D.1 y D.2): reloj `clock` y `loaders.rs` (spinner, barra, anillo, ✓ y puntos), con `Canvas::line_w` y `Anims::follow`.

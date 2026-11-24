@@ -104,6 +104,23 @@ impl Anims {
         self.hover = std::mem::take(&mut self.hover_next);
     }
 
+    /// A number that goes to `target` like `value`, but that is already there the first time it
+    /// is seen: a bar or a height does not grow from zero when it appears.
+    pub fn follow(&mut self, name: &'static str, target: f32, duration_ms: u64) -> f32 {
+        if self.motion && !self.values.contains_key(name) {
+            self.values.insert(
+                name,
+                Tween {
+                    from: target,
+                    to: target,
+                    start_ms: self.now_ms,
+                    duration_ms: 0,
+                },
+            );
+        }
+        self.value(name, target, duration_ms)
+    }
+
     /// The time, for what moves as long as it is drawn (a spinner): with motion it keeps the
     /// window asking for pictures; without it, `None` (draw the still picture).
     pub fn clock(&mut self) -> Option<u64> {

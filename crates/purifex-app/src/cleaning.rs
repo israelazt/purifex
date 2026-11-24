@@ -5,6 +5,8 @@
 //! orders the steps and refuses the ones that are not safe yet (cleaning an app
 //! that is still installed).
 
+use std::sync::Arc;
+
 use purifex_domain::app_traces::{propose_guessing, propose_with, simple, Trace};
 use purifex_domain::apps::InstalledApp;
 use purifex_domain::cleanup_log::{
@@ -26,11 +28,13 @@ mod logging;
 mod purging;
 mod rebooting;
 mod restoring;
+mod searching;
+pub use searching::SearchJob;
 mod startup;
 
 #[derive(Default)]
 pub struct Cleaning {
-    finder: Option<Box<dyn TraceFinder>>,
+    finder: Option<Arc<dyn TraceFinder>>,
     launcher: Option<Box<dyn Uninstaller>>,
     store: Option<Box<dyn CleanupStore>>,
     probe: Option<Box<dyn SeedProbe>>,
@@ -100,7 +104,7 @@ impl Cleaning {
         store: Box<dyn CleanupStore>,
     ) -> Self {
         Self {
-            finder: Some(finder),
+            finder: Some(Arc::from(finder)),
             launcher: Some(launcher),
             store: Some(store),
             probe: None,
@@ -298,36 +302,23 @@ impl Cleaning {
         confirmed: bool,
         only: Option<&[String]>,
     ) -> Result<CleanReport, String> {
-        let (app, installed) = self.resolve(apps, all, query)?;
-        let finder = self
-            .finder
-            .as_ref()
-            .ok_or("esta versión no sabe buscar restos")?;
-        let others: Vec<InstalledApp> = all.iter().filter(|a| a.id != app.id).cloned().collect();
-        let found = finder.search(&app)?;
-        let proposed = self.propose(&app, &others, &found);
+        let job = self.prepare_search(apps, all, query)?;
+        let found = job.run(&|_| {})?;
+        let preview = self.finish_search(&job, &found);
         if !confirmed {
-            return Ok(CleanReport {
-                app: app.name,
-                preview: true,
-                proposed,
-                incomplete: found.incomplete,
-                other_users_unread: found.other_users_unread,
-                still_installed: installed,
-                ..Default::default()
-            });
+            return Ok(preview);
         }
-        if installed {
-            return Err(format!("{} sigue instalada: termina su desinstalador primero (los restos de una app en uso no se tocan)", app.name));
+        if job.installed {
+            return Err(format!("{} sigue instalada: termina su desinstalador primero (los restos de una app en uso no se tocan)", job.app.name));
         }
-        let chosen = select(proposed, only);
-        let done = self.remove_all(&app.name, &chosen)?;
+        let chosen = select(preview.proposed, only);
+        let done = self.remove_all(&job.app.name, &chosen)?;
         Ok(CleanReport {
-            app: app.name,
+            app: job.app.name,
             removed: done.removed,
             failed: done.failed,
             in_use: done.in_use,
-            incomplete: found.incomplete,
+            incomplete: preview.incomplete,
             ..Default::default()
         })
     }
